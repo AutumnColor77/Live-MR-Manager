@@ -1,0 +1,18 @@
+# 기획 및 설계 문서
+/스트리밍 엠알 관리 프로그램/기획안/
+
+# 빌드 산출물
+/build/
+/dist/
+
+# 언어별 의존성 폴더
+/node_modules/
+/vendor/
+
+# IDE 및 OS 별 임시 파일
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
