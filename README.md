@@ -1,43 +1,91 @@
-# Live MR Manager
+# 🎙️ Live MR Manager
 
-로컬 구동형 스마트 오디오 제어 시스템
+> **AI 기반 로컬 구동형 스마트 오디오 제어 시스템 — 상세 설계서 v3 반영**
 
-## 1. 프로젝트 개요
+[![Tauri 2.0](https://img.shields.io/badge/Tauri_2.0-FFC131?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![C++](https://img.shields.io/badge/C++_Engine-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)](https://isocpp.org/)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-005BA1?style=for-the-badge&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
 
-**Live MR Manager**는 웹 기반 신청곡 관리 서비스의 구조적 한계를 극복하기 위해 설계된 네이티브 데스크톱 애플리케이션입니다. '퍼포머 중심', '실시간성', '법적 안전성'을 핵심 가치로 삼아, 스트리머와 라이브 연주자에게 오디오 소스에 대한 완벽한 기술적 통제권을 제공하는 것을 목표로 합니다.
+**Live MR Manager**는 실시간 방송 및 공연 환경에서 고성능 AI 음원 분리 및 정밀 오디오 제어를 제공하는 네이티브 데스크톱 애플리케이션입니다. 퍼포머 중심의 워크플로우를 위해 100% 로컬(On-Device) 자원을 활용하며, 저작권 리스크로부터 퍼포머를 보호하는 '법적 안전성'을 최우선으로 설계되었습니다.
 
-모든 오디오 처리는 100% 로컬(On-device)에서 이루어지며, 이를 통해 클라우드 서버 의존성으로 인한 지연 시간(latency) 문제와 저작권 관련 법적 리스크를 근본적으로 해결합니다.
+---
 
-## 2. 주요 기능
+## 💎 3대 핵심 설계 원칙 (Core Principles)
 
-*   **실시간 오디오 DSP (Digital Signal Processing)**
-    *   **피치(Key) 및 템포 조절**: 20ms 미만의 매우 낮은 지연 시간으로 실시간 피치 및 템포 변경이 가능합니다.
-    *   **고품질 리샘플링**: 실시간 피치 변경 시 발생하는 'Aliasing' 현상을 억제하여 음질 저하를 방지합니다.
+모든 기술적 의사결정은 아래 세 원칙의 우선순위를 기준으로 평가됩니다.
 
-*   **온디바이스 AI**
-    *   **MR 스템 분리**: Spleeter 기반의 경량화된 AI 모델을 사용하여 로컬에서 실시간으로 악기(MR)와 보컬을 분리합니다.
-    *   **가사-오디오 자동 정렬**: WhisperX 모델을 통해 오디오와 가사 타임스탬프를 자동으로 동기화하고, GUI를 통해 미세 조정할 수 있습니다.
+| 우선순위 | 원칙 | 적용 방향 |
+| :--- | :--- | :--- |
+| **P1** | **법적 안전성** | 모든 음원 가공은 **로컬(Local)**에서만 수행. 서버에 음원 데이터가 존재하지 않는 구조를 물리적으로 강제하여 저작권 리스크를 원천 차단합니다. |
+| **P2** | **기계적 실시간성** | 오디오 처리 지연율 **20ms 이하**를 표준으로 설정. 모든 AI 파이프라인과 DSP 엔진은 이 기준선 아래에서 작동하도록 최적화됩니다. |
+| **P3** | **퍼포머 중심성** | UI/UX 및 OBS 연동 등 모든 기능은 라이브 스트리머와 아티스트의 실제 **워크플로우**를 최우선으로 고려하여 설계합니다. |
 
-*   **OBS 스튜디오 연동**
-    *   **Dock UI**: OBS 내장 Dock을 통해 애플리케이션의 모든 기능을 제어할 수 있습니다.
-    *   **투명 오버레이**: WebSocket 기반으로 웹 기술을 활용하여 방송 화면에 가사나 상태 정보를 투명 오버레이로 표시합니다.
+---
 
-*   **데이터 관리 및 백업**
-    *   **로컬 데이터베이스**: SQLite를 사용하여 곡, 태그, 가사 싱크 데이터를 효율적으로 관리합니다.
-    *   **안전한 백업**: Google Drive API를 연동하여 모든 데이터를 단일 파일로 안전하게 백업 및 복원할 수 있습니다.
+## 🚀 주요 기능 (Key Features)
 
-## 3. 기술 스택
+### 🤖 하이엔드 온디바이스 AI 파이프라인
+- **Roformer 기반 음원 분리**: 최신 SOTA 모델인 **Roformer**를 핵심 모델로 채택하여 보컬과 MR의 완벽한 분리 품질을 제공합니다. (INT8 양자화 모델 활용)
+- **WhisperX 가사 싱크**: **WhisperX (Forced Alignment)**를 통해 단어 수준의 정밀한 가사 타임스탬프를 자동 생성합니다.
+- **ONNX 가속**: DirectML(Windows) 및 CoreML(macOS) GPU 가속을 통해 실시간에 준하는 빠른 추론 속도를 보장합니다.
 
-*   **UI 프레임워크**: Tauri (Rust) 또는 Flutter (Dart)를 C++ 브릿지 성능 테스트 후 최종 결정
-*   **오디오 처리 엔진**: C++ 기반의 SoX 또는 FMOD
-*   **AI 추론 엔진**: ONNX Runtime (DirectML, CoreML을 통한 GPU 가속 활용)
-*   **데이터베이스**: SQLite
-*   **OBS 연동**: 로컬 WebSocket 서버
+### 🎛️ 실시간 스마트 오디오 컨트롤
+- **초저지연 Key/Tempo 조절**: C++ 기반 고성능 오디오 엔진(SoX/FMOD)을 통해 음질 손실 없는 실시간 피치 및 속도 조절이 가능합니다.
+- **ASIO/CoreAudio 지원**: OS 레벨 드라이버에 직접 접근하여 오디오 인터페이스의 성능을 최대로 활용합니다.
 
-## 4. 법적 리스크 관리
+### 🎥 퍼포머 대시보드 (OBS Integration)
+- **Native Dock UI**: OBS 내부에 전용 컨트롤 패널을 임베딩하여 방송 중 원스톱 조작이 가능합니다.
+- **WebSocket 연동**: 127.0.0.1 로컬 통신을 통해 투명 가사 오버레이 및 상태 정보를 실시간 송출합니다.
 
-본 시스템은 기술적 설계를 통해 개발자와 사용자의 법적 리스크를 최소화하는 것을 중요하게 생각합니다.
+---
 
-1.  **2차적 저작물 작성(제22조) 방어**: 모든 오디오 가공(MR 분리, 피치 조절)은 서버를 거치지 않고 100% 사용자 기기 내에서만 처리됩니다. 서버에 음원 데이터가 남지 않으므로 플랫폼 제공자는 저작권 침해 책임에서 자유로워집니다.
-2.  **공중송신권(제18조) 책임 분리**: 앱 최초 실행 시, "모든 송출 행위의 법적 책임은 사용자에게 있다"는 내용의 최종 사용자 라이선스 계약(EULA) 동의를 강제하여 플랫폼의 방조 책임을 면제합니다.
-3.  **Content ID 필터링 회피 가이드**: OBS의 멀티트랙 오디오 기능을 활용하여, 라이브 스트리밍(Track 1)에는 MR을 포함한 모든 오디오를 송출하고, VOD/다시보기(Track 2)에는 MR을 제외하여 저작권 필터링에 의한 음소거를 방지하도록 명확한 가이드를 제공합니다.
+## 🏗️ 기술 아키텍처 (Layer Structure)
+
+시스템은 제로-카피(Zero-copy) 데이터 전달을 목표로 하는 5계층 구조로 설계되었습니다.
+
+| 레이어 | 명칭 | 기술 구성 및 역할 |
+| :--- | :--- | :--- |
+| **Layer 4** | **UI Layer** | React/Vue 기반 퍼포머 대시보드. WebSocket을 통한 상태 동기화. |
+| **Layer 3** | **Bridge Layer** | Tauri IPC 커맨드 핸들러. Rust 기반의 안전한 데이터 마샬링. |
+| **Layer 2** | **FFI Layer** | Rust ↔ C++ 경계면. `unsafe` 블록을 통한 고성능 함수 호출. |
+| **Layer 1** | **Core Engine** | **C++ Audio Engine (SoX/FMOD)**. 오디오 버퍼 포인터 직접 제어. |
+| **Layer 0** | **OS Driver** | **ASIO (Windows) / CoreAudio (macOS)** 직접 접근. |
+
+---
+
+## ⚙️ 상세 기술 스택 (Technical Stack)
+
+- **Framework**: Tauri 2.0 (Rust)
+- **UI Architecture**: React or Vue (Performer-centric UI)
+- **Audio DSP**: C++ Core Engine (SoX or FMOD Library)
+- **AI Inference**: ONNX Runtime 1.17+
+- **Separation Model**: **Roformer (Primary)**
+- **Alignment Model**: WhisperX (ONNX Optimized)
+- **Database**: SQLite 3.40+ (WAL Mode)
+
+---
+
+## 🏃 개발 환경 구축 (For Developers)
+
+설계서 v3 기준 환경 구축 가이드입니다.
+
+### 사전 요구 사항
+- [Rust](https://www.rust-lang.org/tools/install)
+- [Node.js](https://nodejs.org/) (v18+)
+- [C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (SoX 엔진 빌드용)
+
+### 프로젝트 시작
+```bash
+# 의존성 설치
+npm install
+
+# Tauri 개발 모드 실행
+npm run tauri dev
+```
+
+---
+
+## 📄 라이선스 및 협약
+본 시스템은 기획/설계 단계(Phase 0-1)의 설계서 v3를 기반으로 구현 중입니다. 모든 기술적 권한은 설계서의 법적 준수 사항을 따릅니다.
+
