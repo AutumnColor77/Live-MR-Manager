@@ -111,11 +111,32 @@
       <div class="dock-inner">
         <!-- 현재 재생 중인 곡 정보 -->
         <div class="now-playing">
-          <div class="mini-thumb" id="dock-thumb"></div>
+          <div class="mini-thumb" id="dock-thumb">
+            <div class="thumb-overlay" id="thumb-overlay">
+              <svg class="icon-loading" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
+                <path d="M12 2a10 10 0 0 1 10 10"/>
+              </svg>
+              <svg class="icon-play" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              <svg class="icon-pause" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+            </div>
+          </div>
           <div class="song-info">
             <div class="song-name" id="dock-title">재생 중인 곡 없음</div>
-            <div class="song-artist" id="dock-artist">파일을 선택하세요</div>
+            <div class="playback-container">
+              <span class="time-label" id="time-current">0:00</span>
+              <div class="progress-bar-wrapper">
+                <input type="range" id="playback-bar" min="0" max="100" value="0">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+              <span class="time-label" id="time-total">0:00</span>
+            </div>
           </div>
+ <!-- Playback Controls Removed -->
         </div>
 
         <!-- AI 처리 섹션 -->
@@ -127,7 +148,6 @@
               <span class="slider round"></span>
             </label>
           </div>
-          <div class="ai-divider"></div>
           <div class="ai-item" title="WhisperX Lyrics Sync">
             <span class="ai-label">LYRIC</span>
             <label class="switch">
@@ -144,9 +164,9 @@
             <div class="control-group">
               <div class="control-header">
                 <span>PITCH</span>
-                <span class="val-display" id="pitch-val">0.0</span>
+                <span class="val-display" id="pitch-val">0</span>
               </div>
-              <input type="range" min="-12" max="12" step="0.5" value="0" class="range-slider" id="pitch-slider">
+              <input type="range" min="-12" max="12" step="1" value="0" class="range-slider" id="pitch-slider">
             </div>
             <div class="control-group">
               <div class="control-header">
@@ -171,6 +191,12 @@
       </div>
     </footer>
 
+    <div id="context-menu" class="context-menu">
+      <div class="context-menu-item" id="menu-play">재생</div>
+      <div class="context-menu-item" id="menu-delete">삭제</div>
+    </div>
+
+    <div id="notification-container" class="notification-container"></div>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

@@ -23,20 +23,22 @@
 
 ---
 
-## 🚀 주요 기능 (Key Features)
+## 🚀 현재 구현된 주요 기능 (Current Features)
 
-### 🤖 하이엔드 온디바이스 AI 파이프라인
-- **Roformer 기반 음원 분리**: 최신 SOTA 모델인 **Roformer**를 핵심 모델로 채택하여 보컬과 MR의 완벽한 분리 품질을 제공합니다. (INT8 양자화 모델 활용)
-- **WhisperX 가사 싱크**: **WhisperX (Forced Alignment)**를 통해 단어 수준의 정밀한 가사 타임스탬프를 자동 생성합니다.
-- **ONNX 가속**: DirectML(Windows) 및 CoreML(macOS) GPU 가속을 통해 실시간에 준하는 빠른 추론 속도를 보장합니다.
+### 🤖 온디바이스 오디오 엔진 (DSP Engine)
+- **실시간 Pitch/Tempo 독립 제어**: `signalsmith-stretch` 및 `Rodio 0.22.x` 기반의 고성능 오디오 파이프라인. 음질 손실 없이 `-12` ~ `+12` 반음 및 `0.5x` ~ `2.0x` 속도 조절 지원.
+- **초저지연 Passthrough**: 피치와 속도가 기본값일 때 DSP 엔진을 우회하여 레이턴시를 최소화하고 원래 음원을 그대로 재생.
+- **다중 채널 완벽 지원**: 스테레오 채널 분리 및 위상 정합 처리(Planar processing)를 통해 위상 뒤틀림 없는 사운드 재생.
 
-### 🎛️ 실시간 스마트 오디오 컨트롤
-- **초저지연 Key/Tempo 조절**: C++ 기반 고성능 오디오 엔진(SoX/FMOD)을 통해 음질 손실 없는 실시간 피치 및 속도 조절이 가능합니다.
-- **ASIO/CoreAudio 지원**: OS 레벨 드라이버에 직접 접근하여 오디오 인터페이스의 성능을 최대로 활용합니다.
+### 🎥 유튜브 및 로컬 스트리밍 (Streaming & Local)
+- **yt-dlp 통합**: 백그라운드에서 실시간 유튜브 오디오 추출 및 재생. 메타데이터(제목, 썸네일, 길이) 자동 보정.
+- **실시간 다운로드/재생**: `BufReader`와 비동기 다운로드를 결합하여 다운로드 완료 전에도 즉각적인 스트리밍 경험 제공.
+- **로컬 폴더 스캐닝**: 지정된 로컬 폴더 내 오디오 파일을 고속으로 스캔하고 관리.
 
-### 🎥 퍼포머 대시보드 (OBS Integration)
-- **Native Dock UI**: OBS 내부에 전용 컨트롤 패널을 임베딩하여 방송 중 원스톱 조작이 가능합니다.
-- **WebSocket 연동**: 127.0.0.1 로컬 통신을 통해 투명 가사 오버레이 및 상태 정보를 실시간 송출합니다.
+### 🎛️ 퍼포머 대시보드 (Smart Dashboard UI)
+- **프리미엄 다크 테마**: 고해상도 글래스모피즘(Glassmorphism) 기반 세련된 UI.
+- **고정밀 프로그레스 바**: 50ms 간격의 부드러운 재생 바 업데이트 및 정밀한 Seek 기능 지원.
+- **통합 제어 패널**: 재생/일시정지, 다음 곡, 피치 조절 슬라이더, 검색 바 등 라이브 워크플로우 최적화.
 
 ---
 
@@ -46,23 +48,21 @@
 
 | 레이어 | 명칭 | 기술 구성 및 역할 |
 | :--- | :--- | :--- |
-| **Layer 4** | **UI Layer** | React/Vue 기반 퍼포머 대시보드. WebSocket을 통한 상태 동기화. |
-| **Layer 3** | **Bridge Layer** | Tauri IPC 커맨드 핸들러. Rust 기반의 안전한 데이터 마샬링. |
-| **Layer 2** | **FFI Layer** | Rust ↔ C++ 경계면. `unsafe` 블록을 통한 고성능 함수 호출. |
-| **Layer 1** | **Core Engine** | **C++ Audio Engine (SoX/FMOD)**. 오디오 버퍼 포인터 직접 제어. |
-| **Layer 0** | **OS Driver** | **ASIO (Windows) / CoreAudio (macOS)** 직접 접근. |
+| **Layer 3** | **UI Layer** | React/Dashboard UI 기반 퍼포머 대시보드. Tauri Event API 연동. |
+| **Layer 2** | **IPC Layer** | Tauri 커맨드 핸들러. Rust 기반 비동기 스트리밍 설계. |
+| **Layer 1** | **Audio Engine** | **Rodio 0.22 (Low-level playback control)**. Cpal 오디오 드라이버 연동. |
+| **Layer 0** | **DSP Engine** | **signalsmith-stretch** (Rust optimized). 실시간 샘플 도메인 오디오 변환. |
 
 ---
 
 ## ⚙️ 상세 기술 스택 (Technical Stack)
 
-- **Framework**: Tauri 2.0 (Rust)
-- **UI Architecture**: React or Vue (Performer-centric UI)
-- **Audio DSP**: C++ Core Engine (SoX or FMOD Library)
-- **AI Inference**: ONNX Runtime 1.17+
-- **Separation Model**: **Roformer (Primary)**
-- **Alignment Model**: WhisperX (ONNX Optimized)
-- **Database**: SQLite 3.40+ (WAL Mode)
+- **Framework**: Tauri 2.0 (Rust/JS)
+- **Audio Engine**: Rodio 0.22.x
+- **DSP Engine**: **signalsmith-stretch 0.1.3**
+- **YouTube Backend**: **yt-dlp (Fast Audio Extraction)**
+- **UI Architecture**: Vanilla JS Core + Premium CSS Dashboard
+- **Sample Processing**: 32-bit Floating Point (f32) high-fidelity processing
 
 ---
 
