@@ -12,6 +12,10 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::time::Duration;
 mod youtube;
 use crate::youtube::YoutubeManager;
+// Transparent aliases to map the 0.19.0 API mentally to the 0.22.2 architecture:
+pub type OutputStream = MixerDeviceSink;
+pub type Sink = Player;
+pub type OutputStreamHandle = (); // Dummy handle since 0.22.2 MixerDeviceSink encapsulates both
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,8 +77,9 @@ impl Default for AppState {
 }
 
 pub struct AudioHandler {
-    _handle: MixerDeviceSink,
-    pub player: Mutex<Player>,
+    _stream: OutputStream,
+    _stream_handle: OutputStreamHandle,
+    pub sink: Mutex<Sink>,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
@@ -94,12 +99,13 @@ impl AudioHandler {
 
 
 static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
-    let handle = DeviceSinkBuilder::open_default_sink().expect("Failed to open audio output");
-    let player = Player::connect_new(&handle.mixer());
+    let stream = DeviceSinkBuilder::open_default_sink().expect("Failed to open audio output");
+    let sink = Player::connect_new(&stream.mixer());
 
     Arc::new(AudioHandler {
-        _handle: handle,
-        player: Mutex::new(player),
+        _stream: stream,
+        _stream_handle: (),
+        sink: Mutex::new(sink),
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0)),
         active_tempo: Arc::new(AtomicU32::new(100)),
@@ -314,9 +320,9 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     // Immediate stop previous track for instant feedback
     let handler = AUDIO_HANDLER.clone();
     {
-        let player = handler.player.lock();
+        let sink = handler.sink.lock();
         let mut state = handler.state.lock();
-        player.stop();
+        sink.clear(); // Ensure we don't pile up sounds and clear queue
         state.is_playing = false;
     }
 
@@ -383,11 +389,11 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     let total_duration = stretched.total_duration().unwrap_or(Duration::from_secs(0));
     let total_ms = total_duration.as_millis() as u64;
 
-    let player_lock = handler.player.lock();
-    player_lock.clear(); // Safe full reset
-    player_lock.append(stretched);
-    player_lock.play(); 
-    println!("Rodio Player: Playback signal sent for track: {}", &path);    
+    let sink_lock = handler.sink.lock();
+    sink_lock.clear(); // Safe full reset
+    sink_lock.append(stretched);
+    sink_lock.play(); 
+    println!("Rodio Player/Sink: Playback signal sent for track: {}", &path);    
     
     let mut state = handler.state.lock();
     let track_id = path.clone();
@@ -398,7 +404,6 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     
     // Start progress thread
     let window_progress = window.clone();
-    let pos_samples = handler.current_pos_samples.clone();
     let handler_progress = handler.clone();
     
     std::thread::spawn(move || {
@@ -431,11 +436,11 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
 #[allow(dead_code)]
 fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
-    let player = handler.player.lock();
+    let sink = handler.sink.lock();
     
     // Rodio Player/Sink seeking
     let duration = Duration::from_millis(position_ms);
-    player.try_seek(duration).map_err(|e| e.to_string())?;
+    sink.try_seek(duration).map_err(|e| e.to_string())?;
     
     // Update our counter
     let current_rate = handler.active_sample_rate.load(Ordering::Relaxed);
@@ -448,15 +453,15 @@ fn seek_to(position_ms: u64) -> Result<(), String> {
 #[tauri::command]
 fn toggle_playback() -> Result<bool, String> {
     let handler = AUDIO_HANDLER.clone();
-    let player = handler.player.lock();
+    let sink = handler.sink.lock();
     let mut state = handler.state.lock();
 
-    if player.is_paused() {
-        player.play();
+    if sink.is_paused() {
+        sink.play();
         state.is_playing = true;
         handler.playback_cv.notify_all();
     } else {
-        player.pause();
+        sink.pause();
         state.is_playing = false;
     }
 
@@ -490,7 +495,7 @@ fn set_tempo(ratio: f32) -> Result<(), String> {
 #[tauri::command]
 fn set_volume(volume: f32) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
-    handler.player.lock().set_volume(volume / 100.0);
+    handler.sink.lock().set_volume(volume / 100.0);
     Ok(())
 }
 
