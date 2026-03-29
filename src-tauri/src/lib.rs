@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, Condvar};
 use tauri::{Emitter, async_runtime, WindowEvent, DragDropEvent, Window};
 use once_cell::sync::Lazy;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
@@ -79,6 +79,16 @@ pub struct AudioHandler {
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
     pub current_pos_samples: Arc<AtomicU64>,
+    pub active_sample_rate: Arc<AtomicU32>,
+    pub playback_cv: Condvar,
+}
+
+impl AudioHandler {
+    pub fn get_progress_ms(&self) -> u64 {
+        let samples = self.current_pos_samples.load(Ordering::Relaxed);
+        let rate = self.active_sample_rate.load(Ordering::Relaxed);
+        if rate == 0 { 0 } else { (samples * 1000) / rate as u64 }
+    }
 }
 
 
@@ -91,9 +101,11 @@ static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
         _handle: handle,
         player: Mutex::new(player),
         state: Mutex::new(AppState::default()),
-        active_pitch: Arc::new(AtomicU32::new(0)),       // 0 semitones * 100
-        active_tempo: Arc::new(AtomicU32::new(100)),     // 1.0x * 100
+        active_pitch: Arc::new(AtomicU32::new(0)),
+        active_tempo: Arc::new(AtomicU32::new(100)),
         current_pos_samples: Arc::new(AtomicU64::new(0)),
+        active_sample_rate: Arc::new(AtomicU32::new(44100)),
+        playback_cv: Condvar::new(),
     })
 });
 
@@ -109,6 +121,7 @@ pub struct StretchedSource<S> where S: Source<Item = f32> {
     planar_input: Vec<Vec<f32>>,
     planar_output: Vec<Vec<f32>>,
     block_size: usize,
+    sample_idx_in_frame: u16,
 }
 
 impl<S> StretchedSource<S> where S: Source<Item = f32> {
@@ -139,6 +152,7 @@ impl<S> StretchedSource<S> where S: Source<Item = f32> {
             planar_input,
             planar_output,
             block_size,
+            sample_idx_in_frame: 0,
         }
     }
 }
@@ -147,85 +161,92 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(s) = self.output_buffer.pop_front() {
-            return Some(s);
-        }
+        loop {
+            // 1. Drain output buffer if any
+            if let Some(s) = self.output_buffer.pop_front() {
+                self.sample_idx_in_frame += 1;
+                if self.sample_idx_in_frame >= self.channels.get() {
+                    let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
+                    if total % 44100 == 0 {
+                        println!("DEBUG: StretchedSource pulled {} frames successfully (Output Buffer).", total);
+                    }
+                    self.sample_idx_in_frame = 0;
+                }
+                return Some(s);
+            }
 
-        let p_semitones = self.pitch.load(Ordering::Relaxed) as i32 as f32 / 100.0;
-        let t_ratio = self.tempo.load(Ordering::Relaxed) as u32 as f32 / 100.0;
-        let t_ratio = t_ratio.max(0.1); 
-        
-        // --- Added: Correct Block-based Passthrough ---
-        if p_semitones == 0.0 && (t_ratio - 1.0).abs() < 0.01 {
-            let mut frames_read = 0;
+            let p_semitones = self.pitch.load(Ordering::Relaxed) as i32 as f32 / 100.0;
+            let t_ratio = self.tempo.load(Ordering::Relaxed) as u32 as f32 / 100.0;
+            let t_ratio = t_ratio.max(0.1); 
+            
+            // 2. Passthrough Optimization
+            if p_semitones == 0.0 && (t_ratio - 1.0).abs() < 0.01 {
+                if let Some(s) = self.input.next() {
+                    self.sample_idx_in_frame += 1;
+                    if self.sample_idx_in_frame >= self.channels.get() {
+                        let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
+                        if total % 44100 == 0 {
+                            println!("DEBUG: StretchedSource pulled {} frames successfully (Passthrough).", total);
+                        }
+                        self.sample_idx_in_frame = 0;
+                    }
+                    return Some(s);
+                } else {
+                    println!("DEBUG: StretchedSource Input Iterator Returned None (Passthrough)!");
+                    return None;
+                }
+            }
+
+            // 3. Update all stretchers
+            for stretcher in self.stretchers.iter_mut() {
+                stretcher.set_transpose_factor_semitones(p_semitones, None);
+            }
+
+            for c in 0..self.channels.get() as usize {
+                self.planar_input[c].clear();
+            }
+
+            let mut frames_in = 0;
             for _ in 0..self.block_size {
                 let mut complete_frame = true;
-                for _ in 0..self.channels.get() as usize {
+                for c in 0..self.channels.get() as usize {
                     if let Some(s) = self.input.next() {
-                        self.output_buffer.push_back(s);
+                        self.planar_input[c].push(s);
                     } else {
                         complete_frame = false;
                         break;
                     }
                 }
                 if !complete_frame { break; }
-                frames_read += 1;
+                frames_in += 1;
             }
-            if frames_read > 0 {
-                self.processed_samples.fetch_add(frames_read as u64, Ordering::Relaxed);
-                return self.output_buffer.pop_front();
-            } else {
-                return None;
-            }
-        }
-        // ----------------------------------------------
 
-        // Update all stretchers
-        for stretcher in self.stretchers.iter_mut() {
-            stretcher.set_transpose_factor_semitones(p_semitones, None);
-        }
-
-        for c in 0..self.channels.get() as usize {
-            self.planar_input[c].clear();
-        }
-
-        let mut frames_in = 0;
-        for _ in 0..self.block_size {
-            let mut complete_frame = true;
-            for c in 0..self.channels.get() as usize {
-                if let Some(s) = self.input.next() {
-                    self.planar_input[c].push(s);
-                } else {
-                    complete_frame = false;
-                    break;
-                }
-            }
-            if !complete_frame { break; }
-            frames_in += 1;
-        }
-
-        if frames_in == 0 { return None; }
-        self.processed_samples.fetch_add(frames_in as u64, Ordering::Relaxed);
-        
-        let expected_frames_out = (frames_in as f32 / t_ratio).ceil() as usize;
-        let frames_out = expected_frames_out.max(1);
-
-        for c in 0..self.channels.get() as usize {
-            if self.planar_output[c].len() < frames_out {
-                self.planar_output[c].resize(frames_out, 0.0);
+            if frames_in == 0 { 
+                // Buffer is empty (checked above) and no data left
+                println!("DEBUG: StretchedSource Input Iterator Exhausted Block!");
+                return None; 
             }
             
-            // Process each channel independently
-            self.stretchers[c].process(&self.planar_input[c][0..frames_in], &mut self.planar_output[c][0..frames_out]);
-        }
+            let expected_frames_out = (frames_in as f32 / t_ratio).ceil() as usize;
+            let frames_out = expected_frames_out.max(1);
 
-        for i in 0..frames_out {
             for c in 0..self.channels.get() as usize {
-                self.output_buffer.push_back(self.planar_output[c][i]);
+                if self.planar_output[c].len() < frames_out {
+                    self.planar_output[c].resize(frames_out, 0.0);
+                }
+                
+                // Process each channel independently
+                self.stretchers[c].process(&self.planar_input[c][0..frames_in], &mut self.planar_output[c][0..frames_out]);
             }
+
+            for i in 0..frames_out {
+                for c in 0..self.channels.get() as usize {
+                    self.output_buffer.push_back(self.planar_output[c][i]);
+                }
+            }
+            
+            // Looping back ensures that if stretchers generated 0 frames output momentarily, we fetch again without returning None
         }
-        
-        self.output_buffer.pop_front()
     }
 }
 
@@ -358,18 +379,22 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
         handler.current_pos_samples.clone()
     );
 
+    let sample_rate = stretched.sample_rate().get();
     let total_duration = stretched.total_duration().unwrap_or(Duration::from_secs(0));
     let total_ms = total_duration.as_millis() as u64;
 
     let player_lock = handler.player.lock();
-    player_lock.stop();
+    player_lock.clear(); // Safe full reset
     player_lock.append(stretched);
     player_lock.play(); 
     println!("Rodio Player: Playback signal sent for track: {}", &path);    
+    
     let mut state = handler.state.lock();
     let track_id = path.clone();
     state.current_track = Some(path);
     state.is_playing = true;
+    handler.active_sample_rate.store(sample_rate, Ordering::Relaxed);
+    handler.playback_cv.notify_all();
     
     // Start progress thread
     let window_progress = window.clone();
@@ -378,21 +403,16 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     
     std::thread::spawn(move || {
         loop {
-            // Check if song still exists AND matches the track this thread tracks
             {
-                let state = handler_progress.state.lock();
-                if state.current_track.as_ref() != Some(&track_id) { break; }
-                if !state.is_playing { 
-                    std::thread::sleep(Duration::from_millis(200));
-                    continue; 
+                let mut state = handler_progress.state.lock();
+                loop {
+                    if state.current_track.as_ref() != Some(&track_id) { return; } // Thread ends
+                    if state.is_playing { break; }
+                    handler_progress.playback_cv.wait(&mut state);
                 }
             }
 
-            let samples_consumed = pos_samples.load(Ordering::Relaxed);
-            
-            // To be accurate, we need the sample rate
-            // Hardcoding 44100 for now, but ideally this comes from the source stream
-            let pos_ms = (samples_consumed * 1000) / 44100; 
+            let pos_ms = handler_progress.get_progress_ms();
             
             let _ = window_progress.emit("playback-progress", PlaybackProgress {
                 position_ms: pos_ms,
@@ -418,7 +438,9 @@ fn seek_to(position_ms: u64) -> Result<(), String> {
     player.try_seek(duration).map_err(|e| e.to_string())?;
     
     // Update our counter
-    handler.current_pos_samples.store((position_ms * 44100) / 1000, Ordering::Relaxed);
+    let current_rate = handler.active_sample_rate.load(Ordering::Relaxed);
+    handler.current_pos_samples.store((position_ms * current_rate as u64) / 1000, Ordering::Relaxed);
+    handler.playback_cv.notify_all();
     
     Ok(())
 }
@@ -432,6 +454,7 @@ fn toggle_playback() -> Result<bool, String> {
     if player.is_paused() {
         player.play();
         state.is_playing = true;
+        handler.playback_cv.notify_all();
     } else {
         player.pause();
         state.is_playing = false;

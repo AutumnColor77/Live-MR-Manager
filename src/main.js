@@ -19,6 +19,13 @@ let isLoading = false;
 let currentTrack = null;
 let isSeeking = false;
 
+// Interpolation State
+let targetProgressMs = 0;
+let currentProgressMs = 0;
+let trackDurationMs = 1;
+let rafId = null;
+let lastRafTime = 0;
+
 
 window.addEventListener("DOMContentLoaded", () => {
   // Primary Elements
@@ -214,6 +221,15 @@ async function handlePlaybackToggle() {
     isPlaying = newIsPlaying;
     isLoading = false; // Toggle is usually instant
     updateThumbnailOverlay();
+    
+    if (isPlaying && !rafId) {
+      lastRafTime = performance.now();
+      rafId = requestAnimationFrame(updateProgressBar);
+    } else if (!isPlaying && rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+
     showNotification(isPlaying ? "재생을 재개합니다" : "재생이 일시정지되었습니다", "info");
   } catch (error) {
     console.error("Playback toggle failed:", error);
@@ -390,32 +406,75 @@ async function initPlaybackStatusListener() {
       if (currentTrack) {
         dockTitle.textContent = currentTrack.title;
       }
+      if (!rafId) {
+        lastRafTime = performance.now();
+        rafId = requestAnimationFrame(updateProgressBar);
+      }
     } else if (status === "Downloading" || status === "Decoding") {
       isLoading = true;
       updateThumbnailOverlay();
-    } else if (status === "Error") {
+    } else if (status === "Error" || status === "Stopped") {
       isPlaying = false;
       isLoading = false;
       updateThumbnailOverlay();
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
     }
   });
 
   await listen("playback-progress", (event) => {
-    const { positionMs, durationMs } = event.payload;
-    if (isSeeking) return; // Don't update UI if user is dragging
+    let { positionMs, durationMs } = event.payload;
+    if (!durationMs || isNaN(durationMs) || durationMs <= 0) durationMs = 1;
+    if (isNaN(positionMs) || positionMs < 0) positionMs = 0;
 
-    const progress = (positionMs / durationMs) * 100;
-    playbackBar.value = isNaN(progress) ? 0 : progress;
+    targetProgressMs = positionMs;
+    trackDurationMs = durationMs;
     playbackBar.dataset.durationMs = durationMs;
-    progressFill.style.width = `${progress}%`;
-
-    timeCurrent.textContent = formatTime(positionMs / 1000);
-    timeTotal.textContent = formatTime(durationMs / 1000);
   });
 }
 
+function updateProgressBar(timestamp) {
+  if (!isPlaying) {
+    rafId = null;
+    return;
+  }
+
+  const delta = timestamp - lastRafTime;
+  lastRafTime = timestamp;
+
+  // Jump if seeked or huge lag gap
+  const diff = targetProgressMs - currentProgressMs;
+  if (Math.abs(diff) > 2000 || currentProgressMs === 0) {
+    currentProgressMs = targetProgressMs;
+  } else {
+    // Interpolate according to tempo slider
+    const tempo = parseFloat(tempoSlider.value) || 1.0;
+    currentProgressMs += delta * tempo;
+
+    // Hard clamp if drifting too far from absolute server truth
+    if (currentProgressMs > targetProgressMs + 100) currentProgressMs = targetProgressMs + 100;
+    if (currentProgressMs < targetProgressMs - 100) currentProgressMs = targetProgressMs - 100;
+  }
+
+  if (!isSeeking) {
+    let progressVal = (currentProgressMs / trackDurationMs) * 100;
+    if (isNaN(progressVal) || !isFinite(progressVal)) progressVal = 0;
+    if (progressVal > 100) progressVal = 100;
+
+    playbackBar.value = progressVal;
+    progressFill.style.width = `${progressVal}%`;
+
+    timeCurrent.textContent = formatTime(currentProgressMs / 1000);
+    timeTotal.textContent = formatTime(trackDurationMs / 1000);
+  }
+
+  rafId = requestAnimationFrame(updateProgressBar);
+}
+
 function formatTime(seconds) {
-  if (isNaN(seconds) || seconds < 0) return "0:00";
+  if (isNaN(seconds) || seconds < 0 || !isFinite(seconds)) return "0:00";
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
