@@ -15,6 +15,7 @@ let confirmModal, confirmTitle, confirmMessage, confirmOk, confirmCancel, confir
 let editingSongIndex = -1;
 let isSeparating = false;
 let streamStartTime, streamTimerInterval;
+let activeTasks = {}; // path -> { title, percentage, status }
 
 // Playback State
 let isMuted = false;
@@ -677,6 +678,74 @@ async function initPlaybackStatusListener() {
       text.textContent = `${Math.round(percentage)}%`;
     }
   });
+
+  await listen("separation-progress", (event) => {
+    const { path, percentage, status } = event.payload;
+    updateTaskProgress(path, percentage, status);
+  });
+}
+
+function updateTaskProgress(path, percentage, status) {
+  const fileName = path.split(/[\\/]/).pop();
+  
+  if (!activeTasks[path]) {
+    activeTasks[path] = { title: fileName, percentage: 0, status: "Starting" };
+  }
+  
+  activeTasks[path].percentage = percentage;
+  activeTasks[path].status = status;
+
+  if (status === "Finished") {
+    // Keep it on the list for a short while so user sees 100%
+    setTimeout(() => {
+      delete activeTasks[path];
+      renderTasks();
+      updateTaskBadge();
+    }, 3000);
+  }
+
+  renderTasks();
+  updateTaskBadge();
+}
+
+function renderTasks() {
+  const list = document.getElementById("active-tasks-list");
+  if (!list) return;
+
+  const paths = Object.keys(activeTasks);
+  if (paths.length === 0) {
+    list.innerHTML = `<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>`;
+    return;
+  }
+
+  list.innerHTML = paths.map(path => {
+    const task = activeTasks[path];
+    return `
+      <div class="task-card" data-path="${path}">
+        <div class="task-header-info">
+          <div class="task-icon">🧠</div>
+          <div class="task-title">${task.title}</div>
+        </div>
+        <div class="task-info">
+          <div class="task-progress-container">
+            <div class="task-progress-bar" style="width: ${task.percentage}%"></div>
+          </div>
+          <div class="task-status-row">
+            <span class="task-status-text">${task.status}</span>
+            <span class="task-percentage">${Math.round(task.percentage)}%</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateTaskBadge() {
+  const badge = document.getElementById("task-badge");
+  if (!badge) return;
+  const count = Object.keys(activeTasks).length;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? "flex" : "none";
 }
 
 function updateProgressBar(timestamp) {
@@ -772,11 +841,13 @@ function switchTab(tabId) {
   
   // Tab Content Visibility
   const settingsPage = document.getElementById("settings-page");
+  const tasksPage = document.getElementById("tasks-page");
   
   youtubeSearchSection.style.display = tabId === "youtube" ? "block" : "none";
   localDropSection.style.display = tabId === "local" ? "block" : "none";
   libraryControls.style.display = tabId === "library" ? "flex" : "none";
   if (settingsPage) settingsPage.style.display = tabId === "settings" ? "block" : "none";
+  if (tasksPage) tasksPage.style.display = tabId === "tasks" ? "block" : "none";
   
   // Show song grid ONLY for library and add-song tabs
   songGrid.style.display = (tabId === "library" || tabId === "youtube" || tabId === "local") ? (viewMode === "list" ? "flex" : "grid") : "none";

@@ -137,7 +137,6 @@
 
         <!-- 곡 목록 그리드 -->
         <div id="song-grid" class="song-grid"></div>
-      </div>
 
         <!-- 설정 페이지 -->
         <div class="tab-content" id="settings-page" style="display: none;">
@@ -165,6 +164,20 @@
                 </div>
               </div>
             </section>
+          </div>
+        </div>
+
+        <!-- 액티브 태스크 섹션 -->
+        <div class="tab-content" id="tasks-page" style="display: none;">
+          <div class="tasks-container">
+            <header class="tasks-header">
+              <h2>Active Processing Tasks</h2>
+              <p>AI 음원 분리 및 필터링 작업 현황입니다.</p>
+            </header>
+            <div id="active-tasks-list" class="tasks-list">
+              <!-- 태스크 아이템이 동적으로 추가됨 -->
+              <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
+            </div>
           </div>
         </div>
       </div>

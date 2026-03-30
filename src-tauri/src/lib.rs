@@ -43,7 +43,6 @@ fn sys_log(message: &str) {
 
 #[derive(Debug, Clone, Serialize)]
 #[allow(dead_code)]
-#[serde(rename_all = "camelCase")]
 enum Status {
     Pending,
     Downloading,
@@ -609,12 +608,20 @@ async fn download_ai_model(window: WebviewWindow) -> Result<(), String> {
     
     window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 다운로드 시작...".into() }).unwrap();
     
-    // BS-Roformer (Viperx-1297) Stable Mirror from GitHub Releases
-    let model_url = "https://github.com/TRvlS/ONNX-Models/releases/download/BS-Roformer-Viperx-1297/BS-Roformer-Viperx-1297.onnx";
+    // BS-Roformer (Viperx-1297) FP16 Mirror from Hugging Face
+    let model_url = "https://huggingface.co/safescribeai/bs-roformer-onnx-fp16/resolve/main/bs_roformer_fp16.onnx";
     let _model_path = manager.ensure_model(app_handle, "bs_roformer.onnx", model_url).await?;
     
     window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "AI 모델 다운로드 완료".into() }).unwrap();
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SeparationProgress {
+    path: String,
+    percentage: f32,
+    status: String,
 }
 
 #[tauri::command]
@@ -664,12 +671,35 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
         return Err("Source file not found.".into());
     }
 
-    window.emit("playback-status", PlaybackStatus { status: Status::Decoding, message: "Separating audio...".into() }).unwrap();
-    
+    // Task Start Emission
+    window.emit("separation-progress", SeparationProgress {
+        path: path.clone(),
+        percentage: 0.0,
+        status: "Starting".into(),
+    }).unwrap();
+
+    let window_clone = window.clone();
+    let path_clone = path.clone();
+
     async_runtime::spawn_blocking(move || {
-        engine.separate(&source_path, &cache_dir)
-    }).await.unwrap()?;
+        let w = window_clone.clone();
+        let p = path_clone.clone();
+        engine.separate(&source_path, &cache_dir, Box::new(move |percentage| {
+            let _ = w.emit("separation-progress", SeparationProgress {
+                path: p.clone(),
+                percentage,
+                status: "Processing".into(),
+            });
+        }))
+    }).await.map_err(|e| format!("처리 중 오류(Panic)가 발생했습니다: {}", e))??;
     
+    // Task Final Emission
+    window.emit("separation-progress", SeparationProgress {
+        path: path.clone(),
+        percentage: 100.0,
+        status: "Finished".into(),
+    }).unwrap();
+
     window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "Separation complete".into() }).unwrap();
     Ok(())
 }
