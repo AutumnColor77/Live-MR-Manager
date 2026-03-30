@@ -35,3 +35,8 @@ lerna-debug.log*
 *.sln
 *.sw?
 _기획안
+
+# Audio Models (Large dependencies)
+src-tauri/models/
+*.onnx
+*.onnx_data
