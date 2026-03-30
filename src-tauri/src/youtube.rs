@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
 use tokio::process::Command;
 use tokio_util::codec::{FramedRead, LinesCodec};
@@ -93,7 +93,7 @@ impl YoutubeManager {
     }
 
     pub async fn download_audio(
-        window: &Window,
+        window: &WebviewWindow,
         url: &str,
         destination: PathBuf,
     ) -> Result<PathBuf, String> {

@@ -70,6 +70,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initDragAndDrop();
   initNativeFileDrop();
   initPlaybackStatusListener();
+  initSystemLogListener();
   initContextMenu();
   switchTab("library");
   startStreamingTimer();
@@ -120,27 +121,75 @@ function initEventListeners() {
     updatePitch(val);
   });
 
-  // Manual Pitch Input on Click
-  pitchVal.addEventListener("click", () => {
-    const currentVal = parseInt(pitchSlider.value);
-    const input = prompt("피치 이동 (반음 단위, -12 ~ 12):", currentVal);
-    if (input !== null) {
-      const val = parseInt(input);
-      if (!isNaN(val) && val >= -12 && val <= 12) {
-        pitchSlider.value = val;
-        pitchVal.textContent = val > 0 ? `+${val}` : val;
-        updatePitch(val);
-      } else {
-        showNotification("형식에 맞는 숫자(-12 ~ 12)를 입력해주세요.", "error");
-      }
-    }
-  });
-
   tempoSlider.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value).toFixed(2);
     tempoVal.textContent = `${val}x`;
     updateTempo(val);
   });
+
+  // Direct Input Support (Inline editing on click)
+  const enableDirectInput = (element, slider, unit, min, max, isFloat, formatter) => {
+    element.addEventListener("click", () => {
+      if (element.classList.contains("editing")) return;
+      
+      const originalText = element.textContent;
+      const originalValue = slider.value;
+      
+      element.classList.add("editing");
+      element.contentEditable = true;
+      element.focus();
+      
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      const finishEdit = (commit) => {
+        element.contentEditable = false;
+        element.classList.remove("editing");
+        
+        if (!commit) {
+          element.textContent = originalText;
+          return;
+        }
+
+        let rawVal = element.textContent.replace(unit, "").replace("+", "").trim();
+        let val = isFloat ? parseFloat(rawVal) : parseInt(rawVal);
+
+        if (!isNaN(val) && val >= min && val <= max) {
+          slider.value = val;
+          element.textContent = formatter ? formatter(val) : val;
+          if (unit === "x") updateTempo(val);
+          else updatePitch(val);
+        } else {
+          showNotification(`유효한 범위(${min} ~ ${max})를 입력해주세요.`, "error");
+          element.textContent = originalText;
+        }
+      };
+
+      const handleKey = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          element.removeEventListener("keydown", handleKey);
+          finishEdit(true);
+        } else if (e.key === "Escape") {
+          element.removeEventListener("keydown", handleKey);
+          finishEdit(false);
+        }
+      };
+
+      element.addEventListener("keydown", handleKey);
+
+      element.addEventListener("blur", () => {
+        finishEdit(true);
+      }, { once: true });
+    });
+  };
+
+  enableDirectInput(pitchVal, pitchSlider, "", -12, 12, false, (v) => v > 0 ? `+${v}` : v);
+  enableDirectInput(tempoVal, tempoSlider, "x", 0.5, 1.5, true, (v) => `${parseFloat(v).toFixed(2)}x`);
 
   toggleVocal.addEventListener("change", (e) => {
     invoke("toggle_ai_feature", { feature: "vocal", enabled: e.target.checked });
@@ -370,6 +419,18 @@ async function initNativeFileDrop() {
         showNotification("곡이 추가되었습니다", "success");
       }
     });
+  });
+}
+
+async function initSystemLogListener() {
+  await listen("sys-log", (event) => {
+    const message = event.payload;
+    console.log(`%c[SYSTEM-LOG] %c${message}`, "color: #ff9d00; font-weight: bold;", "color: white;");
+    
+    // 치명적 에러인 경우 사용자에게 알림
+    if (message.includes("CRITICAL ERROR") || message.includes("Failed to open audio output")) {
+      showNotification(message, "error");
+    }
   });
 }
 

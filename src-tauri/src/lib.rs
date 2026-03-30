@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use parking_lot::{Mutex, Condvar};
-use tauri::{Emitter, async_runtime, WindowEvent, DragDropEvent, Window};
+use tauri::{Emitter, async_runtime, WindowEvent, DragDropEvent, WebviewWindow, Manager, Window};
 use once_cell::sync::Lazy;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
@@ -12,10 +12,18 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::time::Duration;
 mod youtube;
 use crate::youtube::YoutubeManager;
-// Transparent aliases to map the 0.19.0 API mentally to the 0.22.2 architecture:
-pub type OutputStream = MixerDeviceSink;
-pub type Sink = Player;
-pub type OutputStreamHandle = (); // Dummy handle since 0.22.2 MixerDeviceSink encapsulates both
+// Transparent aliases for Rodio 0.22.2 architecture:
+pub type OSStream = MixerDeviceSink;
+pub type PlaybackController = Player;
+
+static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
+
+fn sys_log(message: &str) {
+    println!("{}", message);
+    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
+        let _ = window.emit("sys-log", message.to_string());
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,9 +85,8 @@ impl Default for AppState {
 }
 
 pub struct AudioHandler {
-    _stream: OutputStream,
-    _stream_handle: OutputStreamHandle,
-    pub sink: Mutex<Sink>,
+    _stream: OSStream,
+    pub controller: Mutex<PlaybackController>,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
@@ -99,13 +106,27 @@ impl AudioHandler {
 
 
 static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
-    let stream = DeviceSinkBuilder::open_default_sink().expect("Failed to open audio output");
-    let sink = Player::connect_new(&stream.mixer());
+    sys_log("DEBUG: [AUDIO_HANDLER] Initializing Lazy Static Instance...");
+    
+    let stream_result = DeviceSinkBuilder::open_default_sink();
+    let stream = match stream_result {
+        Ok(s) => {
+            sys_log("DEBUG: [AUDIO_HANDLER] DeviceSinkBuilder opened successfully.");
+            s
+        },
+        Err(e) => {
+            let err_msg = format!("CRITICAL ERROR: Failed to open audio output: {}", e);
+            sys_log(&err_msg);
+            panic!("{}", err_msg);
+        }
+    };
+
+    let controller = Player::connect_new(&stream.mixer());
+    sys_log("DEBUG: [AUDIO_HANDLER] OS Stream and Player Controller initialized.");
 
     Arc::new(AudioHandler {
         _stream: stream,
-        _stream_handle: (),
-        sink: Mutex::new(sink),
+        controller: Mutex::new(controller),
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0)),
         active_tempo: Arc::new(AtomicU32::new(100)),
@@ -173,8 +194,8 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                 self.sample_idx_in_frame += 1;
                 if self.sample_idx_in_frame >= self.channels.get() {
                     let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
-                    if total % 44100 == 0 {
-                        println!("DEBUG: StretchedSource pulled {} frames successfully (Output Buffer).", total);
+                    if total % 100000 == 0 {
+                        sys_log(&format!("DEBUG: StretchedSource handled {} frames (Output Buffer).", total));
                     }
                     self.sample_idx_in_frame = 0;
                 }
@@ -191,14 +212,14 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                     self.sample_idx_in_frame += 1;
                     if self.sample_idx_in_frame >= self.channels.get() {
                         let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
-                        if total % 44100 == 0 {
-                            println!("DEBUG: StretchedSource pulled {} frames successfully (Passthrough).", total);
+                        if total % 100000 == 0 {
+                            sys_log(&format!("DEBUG: StretchedSource handled {} frames (Passthrough).", total));
                         }
                         self.sample_idx_in_frame = 0;
                     }
                     return Some(s);
                 } else {
-                    println!("DEBUG: StretchedSource Input Iterator Returned None (Passthrough)!");
+                    sys_log("DEBUG: StretchedSource Input Iterator Returned None (Passthrough)!");
                     return None;
                 }
             }
@@ -229,7 +250,7 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
 
             if frames_in == 0 { 
                 // Buffer is empty (checked above) and no data left
-                println!("DEBUG: StretchedSource Input Iterator Exhausted Block!");
+                sys_log("DEBUG: StretchedSource Input Iterator Exhausted Block!");
                 return None; 
             }
             
@@ -312,7 +333,10 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
 }
 
 #[tauri::command]
-async fn play_track(window: Window, path: String) -> Result<(), String> {
+async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
+    *MAIN_WINDOW.lock() = Some(window.clone());
+    sys_log(&format!("DEBUG: [play_track] Received request for: {}", &path));
+    
     let emit_status = |status, message: &str| {
         let _ = window.emit("playback-status", PlaybackStatus { status, message: message.to_string() });
     };
@@ -320,10 +344,11 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     // Immediate stop previous track for instant feedback
     let handler = AUDIO_HANDLER.clone();
     {
-        let sink = handler.sink.lock();
+        let controller = handler.controller.lock();
         let mut state = handler.state.lock();
-        sink.clear(); // Ensure we don't pile up sounds and clear queue
+        controller.clear(); 
         state.is_playing = false;
+        sys_log("DEBUG: [play_track] Previous track cleared and state set to false.");
     }
 
     emit_status(Status::Pending, &format!("Attempting to play: {}", &path));
@@ -372,7 +397,7 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
         }
     };
     
-    println!("Audio source decoded successfully: {} samples found.", if let Some(d) = float_source.total_duration() { format!("{:?}", d) } else { "Unknown duration".to_string() });
+    sys_log(&format!("Audio source decoded successfully: {} samples found.", if let Some(d) = float_source.total_duration() { format!("{:?}", d) } else { "Unknown duration".to_string() }));
     
     // Reset position
     handler.current_pos_samples.store(0, Ordering::Relaxed);
@@ -389,11 +414,14 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     let total_duration = stretched.total_duration().unwrap_or(Duration::from_secs(0));
     let total_ms = total_duration.as_millis() as u64;
 
-    let sink_lock = handler.sink.lock();
-    sink_lock.clear(); // Safe full reset
-    sink_lock.append(stretched);
-    sink_lock.play(); 
-    println!("Rodio Player/Sink: Playback signal sent for track: {}", &path);    
+    {
+        let controller_lock = handler.controller.lock();
+        println!("DEBUG: [play_track] Appending source to controller...");
+        controller_lock.clear(); 
+        controller_lock.append(stretched);
+        controller_lock.play(); 
+        println!("DEBUG: [play_track] Play signal sent to Rodio Player.");
+    }
     
     let mut state = handler.state.lock();
     let track_id = path.clone();
@@ -405,13 +433,14 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     // Start progress thread
     let window_progress = window.clone();
     let handler_progress = handler.clone();
+    let thread_track_id = track_id.clone();
     
     std::thread::spawn(move || {
         loop {
             {
                 let mut state = handler_progress.state.lock();
                 loop {
-                    if state.current_track.as_ref() != Some(&track_id) { return; } // Thread ends
+                    if state.current_track.as_ref() != Some(&thread_track_id) { return; } // Thread ends
                     if state.is_playing { break; }
                     handler_progress.playback_cv.wait(&mut state);
                 }
@@ -429,6 +458,7 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
     });
 
     emit_status(Status::Playing, "Playback started.");
+    println!("DEBUG: Playback status set to Playing for track: {}", track_id);
     Ok(())
 }
 
@@ -436,11 +466,10 @@ async fn play_track(window: Window, path: String) -> Result<(), String> {
 #[allow(dead_code)]
 fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
-    let sink = handler.sink.lock();
+    let controller = handler.controller.lock();
     
-    // Rodio Player/Sink seeking
     let duration = Duration::from_millis(position_ms);
-    sink.try_seek(duration).map_err(|e| e.to_string())?;
+    controller.try_seek(duration).map_err(|e| e.to_string())?;
     
     // Update our counter
     let current_rate = handler.active_sample_rate.load(Ordering::Relaxed);
@@ -451,18 +480,21 @@ fn seek_to(position_ms: u64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn toggle_playback() -> Result<bool, String> {
+fn toggle_playback(window: WebviewWindow) -> Result<bool, String> {
+    *MAIN_WINDOW.lock() = Some(window);
     let handler = AUDIO_HANDLER.clone();
-    let sink = handler.sink.lock();
+    let controller = handler.controller.lock();
     let mut state = handler.state.lock();
 
-    if sink.is_paused() {
-        sink.play();
+    if controller.is_paused() {
+        controller.play();
         state.is_playing = true;
         handler.playback_cv.notify_all();
+        sys_log("DEBUG: [toggle_playback] Resumed.");
     } else {
-        sink.pause();
+        controller.pause();
         state.is_playing = false;
+        sys_log("DEBUG: [toggle_playback] Paused.");
     }
 
     Ok(state.is_playing)
@@ -495,13 +527,13 @@ fn set_tempo(ratio: f32) -> Result<(), String> {
 #[tauri::command]
 fn set_volume(volume: f32) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
-    handler.sink.lock().set_volume(volume / 100.0);
+    handler.controller.lock().set_volume(volume / 100.0);
     Ok(())
 }
 
 #[tauri::command]
 fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
-    println!("AI Processing [{}]: {}", feature, enabled);
+    sys_log(&format!("AI Processing [{}]: {}", feature, enabled));
     // TODO: Roformer/WhisperX Task Queue 連動
     Ok(())
 }
@@ -509,6 +541,20 @@ fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let window = app.get_webview_window("main");
+            if window.is_some() {
+                sys_log("DEBUG: [setup] Main window found and registered.");
+            } else {
+                println!("DEBUG: [setup] Main window NOT found during setup.");
+            }
+            *MAIN_WINDOW.lock() = window;
+            
+            sys_log("DEBUG: [setup] Starting Audio System Initialization...");
+            Lazy::force(&AUDIO_HANDLER);
+            sys_log("DEBUG: [setup] Audio System Initialized on Main Thread.");
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .on_window_event(|window, event| {
             if let WindowEvent::DragDrop(drop_event) = event {
