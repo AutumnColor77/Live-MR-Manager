@@ -50,12 +50,17 @@ struct PlaybackProgress {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SongMetadata {
     pub title: String,
     pub thumbnail: String,
     pub duration: String,
     pub source: String,
     pub path: String,
+    // Per-song settings
+    pub pitch: Option<f32>,
+    pub tempo: Option<f32>,
+    pub volume: Option<f32>,
 }
 
 
@@ -303,6 +308,9 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
         duration: format!("{}:{:02}", length_sec / 60, length_sec % 60),
         source: "youtube".to_string(),
         path: url,
+        pitch: None,
+        tempo: None,
+        volume: None,
     })
 }
 
@@ -323,7 +331,10 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
                         thumbnail: "".to_string(),
                         duration: "-".to_string(),
                         source: "local".to_string(),
-                        path: path.to_string_lossy().into_owned(), // <-- Add the full file path
+                        path: path.to_string_lossy().into_owned(), 
+                        pitch: None,
+                        tempo: None,
+                        volume: None,
                     });
                 }
             }
@@ -538,6 +549,40 @@ fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn save_library(app: tauri::AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
+    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?
+        .join("library.json");
+    
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let json = serde_json::to_string_pretty(&songs).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())?;
+    
+    sys_log("DEBUG: [save_library] Library saved successfully.");
+    Ok(())
+}
+
+#[tauri::command]
+fn load_library(app: tauri::AppHandle) -> Result<Vec<SongMetadata>, String> {
+    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?
+        .join("library.json");
+    
+    if !path.exists() {
+        sys_log("DEBUG: [load_library] No library file found, returning empty list.");
+        return Ok(Vec::new());
+    }
+
+    let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let songs: Vec<SongMetadata> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    
+    sys_log(&format!("DEBUG: [load_library] Loaded {} songs.", songs.len()));
+    Ok(songs)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -575,7 +620,9 @@ pub fn run() {
             set_pitch,
             set_tempo,
             set_volume,
-            toggle_ai_feature
+            toggle_ai_feature,
+            save_library,
+            load_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

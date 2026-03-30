@@ -26,6 +26,28 @@ let trackDurationMs = 1;
 let rafId = null;
 let lastRafTime = 0;
 
+// Library State
+let songLibrary = [];
+let viewMode = localStorage.getItem("viewMode") || "grid";
+
+async function loadLibrary() {
+  try {
+    const songs = await invoke("load_library");
+    songLibrary = songs;
+    renderLibrary();
+  } catch (err) {
+    console.error("Failed to load library:", err);
+  }
+}
+
+async function saveLibrary() {
+  try {
+    await invoke("save_library", { songs: songLibrary });
+  } catch (err) {
+    console.error("Failed to save library:", err);
+  }
+}
+
 
 window.addEventListener("DOMContentLoaded", () => {
   // Primary Elements
@@ -72,8 +94,12 @@ window.addEventListener("DOMContentLoaded", () => {
   initPlaybackStatusListener();
   initSystemLogListener();
   initContextMenu();
+  initViewToggle();
   switchTab("library");
   startStreamingTimer();
+  
+  // Load saved library on startup
+  loadLibrary();
 });
 
 function initEventListeners() {
@@ -98,7 +124,7 @@ function initEventListeners() {
 
     try {
       const metadata = await invoke("get_youtube_metadata", { url });
-      addSongToGrid(metadata);
+      addToLibrary(metadata);
       showNotification("곡이 추가되었습니다", "success");
       ytUrlInput.value = "";
     } catch (error) {
@@ -257,6 +283,23 @@ function initEventListeners() {
       isSeeking = false;
     }
   });
+
+  // Track settings sync to library
+  const syncSettings = () => {
+    if (currentTrack) {
+      const storedSong = songLibrary.find(s => s.path === currentTrack.path);
+      if (storedSong) {
+        storedSong.pitch = parseInt(pitchSlider.value);
+        storedSong.tempo = parseFloat(tempoSlider.value);
+        storedSong.volume = parseInt(document.querySelector(".volume-slider").value);
+        saveLibrary();
+      }
+    }
+  };
+
+  pitchSlider.addEventListener("change", syncSettings);
+  tempoSlider.addEventListener("change", syncSettings);
+  document.querySelector(".volume-slider").addEventListener("change", syncSettings);
 }
 
 // Playback Control Functions
@@ -409,7 +452,7 @@ async function initNativeFileDrop() {
       const ext = path.split('.').pop().toLowerCase();
       if (["mp3", "wav", "flac"].includes(ext)) {
         const fileName = path.split(/[\\/]/).pop();
-        addSongToGrid({
+        addToLibrary({
           title: fileName,
           path: path, // Full path for playback
           thumbnail: "",
@@ -453,7 +496,7 @@ async function initPlaybackStatusListener() {
       icon = "📥";
     }
 
-    if (message === "Playback Started") {
+    if (message.toLowerCase() === "playback started") {
       showNotification("재생을 시작합니다", "success");
     } else if (status === "Error") {
       showNotification("재생에 실패했습니다", "error");
@@ -507,7 +550,7 @@ function updateProgressBar(timestamp) {
 
   // Jump if seeked or huge lag gap
   const diff = targetProgressMs - currentProgressMs;
-  if (Math.abs(diff) > 2000 || currentProgressMs === 0) {
+  if (Math.abs(diff) > 2000) {
     currentProgressMs = targetProgressMs;
   } else {
     // Interpolate according to tempo slider
@@ -515,8 +558,11 @@ function updateProgressBar(timestamp) {
     currentProgressMs += delta * tempo;
 
     // Hard clamp if drifting too far from absolute server truth
-    if (currentProgressMs > targetProgressMs + 100) currentProgressMs = targetProgressMs + 100;
-    if (currentProgressMs < targetProgressMs - 100) currentProgressMs = targetProgressMs - 100;
+    // Only clamp if we have received at least one server update (targetProgressMs > 0)
+    if (targetProgressMs > 0) {
+      if (currentProgressMs > targetProgressMs + 500) currentProgressMs = targetProgressMs + 500;
+      if (currentProgressMs < targetProgressMs - 500) currentProgressMs = targetProgressMs - 500;
+    }
   }
 
   if (!isSeeking) {
@@ -548,11 +594,12 @@ function processDroppedFiles(files) {
         file.name.endsWith(".wav") || 
         file.name.endsWith(".flac")) {
       
-      addSongToGrid({
+      addToLibrary({
         title: file.name,
         thumbnail: "",
         duration: "--:--",
-        source: "local"
+        source: "local",
+        path: file.path || file.name // Note: Web API file.path might be empty depending on environment
       });
       showNotification("곡이 추가되었습니다", "success");
     }
@@ -582,7 +629,7 @@ function getTabTitle(tabId) {
   const titles = {
     library: "Music Library",
     youtube: "Add from YouTube",
-    local: "My Musics",
+    local: "Add from My Files",
     settings: "System Settings",
     tasks: "Active Processing Tasks"
   };
@@ -592,9 +639,11 @@ function getTabTitle(tabId) {
 function addSongToGrid(song) {
   const card = document.createElement("article");
   card.className = "song-card";
+  
+  // Grid vs List consistent structure
   card.innerHTML = `
     <div class="thumbnail">
-      <img src="${song.thumbnail || '/assets/default-cover.png'}" 
+      <img src="${song.thumbnail || 'assets/images/Thumb_Music.png'}" 
            alt="${song.title}" 
            style="width:100%; height:100%; object-fit:cover;">
       <div class="thumb-overlay">
@@ -610,10 +659,12 @@ function addSongToGrid(song) {
         </svg>
       </div>
     </div>
-    <div class="song-name">${song.title}</div>
-    <div class="song-meta">
-      <span class="platform-tag">${song.source.toUpperCase()}</span>
-      <span>${song.duration}</span>
+    <div class="song-info-content">
+      <div class="song-name">${song.title}</div>
+      <div class="song-meta">
+        <span class="platform-tag">${song.source.toUpperCase()}</span>
+        <span>${song.duration}</span>
+      </div>
     </div>
   `;
   card.dataset.path = song.path;
@@ -641,13 +692,53 @@ function selectTrack(song) {
     dockThumb.style.backgroundImage = `url(${song.thumbnail})`;
     dockThumb.style.backgroundSize = "cover";
   } else {
-    dockThumb.style.backgroundImage = `url('/assets/default-cover.png')`;
+    dockThumb.style.backgroundImage = `url('assets/images/Thumb_Music.png')`;
   }
   
   currentTrack = song;
   isPlaying = false; // Immediately stopped on backend too
   isLoading = true;
+  
+  // Reset Progress State for UI
+  targetProgressMs = 0;
+  currentProgressMs = 0;
+  
+  // Parse duration string (e.g., "3:45") to ms for initial duration
+  if (song.duration && song.duration.includes(":")) {
+    const parts = song.duration.split(":");
+    const sec = (parseInt(parts[0]) * 60) + parseInt(parts[1]);
+    trackDurationMs = sec * 1000;
+  } else {
+    trackDurationMs = 0; // Better than 1 to avoid instant full bar
+  }
+  
+  playbackBar.value = 0;
+  progressFill.style.width = "0%";
+  timeCurrent.textContent = "0:00";
+  timeTotal.textContent = song.duration || "--:--";
+  
   updateThumbnailOverlay();
+
+  // Load per-song settings
+  if (song.pitch !== undefined) {
+    pitchSlider.value = song.pitch;
+    pitchVal.textContent = song.pitch > 0 ? `+${song.pitch}` : song.pitch;
+    updatePitch(song.pitch);
+  }
+  if (song.tempo !== undefined) {
+    tempoSlider.value = song.tempo;
+    tempoVal.textContent = `${parseFloat(song.tempo).toFixed(2)}x`;
+    updateTempo(song.tempo);
+  }
+  if (song.volume !== undefined) {
+    document.querySelector(".volume-slider").value = song.volume;
+    updateVolume(song.volume);
+  }
+
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
 
   if (song.path) {
     invoke("play_track", { path: song.path })
@@ -656,6 +747,12 @@ function selectTrack(song) {
         isLoading = false;
         updateThumbnailOverlay();
         showNotification("재생을 시작합니다", "success");
+        
+        // Ensure RAF is running even if listener hasn't started it yet
+        if (!rafId) {
+          lastRafTime = performance.now();
+          rafId = requestAnimationFrame(updateProgressBar);
+        }
       })
       .catch(err => {
         console.error("Playback failed:", err);
@@ -697,4 +794,50 @@ function showNotification(message, type = "info") {
     toast.classList.add("removing");
     setTimeout(() => toast.remove(), 300);
   }, 4000);
+}
+
+function initViewToggle() {
+  const gridBtn = document.querySelector("#view-grid");
+  const listBtn = document.querySelector("#view-list");
+
+  const setView = (mode) => {
+    viewMode = mode;
+    localStorage.setItem("viewMode", mode);
+    
+    if (mode === "list") {
+      songGrid.classList.add("list-view");
+      listBtn.classList.add("active");
+      gridBtn.classList.remove("active");
+    } else {
+      songGrid.classList.remove("list-view");
+      gridBtn.classList.add("active");
+      listBtn.classList.remove("active");
+    }
+    
+    renderLibrary();
+  };
+
+  gridBtn.addEventListener("click", () => setView("grid"));
+  listBtn.addEventListener("click", () => setView("list"));
+
+  // Initial set
+  setView(viewMode);
+}
+
+function addToLibrary(song) {
+  // Initialize default settings if not present
+  if (song.pitch === undefined) song.pitch = 0;
+  if (song.tempo === undefined) song.tempo = 1.0;
+  if (song.volume === undefined) song.volume = 80;
+
+  songLibrary.push(song);
+  renderLibrary();
+  saveLibrary();
+}
+
+function renderLibrary() {
+  songGrid.innerHTML = "";
+  songLibrary.forEach(song => {
+    addSongToGrid(song);
+  });
 }
