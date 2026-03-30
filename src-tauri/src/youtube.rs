@@ -18,6 +18,7 @@ pub struct DownloadProgress {
 pub struct YoutubeMetadata {
     pub id: Option<String>,
     pub title: Option<String>,
+    pub uploader: Option<String>,
     pub duration: Option<f64>,
     pub thumbnail: Option<String>,
 }
@@ -27,24 +28,47 @@ pub struct YoutubeManager;
 impl YoutubeManager {
     /// Finds the best yt-dlp executable by checking common Python script paths first.
     fn find_yt_dlp() -> String {
-        // 1. Check User-specific Python Scripts (often where pip updates land)
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let user_path = Path::new(&appdata).join("Python").join("Python313").join("Scripts").join("yt-dlp.exe");
-            if user_path.exists() {
-                println!("Found user-specific yt-dlp: {:?}", user_path);
-                return user_path.to_string_lossy().to_string();
+        // 1. Try to see if it's already in the system PATH (highest priority for user-installed ones)
+        let check_path = if cfg!(windows) {
+            std::process::Command::new("where.exe").arg("yt-dlp").output()
+        } else {
+            std::process::Command::new("which").arg("yt-dlp").output()
+        };
+
+        if let Ok(output) = check_path {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    let first_path = p.lines().next().unwrap_or(&p).to_string();
+                    println!("Found yt-dlp in PATH: {}", first_path);
+                    return first_path;
+                }
             }
         }
 
-        // 2. Check System-wide Python Scripts
-        let system_path = Path::new("C:\\Python313\\Scripts\\yt-dlp.exe");
-        if system_path.exists() {
-            println!("Found system-wide yt-dlp: {:?}", system_path);
-            return system_path.to_string_lossy().to_string();
+        // 2. Check common Python Script paths as backup
+        let appdata_paths = vec![
+            std::env::var("APPDATA").ok(),
+            std::env::var("LOCALAPPDATA").ok(),
+        ];
+
+        for base in appdata_paths.into_iter().flatten() {
+            // Check major Python versions (3.10 to 3.13)
+            for ver in &["Python313", "Python312", "Python311", "Python310"] {
+                let p = Path::new(&base).join("Python").join(ver).join("Scripts").join("yt-dlp.exe");
+                if p.exists() {
+                    println!("Found Python-specific yt-dlp: {:?}", p);
+                    return p.to_string_lossy().to_string();
+                }
+            }
+            
+            // Check direct Scripts folder in LocalAppData (some pip installs end up here)
+            let direct_p = Path::new(&base).join("Programs").join("Python").join("Python313").join("Scripts").join("yt-dlp.exe");
+            if direct_p.exists() {
+                return direct_p.to_string_lossy().to_string();
+            }
         }
 
-        // 3. Fallback to just "yt-dlp" in PATH
-        println!("Falling back to 'yt-dlp' from PATH");
         "yt-dlp".to_string()
     }
 
@@ -67,9 +91,15 @@ impl YoutubeManager {
             return Err(format!("yt-dlp error: {}", err));
         }
 
-        let v: Value = serde_json::from_slice(&output.stdout)
+        let raw_stdout = String::from_utf8_lossy(&output.stdout);
+        let json_content = if let Some(start_idx) = raw_stdout.find('{') {
+            &raw_stdout[start_idx..]
+        } else {
+            &raw_stdout
+        };
+
+        let v: Value = serde_json::from_str(json_content)
             .map_err(|e| {
-                let raw_stdout = String::from_utf8_lossy(&output.stdout);
                 println!("Failed to parse JSON. Raw output: {}", raw_stdout);
                 format!("Failed to parse JSON: {}", e)
             })?;
@@ -77,6 +107,7 @@ impl YoutubeManager {
         let metadata = YoutubeMetadata {
             id: v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()),
             title: v.get("title").and_then(|x| x.as_str()).map(|s| s.to_string()),
+            uploader: v.get("uploader").and_then(|x| x.as_str()).map(|s| s.to_string()),
             duration: v.get("duration").and_then(|x| x.as_f64()),
             thumbnail: v.get("thumbnail").and_then(|x| x.as_str())
                 .or_else(|| {

@@ -8,18 +8,21 @@ let dockTitle, dockArtist, dockThumb;
 let pitchSlider, tempoSlider, pitchVal, tempoVal;
 let playbackBar, progressFill, timeCurrent, timeTotal;
 let toggleVocal, toggleLyric;
-let thumbOverlay, contextMenu, menuPlay, menuEdit, menuDelete;
+let thumbOverlay, contextMenu, menuPlay, menuSeparate, menuEdit, menuDelete;
 let libraryControls, libSearchInput, libCategoryFilter, libSortSelect;
 let metadataModal, editTitle, editArtist, editCategorySelect, editCategoryCustom, editTags, editThumb, modalSave;
 let confirmModal, confirmTitle, confirmMessage, confirmOk, confirmCancel, confirmCloseIcon;
 let editingSongIndex = -1;
+let isSeparating = false;
 let streamStartTime, streamTimerInterval;
+let activeTasks = {}; // path -> { title, percentage, status }
 
 // Playback State
 let isMuted = false;
 let prevVolume = 80;
 let isPlaying = false;
 let isLoading = false;
+let isAiModelReady = false;
 let currentTrack = null;
 let isSeeking = false;
 
@@ -52,6 +55,45 @@ async function saveLibrary() {
   }
 }
 
+async function checkAiModelStatus() {
+  try {
+    isAiModelReady = await invoke("check_model_ready");
+    updateAiUI();
+  } catch (err) {
+    console.error("AI 모델 상태 체크 실패:", err);
+  }
+}
+
+function updateAiUI() {
+  const statusIdx = document.getElementById("ai-model-status");
+  const downloadBtn = document.getElementById("btn-download-model");
+  const vocalToggle = document.getElementById("toggle-vocal");
+  const menuSeparate = document.getElementById("menu-separate");
+
+  if (isAiModelReady) {
+    if (statusIdx) {
+      statusIdx.textContent = "READY";
+      statusIdx.className = "status-badge status-online";
+    }
+    if (downloadBtn) {
+      downloadBtn.textContent = "모델 재설치";
+      downloadBtn.disabled = false;
+    }
+    if (vocalToggle) vocalToggle.disabled = false;
+    if (menuSeparate) menuSeparate.classList.remove("disabled");
+  } else {
+    if (statusIdx) {
+      statusIdx.textContent = "REQUIRED";
+      statusIdx.className = "status-badge status-offline";
+    }
+    if (downloadBtn) {
+      downloadBtn.textContent = "모델 다운로드";
+      downloadBtn.disabled = false;
+    }
+    if (vocalToggle) vocalToggle.disabled = true;
+    if (menuSeparate) menuSeparate.classList.add("disabled");
+  }
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   // Primary Elements
@@ -90,11 +132,8 @@ window.addEventListener("DOMContentLoaded", () => {
   thumbOverlay = document.querySelector("#thumb-overlay");
   contextMenu = document.querySelector("#context-menu");
   menuPlay = document.querySelector("#menu-play");
-  menuEdit = document.createElement("div");
-  menuEdit.className = "context-menu-item";
-  menuEdit.id = "menu-edit";
-  menuEdit.textContent = "정보 수정";
-  contextMenu.insertBefore(menuEdit, menuDelete);
+  menuSeparate = document.querySelector("#menu-separate");
+  menuEdit = document.querySelector("#menu-edit");
   menuDelete = document.querySelector("#menu-delete");
 
   // Library Controls
@@ -123,11 +162,13 @@ window.addEventListener("DOMContentLoaded", () => {
   initModalListeners();
   initConfirmModalListeners();
   initViewToggle();
+  initAiModelControls(); // AI 모델 관리 리스너 초기화
   switchTab("library");
   startStreamingTimer();
   
   // Load saved library on startup
   loadLibrary();
+  checkAiModelStatus();
 
   // Check AI Runtime Environment
   invoke("check_ai_runtime")
@@ -167,6 +208,7 @@ function initEventListeners() {
       addToLibrary(metadata);
       showNotification("곡이 추가되었습니다", "success");
       ytUrlInput.value = "";
+      await checkAiModelStatus();
     } catch (error) {
       console.error("Fetch failed:", error);
       showNotification("유튜브 정보를 가져오는데 실패했습니다", "error");
@@ -360,6 +402,7 @@ async function handlePlaybackToggle() {
     isPlaying = newIsPlaying;
     isLoading = false; // Toggle is usually instant
     updateThumbnailOverlay();
+    await checkAiModelStatus();
     
     if (isPlaying && !rafId) {
       lastRafTime = performance.now();
@@ -492,23 +535,36 @@ function initDragAndDrop() {
 }
 
 async function initNativeFileDrop() {
-  await listen("tauri-file-dropped", (event) => {
-    const paths = event.payload;
-    paths.forEach(path => {
-      // Ext name check (simple)
-      const ext = path.split('.').pop().toLowerCase();
-      if (["mp3", "wav", "flac"].includes(ext)) {
-        const fileName = path.split(/[\\/]/).pop();
-        addToLibrary({
-          title: fileName,
-          path: path, // Full path for playback
-          thumbnail: "",
-          duration: "--:--",
-          source: "local"
-        });
-        showNotification("곡이 추가되었습니다", "success");
-      }
-    });
+  await listen("tauri://drag-drop", (event) => {
+    // In Tauri 2, the payload contains a 'paths' array
+    const paths = event.payload.paths;
+    if (paths && Array.isArray(paths)) {
+      paths.forEach(path => {
+        // Ext name check (simple)
+        const ext = path.split('.').pop().toLowerCase();
+        if (["mp3", "wav", "flac", "m4a"].includes(ext)) {
+          const fileName = path.split(/[\\/]/).pop();
+          
+          // 백엔드에서 안정적으로 메타데이터를 가져오거나 기본값을 반환함
+          invoke("get_audio_metadata", { path: path })
+            .then(metadata => {
+              addToLibrary(metadata);
+              showNotification("곡이 추가되었습니다", "success");
+            })
+            .catch(err => {
+              console.warn("Unexpected backend error for audio metadata:", err);
+              addToLibrary({
+                title: fileName,
+                path: path,
+                thumbnail: "",
+                duration: "0:00",
+                source: "local"
+              });
+              showNotification("곡이 추가되었습니다", "success");
+            });
+        }
+      });
+    }
   });
 }
 
@@ -564,10 +620,15 @@ async function initPlaybackStatusListener() {
     } else if (status === "Downloading" || status === "Decoding") {
       isLoading = true;
       updateThumbnailOverlay();
-    } else if (status === "Error" || status === "Stopped") {
+    } else if (status === "Error" || status === "Stopped" || status === "Finished" || status === "Playing") {
       isPlaying = false;
       isLoading = false;
       updateThumbnailOverlay();
+      
+      // Hide model download overlay if it was showing
+      const modelOverlay = document.getElementById("model-download-overlay");
+      if (modelOverlay) modelOverlay.style.display = "none";
+
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -575,6 +636,7 @@ async function initPlaybackStatusListener() {
     }
   });
 
+  let lastSavedDuration = "";
   await listen("playback-progress", (event) => {
     let { positionMs, durationMs } = event.payload;
     if (!durationMs || isNaN(durationMs) || durationMs <= 0) durationMs = 1;
@@ -584,17 +646,106 @@ async function initPlaybackStatusListener() {
     trackDurationMs = durationMs;
     playbackBar.dataset.durationMs = durationMs;
 
-    // 실시간 메타데이터 보정: 현재 곡의 시간이 없거나 placeholder인 경우 업데이트 후 저장
-    if (currentTrack && (!currentTrack.duration || currentTrack.duration === "-" || currentTrack.duration === "--:--" || currentTrack.duration === "0:00")) {
+    // 실시간 메타데이터 보정: 곡의 실제 시간 정보가 수집되면 1회에 한해 저장
+    if (currentTrack && durationMs > 1000) {
       const formatted = formatTime(durationMs / 1000);
-      currentTrack.duration = formatted;
-      timeTotal.textContent = formatted;
-      saveLibrary(); // 영구 저장
+      const needsUpdate = !currentTrack.duration || 
+                          currentTrack.duration === "-" || 
+                          currentTrack.duration === "--:--" || 
+                          currentTrack.duration === "0:00";
       
-      // 개별 카드의 시간 정보도 업데이트하기 위해 라이브러리 리렌더링 (또는 특정 요소만 타겟팅 가능하나 일관성을 위해 리렌더링)
-      renderLibrary();
+      if (needsUpdate && formatted !== "0:00" && formatted !== lastSavedDuration) {
+        currentTrack.duration = formatted;
+        timeTotal.textContent = formatted;
+        lastSavedDuration = formatted;
+        
+        console.log(`[UI] Updating duration for '${currentTrack.title}': ${formatted}`);
+        saveLibrary();
+        renderLibrary();
+      }
     }
   });
+
+  await listen("model-download-progress", (event) => {
+    const percentage = event.payload;
+    const overlay = document.getElementById("model-download-overlay");
+    const bar = document.getElementById("model-download-bar");
+    const text = document.getElementById("model-download-percent");
+    
+    if (overlay && bar && text) {
+      overlay.style.display = "flex";
+      bar.style.width = `${percentage}%`;
+      text.textContent = `${Math.round(percentage)}%`;
+    }
+  });
+
+  await listen("separation-progress", (event) => {
+    const { path, percentage, status } = event.payload;
+    updateTaskProgress(path, percentage, status);
+  });
+}
+
+function updateTaskProgress(path, percentage, status) {
+  const fileName = path.split(/[\\/]/).pop();
+  
+  if (!activeTasks[path]) {
+    activeTasks[path] = { title: fileName, percentage: 0, status: "Starting" };
+  }
+  
+  activeTasks[path].percentage = percentage;
+  activeTasks[path].status = status;
+
+  if (status === "Finished") {
+    // Keep it on the list for a short while so user sees 100%
+    setTimeout(() => {
+      delete activeTasks[path];
+      renderTasks();
+      updateTaskBadge();
+    }, 3000);
+  }
+
+  renderTasks();
+  updateTaskBadge();
+}
+
+function renderTasks() {
+  const list = document.getElementById("active-tasks-list");
+  if (!list) return;
+
+  const paths = Object.keys(activeTasks);
+  if (paths.length === 0) {
+    list.innerHTML = `<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>`;
+    return;
+  }
+
+  list.innerHTML = paths.map(path => {
+    const task = activeTasks[path];
+    return `
+      <div class="task-card" data-path="${path}">
+        <div class="task-header-info">
+          <div class="task-icon">🧠</div>
+          <div class="task-title">${task.title}</div>
+        </div>
+        <div class="task-info">
+          <div class="task-progress-container">
+            <div class="task-progress-bar" style="width: ${task.percentage}%"></div>
+          </div>
+          <div class="task-status-row">
+            <span class="task-status-text">${task.status}</span>
+            <span class="task-percentage">${Math.round(task.percentage)}%</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateTaskBadge() {
+  const badge = document.getElementById("task-badge");
+  if (!badge) return;
+  const count = Object.keys(activeTasks).length;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? "flex" : "none";
 }
 
 function updateProgressBar(timestamp) {
@@ -687,9 +838,21 @@ function startStreamingTimer() {
 
 function switchTab(tabId) {
   viewTitle.textContent = getTabTitle(tabId);
+  
+  // Tab Content Visibility
+  const settingsPage = document.getElementById("settings-page");
+  const tasksPage = document.getElementById("tasks-page");
+  
   youtubeSearchSection.style.display = tabId === "youtube" ? "block" : "none";
   localDropSection.style.display = tabId === "local" ? "block" : "none";
   libraryControls.style.display = tabId === "library" ? "flex" : "none";
+  if (settingsPage) settingsPage.style.display = tabId === "settings" ? "block" : "none";
+  if (tasksPage) tasksPage.style.display = tabId === "tasks" ? "block" : "none";
+  
+  // Show song grid ONLY for library and add-song tabs
+  songGrid.style.display = (tabId === "library" || tabId === "youtube" || tabId === "local") ? (viewMode === "list" ? "flex" : "grid") : "none";
+  
+  console.log(`[UI] Switched to tab: ${tabId}`);
 }
 
 function getTabTitle(tabId) {
@@ -703,17 +866,26 @@ function getTabTitle(tabId) {
   return titles[tabId] || "Live MR Manager";
 }
 
-function getThumbnailUrl(path) {
+function getThumbnailUrl(path, song) {
   if (!path) return "assets/images/Thumb_Music.png";
   if (path.startsWith("http") || path.startsWith("assets/")) return path;
-  return convertFileSrc(path);
+  
+  try {
+    const converted = convertFileSrc(path);
+    // 윈도우 경로인 경우 명시적으로 검증 (에러 시 폴백)
+    return converted;
+  } catch (err) {
+    console.warn(`[UI] Thumbnail conversion failed for ${path}:`, err);
+    // 로컬 경로 변환 실패 시, 만약 유튜브 곡이라면 원본 URL 소스가 있는지 확인 (없으면 기본 이미지)
+    return (song && song.source === "youtube") ? song.path : "assets/images/Thumb_Music.png";
+  }
 }
 
 function addSongToGrid(song, originalIndex) {
   const card = document.createElement("article");
   card.className = `song-card ${viewMode === "list" ? "list-row" : ""}`;
   
-  const thumbUrl = getThumbnailUrl(song.thumbnail);
+  const thumbUrl = getThumbnailUrl(song.thumbnail, song);
   
   // Grid vs List consistent structure
   card.innerHTML = `
@@ -735,19 +907,34 @@ function addSongToGrid(song, originalIndex) {
       </div>
     </div>
     <div class="song-info-content">
-      <div class="song-name">${song.title}</div>
-      <div class="song-artist-badge">${song.artist || ''}</div>
+      <div class="song-name">${song.title || '제목 정보 없음'}</div>
+      <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
       <div class="song-meta">
-        ${song.category ? `<span class="category-badge">${song.category.toUpperCase()}</span>` : ''}
-        <span class="duration-text">${song.duration}</span>
+        <span class="category-badge ${!song.category ? 'no-info' : ''}">${(song.category || '전체').toUpperCase()}</span>
+        <span class="duration-text">${song.duration || '--:--'}</span>
       </div>
-      ${song.tags && song.tags.length > 0 ? `
-        <div class="tag-container">
-          ${song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')}
-        </div>
-      ` : ''}
+      <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
+        ${song.tags && song.tags.length > 0 
+          ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('') 
+          : '<span class="tag-no-info">태그 정보 없음</span>'}
+      </div>
     </div>
   `;
+  
+  // Async check for MR separation status
+  invoke("check_mr_separated", { path: song.path })
+    .then(isSeparated => {
+      if (isSeparated) {
+        const thumb = card.querySelector(".thumbnail");
+        if (thumb && !thumb.querySelector(".mr-badge")) {
+          const badge = document.createElement("div");
+          badge.className = "mr-badge";
+          badge.textContent = "MR";
+          thumb.appendChild(badge);
+        }
+      }
+    });
+
   card.dataset.path = song.path;
 
   card.addEventListener("click", () => {
@@ -769,6 +956,38 @@ function addSongToGrid(song, originalIndex) {
     menuPlay.onclick = () => {
       selectTrack(originalIndex);
       contextMenu.style.display = "none";
+    };
+    menuSeparate.onclick = async () => {
+      contextMenu.style.display = "none";
+      if (isSeparating) {
+        showNotification("이미 다른 작업을 처리 중입니다.", "warning");
+        return;
+      }
+      
+      try {
+        isSeparating = true;
+        showNotification("AI MR 분리를 시작합니다. 몇 분 정도 소요될 수 있습니다.", "info");
+        
+        // Add loading overlay to the card
+        const cardThumb = card.querySelector(".thumbnail");
+        const overlay = document.createElement("div");
+        overlay.className = "separating-overlay";
+        overlay.innerHTML = `<div class="spinner"></div><span>분리 중...</span>`;
+        cardThumb.appendChild(overlay);
+
+        await invoke("start_mr_separation", { path: song.path });
+        
+        overlay.remove();
+        isSeparating = false;
+        showNotification("MR 분리가 완료되었습니다!", "success");
+        renderLibrary(); // Re-render to show badge
+      } catch (err) {
+        isSeparating = false;
+        showNotification(`분리 실패: ${err}`, "error");
+        const overlay = card.querySelector(".separating-overlay");
+        if (overlay) overlay.remove();
+        console.error("Separation failed:", err);
+      }
     };
     menuEdit.onclick = () => {
       showEditModal(song);
@@ -886,7 +1105,7 @@ function selectTrack(index) {
   dockTitle.textContent = song.title;
   dockArtist.textContent = song.artist || (song.source === "youtube" ? "YouTube Stream" : "Local File");
   
-  const thumbUrl = getThumbnailUrl(song.thumbnail);
+  const thumbUrl = getThumbnailUrl(song.thumbnail, song);
   dockThumb.style.backgroundImage = `url("${thumbUrl}")`;
   dockThumb.style.backgroundSize = "cover";
   
@@ -943,7 +1162,6 @@ function selectTrack(index) {
         updateThumbnailOverlay();
         showNotification("재생을 시작합니다", "success");
         
-        // Ensure RAF is running even if listener hasn't started it yet
         if (!rafId) {
           lastRafTime = performance.now();
           rafId = requestAnimationFrame(updateProgressBar);
@@ -962,10 +1180,7 @@ function selectTrack(index) {
 
 function showNotification(message, type = "info") {
   const container = document.getElementById("notification-container");
-  if (!container) {
-    console.log(`[${type.toUpperCase()}] ${message}`);
-    return;
-  }
+  if (!container) return;
 
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
@@ -984,7 +1199,6 @@ function showNotification(message, type = "info") {
 
   container.appendChild(toast);
 
-  // Auto remove after 4 seconds
   setTimeout(() => {
     toast.classList.add("removing");
     setTimeout(() => toast.remove(), 400);
@@ -994,6 +1208,7 @@ function showNotification(message, type = "info") {
 function initViewToggle() {
   const gridBtn = document.querySelector("#view-grid");
   const listBtn = document.querySelector("#view-list");
+  if (!gridBtn || !listBtn) return;
 
   const setView = (mode) => {
     viewMode = mode;
@@ -1014,26 +1229,87 @@ function initViewToggle() {
 
   gridBtn.addEventListener("click", () => setView("grid"));
   listBtn.addEventListener("click", () => setView("list"));
-
-  // Initial set
   setView(viewMode);
 }
 
+function initAiModelControls() {
+  const downloadBtn = document.getElementById("btn-download-model");
+  const modalOverlay = document.getElementById("model-download-overlay");
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", async () => {
+      try {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = "다운로드 중...";
+        
+        if (modalOverlay) modalOverlay.style.display = "flex";
+
+        await invoke("download_ai_model");
+        
+        await checkAiModelStatus();
+        showNotification("AI 모델 다운로드 완료!", "success");
+      } catch (err) {
+        showNotification(`다운로드 실패: ${err}`, "error");
+        downloadBtn.disabled = false;
+        updateAiUI();
+      }
+    });
+  }
+}
+
 function addToLibrary(song) {
+  if (!song) {
+    console.error("Attempted to add null/undefined song to library");
+    return;
+  }
+
+  // 중복 체크: 이미 존재하는 경로면 업데이트 처리
+  const existingIndex = songLibrary.findIndex(s => s.path === song.path);
+  if (existingIndex !== -1) {
+    // 기존 데이터 보존하면서 새로운 메타데이터(시간 등) 덮어쓰기
+    songLibrary[existingIndex] = { ...songLibrary[existingIndex], ...song };
+    console.log(`[UI] Updated existing song: ${song.title}`);
+    saveLibrary();
+    renderLibrary();
+    return;
+  }
+  
   // Initialize default settings if not present
   if (song.pitch === undefined) song.pitch = 0;
   if (song.tempo === undefined) song.tempo = 1.0;
   if (song.volume === undefined) song.volume = 80;
+  if (!song.dateAdded) song.dateAdded = Date.now();
 
   songLibrary.push(song);
+  
+  // Important: Clear any search/filter before rendering the newly added song
+  // to ensure it's visible in the library
+  libSearchInput.value = "";
+  libCategoryFilter.value = "all";
+  const selectedCatText = document.querySelector("#lib-category-dropdown .selected-text");
+  if (selectedCatText) selectedCatText.textContent = "전체 카테고리";
+  
   renderLibrary();
   saveLibrary();
+  
+  // Automatically switch to library tab to show the result
+  switchTab("library");
+  
+  // Highlight the active nav item
+  document.querySelectorAll(".nav-item").forEach(i => i.classList.remove("active"));
+  document.querySelector("#nav-library").classList.add("active");
 }
 
 function renderLibrary() {
+  if (!songGrid) return;
   songGrid.innerHTML = "";
   
-  // Apply filtering and sorting
+  if (!Array.isArray(songLibrary)) {
+    console.error("songLibrary is not an array:", songLibrary);
+    return;
+  }
+
+  console.log(`[UI] Rendering Library: ${songLibrary.length} total songs.`);
   let filtered = [...songLibrary.map((s, i) => ({ ...s, originalIndex: i }))];
   const query = libSearchInput.value.toLowerCase().trim();
   const categoryFilter = libCategoryFilter.value;
