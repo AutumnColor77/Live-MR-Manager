@@ -1,4 +1,4 @@
-const { invoke } = window.__TAURI__.core;
+const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 // DOM Elements
@@ -11,6 +11,7 @@ let toggleVocal, toggleLyric;
 let thumbOverlay, contextMenu, menuPlay, menuEdit, menuDelete;
 let libraryControls, libSearchInput, libCategoryFilter, libSortSelect;
 let metadataModal, editTitle, editArtist, editCategorySelect, editCategoryCustom, editTags, editThumb, modalSave;
+let confirmModal, confirmTitle, confirmMessage, confirmOk, confirmCancel, confirmCloseIcon;
 let editingSongIndex = -1;
 let streamStartTime, streamTimerInterval;
 
@@ -120,6 +121,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initContextMenu();
   initCustomDropdowns();
   initModalListeners();
+  initConfirmModalListeners();
   initViewToggle();
   switchTab("library");
   startStreamingTimer();
@@ -569,6 +571,17 @@ async function initPlaybackStatusListener() {
     targetProgressMs = positionMs;
     trackDurationMs = durationMs;
     playbackBar.dataset.durationMs = durationMs;
+
+    // 실시간 메타데이터 보정: 현재 곡의 시간이 없거나 placeholder인 경우 업데이트 후 저장
+    if (currentTrack && (!currentTrack.duration || currentTrack.duration === "-" || currentTrack.duration === "--:--" || currentTrack.duration === "0:00")) {
+      const formatted = formatTime(durationMs / 1000);
+      currentTrack.duration = formatted;
+      timeTotal.textContent = formatted;
+      saveLibrary(); // 영구 저장
+      
+      // 개별 카드의 시간 정보도 업데이트하기 위해 라이브러리 리렌더링 (또는 특정 요소만 타겟팅 가능하나 일관성을 위해 리렌더링)
+      renderLibrary();
+    }
   });
 }
 
@@ -620,23 +633,31 @@ function formatTime(seconds) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function processDroppedFiles(files) {
-  files.forEach(file => {
+async function processDroppedFiles(files) {
+  for (const file of files) {
     if (file.type.startsWith("audio/") || 
         file.name.endsWith(".mp3") || 
         file.name.endsWith(".wav") || 
-        file.name.endsWith(".flac")) {
+        file.name.endsWith(".flac") ||
+        file.name.endsWith(".m4a")) {
       
-      addToLibrary({
-        title: file.name,
-        thumbnail: "",
-        duration: "--:--",
-        source: "local",
-        path: file.path || file.name // Note: Web API file.path might be empty depending on environment
-      });
-      showNotification("곡이 추가되었습니다", "success");
+      try {
+        const metadata = await invoke("get_audio_metadata", { path: file.path });
+        addToLibrary(metadata);
+        showNotification(`${file.name} 곡이 추가되었습니다`, "success");
+      } catch (error) {
+        console.error("Failed to get audio metadata:", error);
+        // Fallback for metadata failure
+        addToLibrary({
+          title: file.name,
+          thumbnail: "",
+          duration: "--:--",
+          source: "local",
+          path: file.path
+        });
+      }
     }
-  });
+  }
 }
 
 function startStreamingTimer() {
@@ -670,14 +691,22 @@ function getTabTitle(tabId) {
   return titles[tabId] || "Live MR Manager";
 }
 
+function getThumbnailUrl(path) {
+  if (!path) return "assets/images/Thumb_Music.png";
+  if (path.startsWith("http") || path.startsWith("assets/")) return path;
+  return convertFileSrc(path);
+}
+
 function addSongToGrid(song, originalIndex) {
   const card = document.createElement("article");
   card.className = `song-card ${viewMode === "list" ? "list-row" : ""}`;
   
+  const thumbUrl = getThumbnailUrl(song.thumbnail);
+  
   // Grid vs List consistent structure
   card.innerHTML = `
     <div class="thumbnail">
-      <img src="${song.thumbnail || 'assets/images/Thumb_Music.png'}" 
+      <img src="${thumbUrl}" 
            alt="${song.title}" 
            style="width:100%; height:100%; object-fit:cover;">
       <div class="thumb-overlay">
@@ -697,8 +726,8 @@ function addSongToGrid(song, originalIndex) {
       <div class="song-name">${song.title}</div>
       <div class="song-artist-badge">${song.artist || ''}</div>
       <div class="song-meta">
-        <span class="platform-tag">${song.source.toUpperCase()}</span>
-        <span>${song.duration}</span>
+        ${song.category ? `<span class="category-badge">${song.category.toUpperCase()}</span>` : ''}
+        <span class="duration-text">${song.duration}</span>
       </div>
       ${song.tags && song.tags.length > 0 ? `
         <div class="tag-container">
@@ -725,16 +754,21 @@ function addSongToGrid(song, originalIndex) {
     contextMenu.style.left = `${e.clientX}px`;
     
     // Bind context menu actions
+    menuPlay.onclick = () => {
+      selectTrack(originalIndex);
+      contextMenu.style.display = "none";
+    };
     menuEdit.onclick = () => {
       showEditModal(song);
       contextMenu.style.display = "none";
     };
     menuDelete.onclick = () => {
-      if (confirm(`'${song.title}' 곡을 삭제하시겠습니까?`)) {
+      showConfirm("곡 삭제", `'${song.title}' 곡을 라이브러리에서 정말 삭제하시겠습니까?`, () => {
         songLibrary.splice(originalIndex, 1);
         saveLibrary();
         renderLibrary();
-      }
+        showNotification("곡이 삭제되었습니다.", "info");
+      });
       contextMenu.style.display = "none";
     };
   });
@@ -801,6 +835,33 @@ function initModalListeners() {
   };
 }
 
+function initConfirmModalListeners() {
+  confirmModal = document.getElementById("confirm-modal");
+  confirmTitle = document.getElementById("confirm-title");
+  confirmMessage = document.getElementById("confirm-message");
+  confirmOk = document.getElementById("confirm-ok");
+  confirmCancel = document.getElementById("confirm-cancel");
+  confirmCloseIcon = document.getElementById("confirm-close-icon");
+
+  const close = () => confirmModal.classList.remove("active");
+  confirmCancel.onclick = close;
+  confirmCloseIcon.onclick = close;
+  confirmModal.onclick = (e) => {
+    if (e.target === confirmModal) close();
+  };
+}
+
+function showConfirm(title, message, onConfirm) {
+  confirmTitle.textContent = title;
+  confirmMessage.textContent = message;
+  confirmModal.classList.add("active");
+  
+  confirmOk.onclick = () => {
+    onConfirm();
+    confirmModal.classList.remove("active");
+  };
+}
+
 function selectTrack(index) {
   const song = songLibrary[index];
   if (!song) return;
@@ -812,12 +873,10 @@ function selectTrack(index) {
   // Update Control Dock
   dockTitle.textContent = song.title;
   dockArtist.textContent = song.artist || (song.source === "youtube" ? "YouTube Stream" : "Local File");
-  if (song.thumbnail) {
-    dockThumb.style.backgroundImage = `url(${song.thumbnail})`;
-    dockThumb.style.backgroundSize = "cover";
-  } else {
-    dockThumb.style.backgroundImage = `url('assets/images/Thumb_Music.png')`;
-  }
+  
+  const thumbUrl = getThumbnailUrl(song.thumbnail);
+  dockThumb.style.backgroundImage = `url("${thumbUrl}")`;
+  dockThumb.style.backgroundSize = "cover";
   
   currentTrack = song;
   isPlaying = false; // Immediately stopped on backend too

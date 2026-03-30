@@ -287,6 +287,23 @@
         </footer>
       </div>
     </div>
+
+    <!-- 커스텀 확인(Confirm) 모달 -->
+    <div id="confirm-modal" class="modal-overlay">
+      <div class="modal-content confirm-box">
+        <header class="modal-header">
+          <h3 id="confirm-title">확인</h3>
+          <button class="close-btn" id="confirm-close-icon">&times;</button>
+        </header>
+        <div class="modal-body">
+          <p id="confirm-message" style="font-size: 1.1rem; text-align: center; margin: 20px 0;"></p>
+        </div>
+        <footer class="modal-footer" style="justify-content: center; gap: 15px;">
+          <button class="secondary-btn" id="confirm-cancel" style="min-width: 100px;">취소</button>
+          <button class="primary-btn danger-btn" id="confirm-ok" style="min-width: 100px;">확인</button>
+        </footer>
+      </div>
+    </div>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

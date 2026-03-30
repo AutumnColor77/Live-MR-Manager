@@ -9,7 +9,8 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, WindowEvent};
+use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, WindowEvent, AppHandle};
+use std::io::Write;
 mod youtube;
 use crate::youtube::YoutubeManager;
 // Transparent aliases for Rodio 0.22.2 architecture:
@@ -340,19 +341,120 @@ where
     }
 }
 
+fn get_app_path(handle: &AppHandle) -> std::path::PathBuf {
+    handle.path().app_data_dir().expect("Failed to get app data dir")
+}
+
+async fn cache_thumbnail(handle: AppHandle, url: String, video_id: String) -> Option<String> {
+    let app_dir = get_app_path(&handle);
+    let thumb_dir = app_dir.join("thumbnails");
+    
+    if !thumb_dir.exists() {
+        std::fs::create_dir_all(&thumb_dir).ok()?;
+    }
+
+    let file_path = thumb_dir.join(format!("{}.jpg", video_id));
+    
+    // Skip if already cached
+    if file_path.exists() {
+        return Some(file_path.to_string_lossy().to_string());
+    }
+
+    match reqwest::get(&url).await {
+        Ok(response) => {
+            if let Ok(bytes) = response.bytes().await {
+                if let Ok(mut file) = File::create(&file_path) {
+                    if file.write_all(&bytes).is_ok() {
+                        return Some(file_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        Err(e) => sys_log(&format!("Thumbnail download failed: {}", e)),
+    }
+    None
+}
+
 #[tauri::command]
-async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
+async fn get_youtube_metadata(handle: AppHandle, url: String) -> Result<SongMetadata, String> {
     let metadata = YoutubeManager::get_video_metadata(&url).await?;
     let length_sec = metadata.duration.unwrap_or(0.0) as u64;
+
+    // Extract Video ID for filename
+    let video_id = url.split("v=").nth(1)
+        .and_then(|v| v.split('&').next())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let mut local_thumbnail = metadata.thumbnail.clone().unwrap_or_default();
+    if let Some(thumb_url) = metadata.thumbnail {
+        if let Some(path) = cache_thumbnail(handle, thumb_url, video_id).await {
+            local_thumbnail = path;
+        }
+    }
 
     Ok(SongMetadata {
         title: metadata
             .title
             .unwrap_or_else(|| "Unknown Title".to_string()),
-        thumbnail: metadata.thumbnail.unwrap_or_default(),
+        thumbnail: local_thumbnail,
         duration: format!("{}:{:02}", length_sec / 60, length_sec % 60),
         source: "youtube".to_string(),
         path: url,
+        pitch: None,
+        tempo: None,
+        volume: None,
+        artist: None,
+        tags: None,
+        category: None,
+        play_count: Some(0),
+        date_added: Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+        ),
+    })
+}
+
+fn get_audio_duration(path: &std::path::Path) -> String {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return "-".to_string(),
+    };
+    let reader = BufReader::new(file);
+    match rodio::Decoder::try_from(reader) {
+        Ok(decoder) => {
+            if let Some(duration) = decoder.total_duration() {
+                let secs = duration.as_secs();
+                return format!("{}:{:02}", secs / 60, secs % 60);
+            }
+        }
+        Err(_) => {}
+    }
+    "-".to_string()
+}
+
+#[tauri::command]
+async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("File not found".to_string());
+    }
+
+    let title = p.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    
+    let duration = get_audio_duration(p);
+
+    Ok(SongMetadata {
+        title,
+        thumbnail: "".to_string(),
+        duration,
+        source: "local".to_string(),
+        path,
         pitch: None,
         tempo: None,
         volume: None,
@@ -381,6 +483,7 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
             if let Some(ext) = path.extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
                 if ["mp3", "wav", "flac", "ogg", "m4a"].contains(&ext_str.as_str()) {
+                    let duration = get_audio_duration(&path);
                     songs.push(SongMetadata {
                         title: path
                             .file_name()
@@ -388,7 +491,7 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
                             .to_string_lossy()
                             .into_owned(),
                         thumbnail: "".to_string(),
-                        duration: "-".to_string(),
+                        duration,
                         source: "local".to_string(),
                         path: path.to_string_lossy().into_owned(),
                         pitch: None,
@@ -727,6 +830,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_youtube_metadata,
+            get_audio_metadata,
             scan_local_folder,
             play_track,
             toggle_playback,

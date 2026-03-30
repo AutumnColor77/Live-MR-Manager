@@ -284,20 +284,47 @@ h1 {
   outline: none;
 }
 
+/* Button System */
+.primary-btn, .secondary-btn {
+  padding: 12px 24px;
+  border-radius: 11px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  outline: none;
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.01em;
+}
+
 .primary-btn {
   background: var(--accent-gradient);
-  border: none;
   color: #fff;
-  padding: 0 24px;
-  border-radius: 8px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
+  box-shadow: 0 4px 15px var(--accent-glow);
 }
 
 .primary-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px var(--accent-glow);
+  filter: brightness(1.1);
+  box-shadow: 0 8px 25px var(--accent-glow);
+}
+
+.secondary-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  backdrop-filter: blur(10px);
+}
+
+.secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  transform: translateY(-2px);
 }
 
 /* Song Grid */
@@ -1049,21 +1076,51 @@ input:checked + .slider:before { transform: translateX(16px); }
   display: block;
 }
 
+.song-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.category-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-primary);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.duration-text {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .tag-container {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .tag-badge {
   font-size: 0.65rem;
   font-weight: 800;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--glass-border);
   color: var(--text-dim);
   padding: 2px 8px;
   border-radius: 20px;
   text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+.song-card:hover .tag-badge {
+  border-color: rgba(255,255,255,0.15);
+  color: var(--text-muted);
 }
 
 /* --- Custom Dropdown System --- */
@@ -1234,4 +1291,23 @@ input:checked + .slider:before { transform: translateX(16px); }
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.4;
+}
+
+/* --- Confirm Modal Specifics --- */
+.confirm-box {
+  max-width: 420px;
+  min-height: auto;
+  padding-bottom: 30px;
+}
+
+.danger-btn {
+  background: linear-gradient(135deg, #ef4444, #991b1b) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4) !important;
+  border: none !important;
+}
+
+.danger-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 8px 30px rgba(239, 68, 68, 0.6) !important;
 }
