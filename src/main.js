@@ -128,6 +128,18 @@ window.addEventListener("DOMContentLoaded", () => {
   
   // Load saved library on startup
   loadLibrary();
+
+  // Check AI Runtime Environment
+  invoke("check_ai_runtime")
+    .then(providers => {
+      console.log("%c[AI-RUNTIME] Available Accelerators:", "color: #00ffcc; font-weight: bold;", providers);
+      if (providers.some(p => p.includes("GPU"))) {
+        console.log("%c[AI-RUNTIME] GPU Acceleration is ENABLED.", "color: #00ff00;");
+      } else {
+        console.log("%c[AI-RUNTIME] Running on CPU only. Performance might be limited during separation.", "color: #ff9d00;");
+      }
+    })
+    .catch(err => console.error("AI Runtime check failed:", err));
 });
 
 function initEventListeners() {

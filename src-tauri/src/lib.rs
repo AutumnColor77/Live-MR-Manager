@@ -13,6 +13,7 @@ use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, Windo
 use std::io::Write;
 mod youtube;
 use crate::youtube::YoutubeManager;
+use ort::ep::{CUDA, CPUExecutionProvider, ExecutionProvider};
 // Transparent aliases for Rodio 0.22.2 architecture:
 pub type OSStream = MixerDeviceSink;
 pub type PlaybackController = Player;
@@ -758,6 +759,27 @@ fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn check_ai_runtime() -> Result<Vec<String>, String> {
+    sys_log("DEBUG: [check_ai_runtime] Checking available AI Execution Providers...");
+    
+    let mut providers = Vec::new();
+    
+    // Check CUDA
+    if CUDA::default().is_available().unwrap_or(false) {
+        providers.push("NVIDIA CUDA (GPU)".to_string());
+    }
+    
+    // Check CPU (Always available)
+    if CPUExecutionProvider::default().is_available().unwrap_or(false) {
+        providers.push("CPU (Standard)".to_string());
+    }
+    
+    sys_log(&format!("DEBUG: [check_ai_runtime] Available Providers: {:?}", providers));
+    
+    Ok(providers)
+}
+
+#[tauri::command]
 fn save_library(app: tauri::AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
     let path = app
         .path()
@@ -840,7 +862,8 @@ pub fn run() {
             set_volume,
             toggle_ai_feature,
             save_library,
-            load_library
+            load_library,
+            check_ai_runtime
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
