@@ -68,19 +68,6 @@
           </button>
         </div>
 
-        <div class="channel-settings">
-          <div class="setting-item">
-            <label>Title</label>
-            <input type="text" id="stream-title-input" placeholder="방송 제목을 입력하세요" value="Live MR Test Stream">
-          </div>
-          <div class="setting-item">
-            <label>Category</label>
-            <select id="stream-category-select">
-              <option>Music</option>
-              <option>Talk</option>
-            </select>
-          </div>
-        </div>
 
         <div class="user-info">
           <span class="status-indicator online"></span>
@@ -104,6 +91,46 @@
               <span class="drop-box-icon">🎵</span>
               <span class="drop-box-text">보관할 음악 파일을 여기에 드롭하세요</span>
               <span class="drop-box-hint">MP3, WAV, FLAC 지원</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 라이브러리 탐색/필터 컨트롤 -->
+        <section class="library-controls" id="library-controls" style="display: none;">
+          <div class="search-bar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색...">
+          </div>
+          
+          <div class="filter-group">
+            <div class="custom-select" id="lib-category-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">전체 카테고리</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item selected" data-value="all">전체 카테고리</div>
+                <div class="option-item" data-value="pop">POP</div>
+                <div class="option-item" data-value="ballad">발라드</div>
+                <div class="option-item" data-value="dance">댄스</div>
+                <div class="option-item" data-value="rock">락/메탈</div>
+                <div class="option-item" data-value="etc">기타</div>
+              </div>
+              <input type="hidden" id="lib-category-filter" value="all">
+            </div>
+            
+            <div class="custom-select" id="lib-sort-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">최근 추가순</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item selected" data-value="dateNew">최근 추가순</div>
+                <div class="option-item" data-value="dateOld">오래된순</div>
+                <div class="option-item" data-value="title">제목순 (A-Z)</div>
+                <div class="option-item" data-value="plays">재생 횟수순</div>
+              </div>
+              <input type="hidden" id="lib-sort-select" value="dateNew">
             </div>
           </div>
         </section>
@@ -207,6 +234,59 @@
     </div>
 
     <div id="notification-container" class="notification-container"></div>
+
+    <!-- 곡 정보 편집 모달 -->
+    <div id="metadata-modal" class="modal-overlay">
+      <div class="modal-content">
+        <header class="modal-header">
+          <h3>곡 정보 수정</h3>
+          <button class="close-btn" id="modal-close">&times;</button>
+        </header>
+        <div class="modal-body">
+          <div class="input-group">
+            <label>제목</label>
+            <input type="text" id="edit-title">
+          </div>
+          <div class="input-group">
+            <label>아티스트</label>
+            <input type="text" id="edit-artist" placeholder="아티스트명 입력">
+          </div>
+          <div class="input-group">
+            <label>카테고리</label>
+            <div class="combo-box">
+              <div class="custom-select" id="edit-category-dropdown" style="flex: 1;">
+                <div class="select-trigger">
+                  <span class="selected-text">카테고리 선택...</span>
+                  <span class="select-arrow"></span>
+                </div>
+                <div class="select-options">
+                  <div class="option-item" data-value="">카테고리 선택...</div>
+                  <div class="option-item" data-value="pop">POP</div>
+                  <div class="option-item" data-value="ballad">발라드</div>
+                  <div class="option-item" data-value="dance">댄스</div>
+                  <div class="option-item" data-value="rock">락/메탈</div>
+                  <div class="option-item" data-value="etc">기타</div>
+                </div>
+                <input type="hidden" id="edit-category-select" value="">
+              </div>
+              <input type="text" id="edit-category-custom" placeholder="직접 입력...">
+            </div>
+          </div>
+          <div class="input-group">
+            <label>태그 (쉼표로 구분)</label>
+            <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브">
+          </div>
+          <div class="input-group">
+            <label>썸네일 URL</label>
+            <input type="text" id="edit-thumb">
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button class="secondary-btn" id="modal-cancel">취소</button>
+          <button class="primary-btn" id="modal-save">변경사항 저장</button>
+        </footer>
+      </div>
+    </div>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

@@ -1,15 +1,15 @@
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use parking_lot::{Mutex, Condvar};
-use tauri::{Emitter, async_runtime, WindowEvent, DragDropEvent, WebviewWindow, Manager, Window};
 use once_cell::sync::Lazy;
+use parking_lot::{Condvar, Mutex};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::BufReader;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::collections::VecDeque;
 use std::num::{NonZeroU16, NonZeroU32};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
+use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, Window, WindowEvent};
 mod youtube;
 use crate::youtube::YoutubeManager;
 // Transparent aliases for Rodio 0.22.2 architecture:
@@ -61,8 +61,12 @@ pub struct SongMetadata {
     pub pitch: Option<f32>,
     pub tempo: Option<f32>,
     pub volume: Option<f32>,
+    pub artist: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub category: Option<String>,
+    pub play_count: Option<u32>,
+    pub date_added: Option<u64>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppState {
@@ -104,21 +108,23 @@ impl AudioHandler {
     pub fn get_progress_ms(&self) -> u64 {
         let samples = self.current_pos_samples.load(Ordering::Relaxed);
         let rate = self.active_sample_rate.load(Ordering::Relaxed);
-        if rate == 0 { 0 } else { (samples * 1000) / rate as u64 }
+        if rate == 0 {
+            0
+        } else {
+            (samples * 1000) / rate as u64
+        }
     }
 }
 
-
-
 static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
     sys_log("DEBUG: [AUDIO_HANDLER] Initializing Lazy Static Instance...");
-    
+
     let stream_result = DeviceSinkBuilder::open_default_sink();
     let stream = match stream_result {
         Ok(s) => {
             sys_log("DEBUG: [AUDIO_HANDLER] DeviceSinkBuilder opened successfully.");
             s
-        },
+        }
         Err(e) => {
             let err_msg = format!("CRITICAL ERROR: Failed to open audio output: {}", e);
             sys_log(&err_msg);
@@ -141,7 +147,10 @@ static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
     })
 });
 
-pub struct StretchedSource<S> where S: Source<Item = f32> {
+pub struct StretchedSource<S>
+where
+    S: Source<Item = f32>,
+{
     input: S,
     stretchers: Vec<signalsmith_stretch::Stretch>,
     pitch: Arc<AtomicU32>,
@@ -156,22 +165,33 @@ pub struct StretchedSource<S> where S: Source<Item = f32> {
     sample_idx_in_frame: u16,
 }
 
-impl<S> StretchedSource<S> where S: Source<Item = f32> {
-    pub fn new(input: S, pitch: Arc<AtomicU32>, tempo: Arc<AtomicU32>, processed_samples: Arc<AtomicU64>) -> Self {
+impl<S> StretchedSource<S>
+where
+    S: Source<Item = f32>,
+{
+    pub fn new(
+        input: S,
+        pitch: Arc<AtomicU32>,
+        tempo: Arc<AtomicU32>,
+        processed_samples: Arc<AtomicU64>,
+    ) -> Self {
         let channels = input.channels();
         let sample_rate = input.sample_rate();
         let block_size = 1024;
-        
+
         // One stretcher per channel to avoid multi-channel process bug on some platforms/wrappers
         let mut stretchers = Vec::new();
         let mut planar_input = Vec::new();
         let mut planar_output = Vec::new();
         for _ in 0..channels.get() {
-            stretchers.push(signalsmith_stretch::Stretch::preset_default(1, sample_rate.get()));
+            stretchers.push(signalsmith_stretch::Stretch::preset_default(
+                1,
+                sample_rate.get(),
+            ));
             planar_input.push(Vec::with_capacity(block_size));
             planar_output.push(vec![0.0; block_size * 4]);
         }
-        
+
         Self {
             input,
             stretchers,
@@ -189,7 +209,10 @@ impl<S> StretchedSource<S> where S: Source<Item = f32> {
     }
 }
 
-impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
+impl<S> Iterator for StretchedSource<S>
+where
+    S: Source<Item = f32>,
+{
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -200,7 +223,10 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                 if self.sample_idx_in_frame >= self.channels.get() {
                     let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
                     if total % 100000 == 0 {
-                        sys_log(&format!("DEBUG: StretchedSource handled {} frames (Output Buffer).", total));
+                        sys_log(&format!(
+                            "DEBUG: StretchedSource handled {} frames (Output Buffer).",
+                            total
+                        ));
                     }
                     self.sample_idx_in_frame = 0;
                 }
@@ -209,8 +235,8 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
 
             let p_semitones = self.pitch.load(Ordering::Relaxed) as i32 as f32 / 100.0;
             let t_ratio = self.tempo.load(Ordering::Relaxed) as u32 as f32 / 100.0;
-            let t_ratio = t_ratio.max(0.1); 
-            
+            let t_ratio = t_ratio.max(0.1);
+
             // 2. Passthrough Optimization
             if p_semitones == 0.0 && (t_ratio - 1.0).abs() < 0.01 {
                 if let Some(s) = self.input.next() {
@@ -218,7 +244,10 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                     if self.sample_idx_in_frame >= self.channels.get() {
                         let total = self.processed_samples.fetch_add(1, Ordering::Relaxed) + 1;
                         if total % 100000 == 0 {
-                            sys_log(&format!("DEBUG: StretchedSource handled {} frames (Passthrough).", total));
+                            sys_log(&format!(
+                                "DEBUG: StretchedSource handled {} frames (Passthrough).",
+                                total
+                            ));
                         }
                         self.sample_idx_in_frame = 0;
                     }
@@ -249,16 +278,18 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                         break;
                     }
                 }
-                if !complete_frame { break; }
+                if !complete_frame {
+                    break;
+                }
                 frames_in += 1;
             }
 
-            if frames_in == 0 { 
+            if frames_in == 0 {
                 // Buffer is empty (checked above) and no data left
                 sys_log("DEBUG: StretchedSource Input Iterator Exhausted Block!");
-                return None; 
+                return None;
             }
-            
+
             let expected_frames_out = (frames_in as f32 / t_ratio).ceil() as usize;
             let frames_out = expected_frames_out.max(1);
 
@@ -266,9 +297,12 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                 if self.planar_output[c].len() < frames_out {
                     self.planar_output[c].resize(frames_out, 0.0);
                 }
-                
+
                 // Process each channel independently
-                self.stretchers[c].process(&self.planar_input[c][0..frames_in], &mut self.planar_output[c][0..frames_out]);
+                self.stretchers[c].process(
+                    &self.planar_input[c][0..frames_in],
+                    &mut self.planar_output[c][0..frames_out],
+                );
             }
 
             for i in 0..frames_out {
@@ -276,20 +310,29 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
                     self.output_buffer.push_back(self.planar_output[c][i]);
                 }
             }
-            
+
             // Looping back ensures that if stretchers generated 0 frames output momentarily, we fetch again without returning None
         }
     }
 }
 
-impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
-    fn current_span_len(&self) -> Option<usize> { 
-        None 
+impl<S> Source for StretchedSource<S>
+where
+    S: Source<Item = f32>,
+{
+    fn current_span_len(&self) -> Option<usize> {
+        None
     }
-    fn channels(&self) -> NonZeroU16 { self.channels }
-    fn sample_rate(&self) -> NonZeroU32 { self.sample_rate }
-    fn total_duration(&self) -> Option<std::time::Duration> { self.input.total_duration() }
-    
+    fn channels(&self) -> NonZeroU16 {
+        self.channels
+    }
+    fn sample_rate(&self) -> NonZeroU32 {
+        self.sample_rate
+    }
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        self.input.total_duration()
+    }
+
     fn try_seek(&mut self, pos: std::time::Duration) -> Result<(), rodio::source::SeekError> {
         self.input.try_seek(pos)?;
         self.output_buffer.clear();
@@ -303,7 +346,9 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
     let length_sec = metadata.duration.unwrap_or(0.0) as u64;
 
     Ok(SongMetadata {
-        title: metadata.title.unwrap_or_else(|| "Unknown Title".to_string()),
+        title: metadata
+            .title
+            .unwrap_or_else(|| "Unknown Title".to_string()),
         thumbnail: metadata.thumbnail.unwrap_or_default(),
         duration: format!("{}:{:02}", length_sec / 60, length_sec % 60),
         source: "youtube".to_string(),
@@ -311,6 +356,16 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
         pitch: None,
         tempo: None,
         volume: None,
+        artist: None,
+        tags: None,
+        category: None,
+        play_count: Some(0),
+        date_added: Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+        ),
     })
 }
 
@@ -327,14 +382,28 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
                 let ext_str = ext.to_string_lossy().to_lowercase();
                 if ["mp3", "wav", "flac", "ogg", "m4a"].contains(&ext_str.as_str()) {
                     songs.push(SongMetadata {
-                        title: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                        title: path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned(),
                         thumbnail: "".to_string(),
                         duration: "-".to_string(),
                         source: "local".to_string(),
-                        path: path.to_string_lossy().into_owned(), 
+                        path: path.to_string_lossy().into_owned(),
                         pitch: None,
                         tempo: None,
                         volume: None,
+                        artist: None,
+                        tags: None,
+                        category: None,
+                        play_count: Some(0),
+                        date_added: Some(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64,
+                        ),
                     });
                 }
             }
@@ -346,10 +415,19 @@ fn scan_local_folder(path: String) -> Result<Vec<SongMetadata>, String> {
 #[tauri::command]
 async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
     *MAIN_WINDOW.lock() = Some(window.clone());
-    sys_log(&format!("DEBUG: [play_track] Received request for: {}", &path));
-    
+    sys_log(&format!(
+        "DEBUG: [play_track] Received request for: {}",
+        &path
+    ));
+
     let emit_status = |status, message: &str| {
-        let _ = window.emit("playback-status", PlaybackStatus { status, message: message.to_string() });
+        let _ = window.emit(
+            "playback-status",
+            PlaybackStatus {
+                status,
+                message: message.to_string(),
+            },
+        );
     };
 
     // Immediate stop previous track for instant feedback
@@ -357,7 +435,7 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
     {
         let controller = handler.controller.lock();
         let mut state = handler.state.lock();
-        controller.clear(); 
+        controller.clear();
         state.is_playing = false;
         sys_log("DEBUG: [play_track] Previous track cleared and state set to false.");
     }
@@ -366,9 +444,9 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
 
     let audio_file_path = if path.starts_with("http") {
         emit_status(Status::Downloading, "Fetching video metadata...");
-        
+
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
-        
+
         let temp_dir = std::env::temp_dir();
         let id = metadata.id.ok_or("Could not determine video ID")?;
         let file_name = format!("yt_{}.m4a", id);
@@ -381,23 +459,28 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
         } else {
             emit_status(Status::Downloading, "Using cached audio file.");
         }
-        
+
         final_path.to_string_lossy().to_string()
     } else {
         emit_status(Status::Pending, "Recognized as local file path.");
         path.clone()
     };
 
-    emit_status(Status::Decoding, &format!("Final audio path to play: {}", &audio_file_path));
+    emit_status(
+        Status::Decoding,
+        &format!("Final audio path to play: {}", &audio_file_path),
+    );
     let handler = AUDIO_HANDLER.clone();
-    
+
     let source_result = async_runtime::spawn_blocking(move || {
         let file = match File::open(&audio_file_path) {
             Ok(f) => f,
             Err(e) => return Err(format!("File open error: {}", e)),
         };
         Decoder::try_from(BufReader::new(file)).map_err(|e| format!("Decode error: {}", e))
-    }).await.map_err(|e| e.to_string());
+    })
+    .await
+    .map_err(|e| e.to_string());
 
     let float_source = match source_result {
         Ok(Ok(s)) => s,
@@ -407,18 +490,25 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
             return Err(err_msg);
         }
     };
-    
-    sys_log(&format!("Audio source decoded successfully: {} samples found.", if let Some(d) = float_source.total_duration() { format!("{:?}", d) } else { "Unknown duration".to_string() }));
-    
+
+    sys_log(&format!(
+        "Audio source decoded successfully: {} samples found.",
+        if let Some(d) = float_source.total_duration() {
+            format!("{:?}", d)
+        } else {
+            "Unknown duration".to_string()
+        }
+    ));
+
     // Reset position
     handler.current_pos_samples.store(0, Ordering::Relaxed);
-    
+
     // Wrap with StretchedSource
     let stretched = StretchedSource::new(
-        float_source, 
-        handler.active_pitch.clone(), 
+        float_source,
+        handler.active_pitch.clone(),
         handler.active_tempo.clone(),
-        handler.current_pos_samples.clone()
+        handler.current_pos_samples.clone(),
     );
 
     let sample_rate = stretched.sample_rate().get();
@@ -428,48 +518,60 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
     {
         let controller_lock = handler.controller.lock();
         println!("DEBUG: [play_track] Appending source to controller...");
-        controller_lock.clear(); 
+        controller_lock.clear();
         controller_lock.append(stretched);
-        controller_lock.play(); 
+        controller_lock.play();
         println!("DEBUG: [play_track] Play signal sent to Rodio Player.");
     }
-    
+
     let mut state = handler.state.lock();
     let track_id = path.clone();
     state.current_track = Some(path);
     state.is_playing = true;
-    handler.active_sample_rate.store(sample_rate, Ordering::Relaxed);
+    handler
+        .active_sample_rate
+        .store(sample_rate, Ordering::Relaxed);
     handler.playback_cv.notify_all();
-    
+
     // Start progress thread
     let window_progress = window.clone();
     let handler_progress = handler.clone();
     let thread_track_id = track_id.clone();
-    
+
     std::thread::spawn(move || {
         loop {
             {
                 let mut state = handler_progress.state.lock();
                 loop {
-                    if state.current_track.as_ref() != Some(&thread_track_id) { return; } // Thread ends
-                    if state.is_playing { break; }
+                    if state.current_track.as_ref() != Some(&thread_track_id) {
+                        return;
+                    } // Thread ends
+                    if state.is_playing {
+                        break;
+                    }
                     handler_progress.playback_cv.wait(&mut state);
                 }
             }
 
             let pos_ms = handler_progress.get_progress_ms();
-            
-            let _ = window_progress.emit("playback-progress", PlaybackProgress {
-                position_ms: pos_ms,
-                duration_ms: total_ms,
-            });
+
+            let _ = window_progress.emit(
+                "playback-progress",
+                PlaybackProgress {
+                    position_ms: pos_ms,
+                    duration_ms: total_ms,
+                },
+            );
 
             std::thread::sleep(Duration::from_millis(50)); // Higher refresh rate for smoother bar
         }
     });
 
     emit_status(Status::Playing, "Playback started.");
-    println!("DEBUG: Playback status set to Playing for track: {}", track_id);
+    println!(
+        "DEBUG: Playback status set to Playing for track: {}",
+        track_id
+    );
     Ok(())
 }
 
@@ -478,15 +580,18 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
 fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
     let controller = handler.controller.lock();
-    
+
     let duration = Duration::from_millis(position_ms);
     controller.try_seek(duration).map_err(|e| e.to_string())?;
-    
+
     // Update our counter
     let current_rate = handler.active_sample_rate.load(Ordering::Relaxed);
-    handler.current_pos_samples.store((position_ms * current_rate as u64) / 1000, Ordering::Relaxed);
+    handler.current_pos_samples.store(
+        (position_ms * current_rate as u64) / 1000,
+        Ordering::Relaxed,
+    );
     handler.playback_cv.notify_all();
-    
+
     Ok(())
 }
 
@@ -516,10 +621,10 @@ fn set_pitch(semitones: f32) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
     let mut state = handler.state.lock();
     state.pitch = semitones;
-    
+
     let p_u32 = (semitones * 100.0) as i32;
     handler.active_pitch.store(p_u32 as u32, Ordering::Relaxed);
-    
+
     Ok(())
 }
 
@@ -528,10 +633,10 @@ fn set_tempo(ratio: f32) -> Result<(), String> {
     let handler = AUDIO_HANDLER.clone();
     let mut state = handler.state.lock();
     state.tempo = ratio;
-    
+
     let t_u32 = (ratio * 100.0) as u32;
     handler.active_tempo.store(t_u32, Ordering::Relaxed);
-    
+
     Ok(())
 }
 
@@ -551,9 +656,12 @@ fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
 
 #[tauri::command]
 fn save_library(app: tauri::AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
-    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?
+    let path = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
         .join("library.json");
-    
+
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -561,16 +669,19 @@ fn save_library(app: tauri::AppHandle, songs: Vec<SongMetadata>) -> Result<(), S
 
     let json = serde_json::to_string_pretty(&songs).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())?;
-    
+
     sys_log("DEBUG: [save_library] Library saved successfully.");
     Ok(())
 }
 
 #[tauri::command]
 fn load_library(app: tauri::AppHandle) -> Result<Vec<SongMetadata>, String> {
-    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?
+    let path = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
         .join("library.json");
-    
+
     if !path.exists() {
         sys_log("DEBUG: [load_library] No library file found, returning empty list.");
         return Ok(Vec::new());
@@ -578,8 +689,11 @@ fn load_library(app: tauri::AppHandle) -> Result<Vec<SongMetadata>, String> {
 
     let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let songs: Vec<SongMetadata> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    
-    sys_log(&format!("DEBUG: [load_library] Loaded {} songs.", songs.len()));
+
+    sys_log(&format!(
+        "DEBUG: [load_library] Loaded {} songs.",
+        songs.len()
+    ));
     Ok(songs)
 }
 
@@ -594,7 +708,7 @@ pub fn run() {
                 println!("DEBUG: [setup] Main window NOT found during setup.");
             }
             *MAIN_WINDOW.lock() = window;
-            
+
             sys_log("DEBUG: [setup] Starting Audio System Initialization...");
             Lazy::force(&AUDIO_HANDLER);
             sys_log("DEBUG: [setup] Audio System Initialized on Main Thread.");
@@ -606,13 +720,13 @@ pub fn run() {
                 match drop_event {
                     DragDropEvent::Drop { paths, .. } => {
                         let _ = window.emit("tauri-file-dropped", paths);
-                    },
-                    _ => {}, // Other variants are Hover, Cancel, etc.
+                    }
+                    _ => {} // Other variants are Hover, Cancel, etc.
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
-            get_youtube_metadata, 
+            get_youtube_metadata,
             scan_local_folder,
             play_track,
             toggle_playback,

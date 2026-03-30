@@ -8,7 +8,10 @@ let dockTitle, dockArtist, dockThumb;
 let pitchSlider, tempoSlider, pitchVal, tempoVal;
 let playbackBar, progressFill, timeCurrent, timeTotal;
 let toggleVocal, toggleLyric;
-let thumbOverlay, contextMenu, menuPlay, menuDelete;
+let thumbOverlay, contextMenu, menuPlay, menuEdit, menuDelete;
+let libraryControls, libSearchInput, libCategoryFilter, libSortSelect;
+let metadataModal, editTitle, editArtist, editCategorySelect, editCategoryCustom, editTags, editThumb, modalSave;
+let editingSongIndex = -1;
 let streamStartTime, streamTimerInterval;
 
 // Playback State
@@ -86,7 +89,28 @@ window.addEventListener("DOMContentLoaded", () => {
   thumbOverlay = document.querySelector("#thumb-overlay");
   contextMenu = document.querySelector("#context-menu");
   menuPlay = document.querySelector("#menu-play");
+  menuEdit = document.createElement("div");
+  menuEdit.className = "context-menu-item";
+  menuEdit.id = "menu-edit";
+  menuEdit.textContent = "정보 수정";
+  contextMenu.insertBefore(menuEdit, menuDelete);
   menuDelete = document.querySelector("#menu-delete");
+
+  // Library Controls
+  libraryControls = document.querySelector("#library-controls");
+  libSearchInput = document.querySelector("#lib-search-input");
+  libCategoryFilter = document.querySelector("#lib-category-filter");
+  libSortSelect = document.querySelector("#lib-sort-select");
+
+  // Metadata Modal
+  metadataModal = document.querySelector("#metadata-modal");
+  editTitle = document.querySelector("#edit-title");
+  editArtist = document.querySelector("#edit-artist");
+  editCategorySelect = document.querySelector("#edit-category-select");
+  editCategoryCustom = document.querySelector("#edit-category-custom");
+  editTags = document.querySelector("#edit-tags");
+  editThumb = document.querySelector("#edit-thumb");
+  modalSave = document.querySelector("#modal-save");
 
   initEventListeners();
   initDragAndDrop();
@@ -94,6 +118,8 @@ window.addEventListener("DOMContentLoaded", () => {
   initPlaybackStatusListener();
   initSystemLogListener();
   initContextMenu();
+  initCustomDropdowns();
+  initModalListeners();
   initViewToggle();
   switchTab("library");
   startStreamingTimer();
@@ -129,14 +155,19 @@ function initEventListeners() {
       ytUrlInput.value = "";
     } catch (error) {
       console.error("Fetch failed:", error);
-      showNotification("곡 추가에 실패했습니다", "error");
+      showNotification("유튜브 정보를 가져오는데 실패했습니다", "error");
     } finally {
       ytFetchBtn.disabled = false;
       ytFetchBtn.textContent = "정보 가져오기";
     }
   });
 
-  // Playback Controls
+  // Library Controls Events
+  libSearchInput.addEventListener("input", renderLibrary);
+  libCategoryFilter.addEventListener("change", renderLibrary);
+  libSortSelect.addEventListener("change", renderLibrary);
+
+// Playback Controls
   // Playback Controls (Thumbnail Toggle Remains)
   dockThumb.addEventListener("click", handlePlaybackToggle);
 
@@ -257,11 +288,6 @@ function initEventListeners() {
     }
   });
 
-  // Channel Settings
-  document.querySelector("#stream-title-input").addEventListener("change", (e) => {
-    console.log(`Stream Title Updated: ${e.target.value}`);
-    // invoke("update_stream_settings", { title: e.target.value })
-  });
 
   // Playback Bar Seeking
   playbackBar.addEventListener("input", (e) => {
@@ -300,6 +326,13 @@ function initEventListeners() {
   pitchSlider.addEventListener("change", syncSettings);
   tempoSlider.addEventListener("change", syncSettings);
   document.querySelector(".volume-slider").addEventListener("change", syncSettings);
+
+  // Global click to close custom selects
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".custom-select")) {
+      document.querySelectorAll(".custom-select").forEach(s => s.classList.remove("active"));
+    }
+  });
 }
 
 // Playback Control Functions
@@ -623,6 +656,7 @@ function switchTab(tabId) {
   viewTitle.textContent = getTabTitle(tabId);
   youtubeSearchSection.style.display = tabId === "youtube" ? "block" : "none";
   localDropSection.style.display = tabId === "local" ? "block" : "none";
+  libraryControls.style.display = tabId === "library" ? "flex" : "none";
 }
 
 function getTabTitle(tabId) {
@@ -636,9 +670,9 @@ function getTabTitle(tabId) {
   return titles[tabId] || "Live MR Manager";
 }
 
-function addSongToGrid(song) {
+function addSongToGrid(song, originalIndex) {
   const card = document.createElement("article");
-  card.className = "song-card";
+  card.className = `song-card ${viewMode === "list" ? "list-row" : ""}`;
   
   // Grid vs List consistent structure
   card.innerHTML = `
@@ -661,10 +695,16 @@ function addSongToGrid(song) {
     </div>
     <div class="song-info-content">
       <div class="song-name">${song.title}</div>
+      <div class="song-artist-badge">${song.artist || ''}</div>
       <div class="song-meta">
         <span class="platform-tag">${song.source.toUpperCase()}</span>
         <span>${song.duration}</span>
       </div>
+      ${song.tags && song.tags.length > 0 ? `
+        <div class="tag-container">
+          ${song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')}
+        </div>
+      ` : ''}
     </div>
   `;
   card.dataset.path = song.path;
@@ -673,21 +713,105 @@ function addSongToGrid(song) {
     if (currentTrack && currentTrack.path === song.path) {
       handlePlaybackToggle();
     } else {
-      selectTrack(song);
+      selectTrack(originalIndex);
     }
   });
 
   card.addEventListener("contextmenu", (e) => {
-    window.showSongContextMenu(e, song, card);
+    e.preventDefault();
+    editingSongIndex = originalIndex;
+    contextMenu.style.display = "flex";
+    contextMenu.style.top = `${e.clientY}px`;
+    contextMenu.style.left = `${e.clientX}px`;
+    
+    // Bind context menu actions
+    menuEdit.onclick = () => {
+      showEditModal(song);
+      contextMenu.style.display = "none";
+    };
+    menuDelete.onclick = () => {
+      if (confirm(`'${song.title}' 곡을 삭제하시겠습니까?`)) {
+        songLibrary.splice(originalIndex, 1);
+        saveLibrary();
+        renderLibrary();
+      }
+      contextMenu.style.display = "none";
+    };
   });
 
-  songGrid.prepend(card);
+  songGrid.appendChild(card);
 }
 
-function selectTrack(song) {
+function showEditModal(song) {
+  editTitle.value = song.title;
+  editArtist.value = song.artist || "";
+  editThumb.value = song.thumbnail || "";
+  editTags.value = song.tags ? song.tags.join(", ") : "";
+  
+  // Update custom dropdown
+  const categories = ["pop", "ballad", "dance", "rock", "etc"];
+  const currentCat = song.category || "";
+  const isPredefined = categories.includes(currentCat);
+  
+  const hiddenInput = document.getElementById("edit-category-select");
+  const dropdown = document.getElementById("edit-category-dropdown");
+  const selectedText = dropdown.querySelector(".selected-text");
+  const options = dropdown.querySelectorAll(".option-item");
+
+  hiddenInput.value = isPredefined ? currentCat : "";
+  selectedText.textContent = isPredefined ? 
+    [...options].find(o => o.dataset.value === currentCat)?.textContent || "카테고리 선택..." : 
+    "카테고리 선택...";
+    
+  options.forEach(o => {
+    o.classList.toggle("selected", o.dataset.value === hiddenInput.value);
+  });
+
+  editCategoryCustom.value = isPredefined ? "" : currentCat;
+  metadataModal.classList.add("active");
+}
+
+function initModalListeners() {
+  const closeBtn = document.querySelector("#modal-close");
+  const cancelBtn = document.querySelector("#modal-cancel");
+
+  closeBtn.onclick = () => metadataModal.classList.remove("active");
+  cancelBtn.onclick = () => metadataModal.classList.remove("active");
+  
+  modalSave.onclick = () => {
+    if (editingSongIndex === -1) return;
+    
+    const song = songLibrary[editingSongIndex];
+    song.title = editTitle.value.trim();
+    song.artist = editArtist.value.trim();
+    song.thumbnail = editThumb.value.trim();
+    song.tags = editTags.value.split(",").map(t => t.trim()).filter(t => t !== "");
+    
+    // Category: Custom entry takes priority
+    song.category = editCategoryCustom.value.trim() || editCategorySelect.value;
+    
+    saveLibrary();
+    renderLibrary();
+    metadataModal.classList.remove("active");
+    showNotification("곡 정보가 저장되었습니다.", "success");
+  };
+
+  metadataModal.onclick = (e) => {
+    if (e.target === metadataModal) metadataModal.classList.remove("active");
+  };
+}
+
+function selectTrack(index) {
+  const song = songLibrary[index];
+  if (!song) return;
+
+  // Track play count
+  song.playCount = (song.playCount || 0) + 1;
+  saveLibrary();
+
   // Update Control Dock
   dockTitle.textContent = song.title;
-  dockArtist.textContent = song.source === "youtube" ? "YouTube Stream" : "Local File";
+  dockArtist.textContent = song.artist || (song.source === "youtube" ? "YouTube Stream" : "Local File");
   if (song.thumbnail) {
     dockThumb.style.backgroundImage = `url(${song.thumbnail})`;
     dockThumb.style.backgroundSize = "cover";
@@ -776,15 +900,15 @@ function showNotification(message, type = "info") {
   toast.className = `toast ${type}`;
   
   const icons = {
-    info: "ℹ️",
-    success: "✅",
-    error: "❌",
-    warning: "⚠️"
+    info: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    success: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+    error: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    warning: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
   };
 
   toast.innerHTML = `
-    <span class="toast-icon">${icons[type] || "🔔"}</span>
-    <span class="toast-message">${message}</span>
+    <div class="toast-icon">${icons[type] || icons.info}</div>
+    <div class="toast-message">${message}</div>
   `;
 
   container.appendChild(toast);
@@ -792,7 +916,7 @@ function showNotification(message, type = "info") {
   // Auto remove after 4 seconds
   setTimeout(() => {
     toast.classList.add("removing");
-    setTimeout(() => toast.remove(), 300);
+    setTimeout(() => toast.remove(), 400);
   }, 4000);
 }
 
@@ -837,7 +961,85 @@ function addToLibrary(song) {
 
 function renderLibrary() {
   songGrid.innerHTML = "";
-  songLibrary.forEach(song => {
-    addSongToGrid(song);
+  
+  // Apply filtering and sorting
+  let filtered = [...songLibrary.map((s, i) => ({ ...s, originalIndex: i }))];
+  const query = libSearchInput.value.toLowerCase().trim();
+  const categoryFilter = libCategoryFilter.value;
+  const sortBy = libSortSelect.value;
+
+  if (query) {
+    filtered = filtered.filter(s => 
+      s.title.toLowerCase().includes(query) || 
+      (s.artist && s.artist.toLowerCase().includes(query)) ||
+      (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
+    );
+  }
+
+  if (categoryFilter !== "all") {
+    filtered = filtered.filter(s => s.category === categoryFilter);
+  }
+
+  // Sorting
+  filtered.sort((a, b) => {
+    switch (sortBy) {
+      case "title": return a.title.localeCompare(b.title);
+      case "dateNew": return (b.dateAdded || 0) - (a.dateAdded || 0);
+      case "dateOld": return (a.dateAdded || 0) - (b.dateAdded || 0);
+      case "plays": return (b.playCount || 0) - (a.playCount || 0);
+      default: return 0;
+    }
+  });
+
+  filtered.forEach(song => {
+    addSongToGrid(song, song.originalIndex);
+  });
+}
+
+// Custom Dropdown Logic
+function initCustomDropdowns() {
+  // Library Category Filter
+  initCustomSelect("lib-category-dropdown", "lib-category-filter", () => renderLibrary());
+  
+  // Library Sort Select
+  initCustomSelect("lib-sort-dropdown", "lib-sort-select", () => renderLibrary());
+  
+  // Modal Category Select
+  initCustomSelect("edit-category-dropdown", "edit-category-select");
+}
+
+function initCustomSelect(dropdownId, hiddenInputId, callback) {
+  const dropdown = document.getElementById(dropdownId);
+  if (!dropdown) return;
+  
+  const hiddenInput = document.getElementById(hiddenInputId);
+  const trigger = dropdown.querySelector(".select-trigger");
+  const selectedText = dropdown.querySelector(".selected-text");
+  const options = dropdown.querySelectorAll(".option-item");
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    // Close others
+    document.querySelectorAll(".custom-select").forEach(s => {
+      if (s !== dropdown) s.classList.remove("active");
+    });
+    dropdown.classList.toggle("active");
+  };
+
+  options.forEach(opt => {
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      const val = opt.dataset.value;
+      const text = opt.textContent;
+
+      hiddenInput.value = val;
+      selectedText.textContent = text;
+      
+      options.forEach(o => o.classList.remove("selected"));
+      opt.classList.add("selected");
+      
+      dropdown.classList.remove("active");
+      if (callback) callback(val);
+    };
   });
 }
