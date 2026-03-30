@@ -9,7 +9,7 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, Window, WindowEvent};
+use tauri::{async_runtime, DragDropEvent, Emitter, Manager, WebviewWindow, WindowEvent};
 mod youtube;
 use crate::youtube::YoutubeManager;
 // Transparent aliases for Rodio 0.22.2 architecture:
