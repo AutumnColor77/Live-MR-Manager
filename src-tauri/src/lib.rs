@@ -3,7 +3,7 @@ use parking_lot::{Condvar, Mutex};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use rodio::source::UniformSourceIterator;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -33,6 +33,7 @@ pub struct SeekToArgs {
 
 static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
 static ROFORMER_ENGINE: Lazy<Arc<Mutex<Option<Arc<dyn InferenceEngine>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+pub(crate) static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 fn sys_log(message: &str) {
     println!("{}", message);
@@ -626,6 +627,9 @@ struct SeparationProgress {
 
 #[tauri::command]
 async fn run_separation(window: WebviewWindow, path: String) -> Result<(), String> {
+    // 0. Ensure cancel state is clean for this path
+    CANCEL_REQUESTS.lock().remove(&path);
+
     let engine = {
         let mut engine_guard = ROFORMER_ENGINE.lock();
         if engine_guard.is_none() {
@@ -685,6 +689,10 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
         let w = window_clone.clone();
         let p = path_clone.clone();
         engine.separate(&source_path, &cache_dir, Box::new(move |percentage| {
+            // Check for cancellation
+            if CANCEL_REQUESTS.lock().contains(&p) {
+                return; // Logic for "stop" is handled inside separate loop
+            }
             let _ = w.emit("separation-progress", SeparationProgress {
                 path: p.clone(),
                 percentage,
@@ -702,6 +710,12 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
 
     window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "Separation complete".into() }).unwrap();
     Ok(())
+}
+
+#[tauri::command]
+fn cancel_separation(path: String) {
+    sys_log(&format!("AI 분리 작업 취소 요청: {}", path));
+    CANCEL_REQUESTS.lock().insert(path);
 }
 
 #[tauri::command]
@@ -776,7 +790,8 @@ pub fn run() {
             check_model_ready,
             download_ai_model,
             save_library,
-            load_library
+            load_library,
+            cancel_separation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

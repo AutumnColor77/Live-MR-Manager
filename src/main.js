@@ -725,6 +725,12 @@ function renderTasks() {
         <div class="task-header-info">
           <div class="task-icon">🧠</div>
           <div class="task-title">${task.title}</div>
+          <button class="btn-task-cancel" onclick="cancelTask('${path.replace(/\\/g, '\\\\')}')" title="Cancel Task">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
         <div class="task-info">
           <div class="task-progress-container">
@@ -739,6 +745,19 @@ function renderTasks() {
     `;
   }).join("");
 }
+
+window.cancelTask = async (path) => {
+  if (activeTasks[path]) {
+    activeTasks[path].status = "Cancelling...";
+    renderTasks();
+  }
+  try {
+    await invoke("cancel_separation", { path });
+    showNotification("작업 취소 요청을 보냈습니다.", "info");
+  } catch (err) {
+    console.error("Cancel failed:", err);
+  }
+};
 
 function updateTaskBadge() {
   const badge = document.getElementById("task-badge");

@@ -2,11 +2,12 @@ use std::path::{Path, PathBuf};
 use ort::session::Session;
 use ort::value::Value;
 use ort::Error;
-use ndarray;
+use ndarray::{self, Array3};
 use std::sync::Arc;
 use parking_lot::Mutex;
 use crate::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 pub trait InferenceEngine: Send + Sync {
     fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf), String>;
@@ -30,71 +31,123 @@ impl WaveformRemover {
             .commit_from_file(model_path)
             .map_err(|e| e.to_string())?;
         
+        sys_log("[AI-ENGINE] Session initialized. Checking accelerators...");
+        // Log available providers to help user diagnose CPU vs GPU
+        // Note: in ort 2.x, the first successfully loaded EP in the list will be used.
+        // We can't easily query the "active" one post-facto from the session easily in all versions, 
+        // but we can log that we reached this point.
+        sys_log("[AI-ENGINE] Roformer model loaded successfully.");
+        
         Ok(Self { session: Arc::new(Mutex::new(session)) })
     }
 }
 
 impl InferenceEngine for WaveformRemover {
     fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf), String> {
-        sys_log(&format!("DEBUG: [WaveformRemover] Starting separation for: {:?}", audio_path));
+        sys_log(&format!("DEBUG: [WaveformRemover] Starting STFT-based separation for: {:?}", audio_path));
         
         if !output_dir.exists() {
             std::fs::create_dir_all(output_dir).map_err(|e| e.to_string())?;
         }
 
-        // 1. Load and Resample to 44.1kHz (Forced 2-channel)
+        // 1. Load and Resample to 44.1kHz
         let (samples, _spec) = self.load_and_resample(audio_path, 44100)?;
-        
-        let channels = samples.len(); // Should be 2 now
+        let n_channels = samples.len();
         let n_samples = samples[0].len();
         
-        // 2. Prepare Buffers for Results
-        let mut vocal_out = vec![vec![0.0f32; n_samples]; channels];
-        let mut inst_out = vec![vec![0.0f32; n_samples]; channels];
+        // 2. STFT Parameters (Aligned with model: [1, 801, 4100])
+        const N_FFT: usize = 1600;
+        const HOP_LENGTH: usize = 400;
+        const CHUNK_FRAMES: usize = 4100;
+        let chunk_samples = CHUNK_FRAMES * HOP_LENGTH;
 
-        // 3. Chunked Inference
-        // Use a 10s chunk size (at 44.1kHz = 441,000 samples)
-        // Some models require static input size. We always pad to chunk_size.
-        let chunk_size = 44100 * 10;
-        let mut offset = 0;
+        let mut vocal_out = vec![vec![0.0f32; n_samples]; n_channels];
+        let mut inst_out = vec![vec![0.0f32; n_samples]; n_channels];
 
-        while offset < n_samples {
-            let actual_chunk = std::cmp::min(chunk_size, n_samples - offset);
+        // Process each channel independently (Model expects [Batch, Freq, Time])
+        for c in 0..n_channels {
+            sys_log(&format!("DEBUG: Processing channel {}...", c));
+            let channel_samples = &samples[c];
             
-            // Prepare chunk input tensor [1, 2, chunk_size] (ALWAYS use chunk_size for compatibility)
-            let mut input_array = ndarray::Array3::<f32>::zeros((1, channels, chunk_size));
-            for c in 0..channels {
-                for s in 0..actual_chunk {
-                    input_array[[0, c, s]] = samples[c][offset + s];
+            let mut v_channel = vec![0.0f32; n_samples];
+            let mut i_channel = vec![0.0f32; n_samples];
+            
+            let path_str = audio_path.to_string_lossy().to_string();
+            let mut offset = 0;
+            while offset < n_samples {
+                // Check for cancellation
+                if crate::CANCEL_REQUESTS.lock().contains(&path_str) {
+                    sys_log(&format!("DEBUG: Separation cancelled for: {}", path_str));
+                    return Err("Cancelled by user".into());
                 }
-            }
 
-            let input_value = Value::from_array(input_array.into_dyn()).map_err(|e| e.to_string())?;
-            let inputs = ort::inputs!["input" => input_value];
-
-            let mut session_guard = self.session.lock();
-            let outputs = session_guard.run(inputs).map_err(|e| e.to_string())?;
-
-            // Extract results
-            let v_val = &outputs[0];
-            let i_val = &outputs[1];
-
-            let (v_shape, v_data) = v_val.try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
-            let (i_shape, i_data) = i_val.try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
-
-            let v_chunk = self.deinterleave_output(v_data, &v_shape);
-            let i_chunk = self.deinterleave_output(i_data, &i_shape);
-
-            // Copy back to output buffers (CROP the padding: only copy up to actual_chunk)
-            for c in 0..channels {
-                for s in 0..std::cmp::min(actual_chunk, v_chunk[c].len()) {
-                    vocal_out[c][offset + s] = v_chunk[c][s];
-                    inst_out[c][offset + s] = i_chunk[c][s];
+                let actual_samples = std::cmp::min(chunk_samples, n_samples - offset);
+                
+                // Extract and pad chunk to chunk_samples
+                let mut chunk = vec![0.0f32; chunk_samples];
+                for i in 0..actual_samples {
+                    chunk[i] = channel_samples[offset + i];
                 }
-            }
 
-            offset += actual_chunk;
-            on_progress((offset as f32 / n_samples as f32) * 100.0);
+                // A. STFT
+                let (mag, phase) = self.stft(&chunk, N_FFT, HOP_LENGTH);
+                
+                // B. Prepare Tensor [1, 801, 4100]
+                // mag shape is [Frames, Bins], currently [4100, 801]
+                let mut input_array = Array3::<f32>::zeros((1, 801, 4100));
+                for f in 0..CHUNK_FRAMES {
+                    for b in 0..801 {
+                        input_array[[0, b, f]] = mag[f][b];
+                    }
+                }
+
+                // C. Inference
+                let input_value = Value::from_array(input_array.into_dyn()).map_err(|e| e.to_string())?;
+                let inputs = ort::inputs!["input" => input_value];
+
+                let mut session_guard = self.session.lock();
+                let outputs = session_guard.run(inputs).map_err(|e| e.to_string())?;
+                
+                sys_log(&format!("DEBUG: Model inference complete. Output count: {}", outputs.len()));
+
+                // D. Extract & iSTFT
+                // Some models only have 1 output (Vocal), others have 2 (Vocal, Inst)
+                let v_mag_tensor = outputs[0].try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
+                let v_mag = self.tensor_to_vec_2d(&v_mag_tensor.1, &v_mag_tensor.0); // [801, 4100]
+
+                let i_mag = if outputs.len() > 1 {
+                    let i_mag_tensor = outputs[1].try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
+                    self.tensor_to_vec_2d(&i_mag_tensor.1, &i_mag_tensor.0)
+                } else {
+                    // Fallback: If only vocal is provided, compute instrumental as (Original - Vocal)
+                    // For magnitude-based masks, this is often: Inst_Mag = Original_Mag - Vocal_Mag
+                    let mut diff_mag = vec![vec![0.0f32; CHUNK_FRAMES]; 801];
+                    for f in 0..CHUNK_FRAMES {
+                        for b in 0..801 {
+                            diff_mag[b][f] = (mag[f][b] - v_mag[b][f]).max(0.0);
+                        }
+                    }
+                    diff_mag
+                };
+
+                let v_reconstructed = self.istft(&v_mag, &phase, N_FFT, HOP_LENGTH);
+                let i_reconstructed = self.istft(&i_mag, &phase, N_FFT, HOP_LENGTH);
+
+                // E. Overlap-Add back to result buffer
+                for i in 0..std::cmp::min(actual_samples, v_reconstructed.len()) {
+                    v_channel[offset + i] = v_reconstructed[i];
+                    i_channel[offset + i] = i_reconstructed[i];
+                }
+
+                offset += actual_samples;
+                
+                // Overall progress = (Current Channel Progress / 2) + (Channel Index * 50%)
+                let channel_progress = (offset as f32 / n_samples as f32) * (100.0 / n_channels as f32);
+                on_progress(channel_progress + (c as f32 * (100.0 / n_channels as f32)));
+            }
+            
+            vocal_out[c] = v_channel;
+            inst_out[c] = i_channel;
         }
 
         // 4. Save to WAV
@@ -104,7 +157,7 @@ impl InferenceEngine for WaveformRemover {
         self.save_wav(&vocal_out, &vocal_path, 44100)?;
         self.save_wav(&inst_out, &inst_path, 44100)?;
 
-        sys_log("DEBUG: [WaveformRemover] Separation complete.");
+        sys_log("DEBUG: [WaveformRemover] STFT Separation complete.");
         Ok((vocal_path, inst_path))
     }
 }
@@ -169,18 +222,94 @@ impl WaveformRemover {
         Ok((channels, spec))
     }
 
-    fn deinterleave_output(&self, data: &[f32], shape: &[i64]) -> Vec<Vec<f32>> {
-        // Assume shape [1, 2, Samples]
-        let n_channels = shape[1] as usize;
-        let n_samples = shape[2] as usize;
-        let mut result = vec![vec![0.0; n_samples]; n_channels];
+    fn tensor_to_vec_2d(&self, data: &[f32], shape: &[i64]) -> Vec<Vec<f32>> {
+        // Assume shape [1, Bins, Frames]
+        let n_bins = shape[1] as usize;
+        let n_frames = shape[2] as usize;
+        let mut result = vec![vec![0.0; n_frames]; n_bins];
         
-        for c in 0..n_channels {
-            for s in 0..n_samples {
-                result[c][s] = data[c * n_samples + s];
+        for b in 0..n_bins {
+            for f in 0..n_frames {
+                result[b][f] = data[b * n_frames + f];
             }
         }
         result
+    }
+
+    fn stft(&self, samples: &[f32], n_fft: usize, hop_length: usize) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(n_fft);
+        let n_bins = (n_fft / 2) + 1;
+        let n_frames = samples.len() / hop_length;
+        
+        let mut magnitudes = vec![vec![0.0f32; n_bins]; n_frames];
+        let mut phases = vec![vec![0.0f32; n_bins]; n_frames];
+        
+        // Hanning window
+        let window: Vec<f32> = (0..n_fft).map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (n_fft - 1) as f32).cos())).collect();
+
+        for f in 0..n_frames {
+            let start = f * hop_length;
+            if start + n_fft > samples.len() { break; }
+            
+            let mut input: Vec<Complex<f32>> = (0..n_fft).map(|i| {
+                Complex::new(samples[start + i] * window[i], 0.0)
+            }).collect();
+            
+            fft.process(&mut input);
+            
+            for b in 0..n_bins {
+                let complex = input[b];
+                magnitudes[f][b] = complex.norm();
+                phases[f][b] = complex.arg();
+            }
+        }
+        
+        (magnitudes, phases)
+    }
+
+    fn istft(&self, magnitude: &Vec<Vec<f32>>, phase: &Vec<Vec<f32>>, n_fft: usize, hop_length: usize) -> Vec<f32> {
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_inverse(n_fft);
+        let n_bins = magnitude.len(); // magnitude is [Bins][Frames] -> wait, I need [Frames][Bins]
+        let n_frames = magnitude[0].len();
+        
+        let output_len = n_frames * hop_length + n_fft;
+        let mut samples = vec![0.0f32; output_len];
+        let mut window_sum = vec![0.0f32; output_len];
+        
+        let window: Vec<f32> = (0..n_fft).map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (n_fft - 1) as f32).cos())).collect();
+
+        for f in 0..n_frames {
+            let mut input: Vec<Complex<f32>> = (0..n_fft).map(|i| {
+                if i < n_bins {
+                    Complex::from_polar(magnitude[i][f], phase[f][i]) // magnitude is [Bins, Frames], phase is [Frames, Bins]
+                } else if i > 0 && n_fft - i < n_bins {
+                    // Conjugate symmetry for real-to-complex FFT
+                    let b = n_fft - i;
+                    Complex::from_polar(magnitude[b][f], phase[f][b]).conj()
+                } else {
+                    Complex::new(0.0, 0.0)
+                }
+            }).collect();
+
+            fft.process(&mut input);
+            
+            let start = f * hop_length;
+            for i in 0..n_fft {
+                samples[start + i] += (input[i].re / n_fft as f32) * window[i];
+                window_sum[start + i] += window[i] * window[i];
+            }
+        }
+        
+        // Normalize by window sum
+        for i in 0..output_len {
+            if window_sum[i] > 1e-6 {
+                samples[i] /= window_sum[i];
+            }
+        }
+        
+        samples
     }
 
     fn save_wav(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<(), String> {
