@@ -4,7 +4,7 @@ use ort::value::Value;
 use ndarray::{self, Array3};
 use std::sync::Arc;
 use parking_lot::Mutex;
-use crate::sys_log;
+use crate::audio_player::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider};
 use rustfft::{FftPlanner, num_complex::Complex};
 
@@ -75,7 +75,7 @@ impl InferenceEngine for WaveformRemover {
             let mut offset = 0;
             while offset < n_samples {
                 // Check for cancellation
-                if crate::CANCEL_REQUESTS.lock().contains(&path_str) {
+                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
                     sys_log(&format!("DEBUG: Separation cancelled for: {}", path_str));
                     return Err("Cancelled by user".into());
                 }

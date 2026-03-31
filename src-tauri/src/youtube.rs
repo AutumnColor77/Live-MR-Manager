@@ -130,6 +130,11 @@ impl YoutubeManager {
     ) -> Result<PathBuf, String> {
         let exe = Self::find_yt_dlp();
         println!("Using yt-dlp at: {} for download to: {}", exe, destination.display());
+        
+        {
+            let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+            active.insert(destination.clone());
+        }
 
         let mut child = Command::new(&exe)
             .args(&[
@@ -188,6 +193,12 @@ impl YoutubeManager {
             }
 
             let status = child.wait().await;
+            
+            {
+                let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+                active.remove(&dest_clone);
+            }
+
             match status {
                 Ok(s) if s.success() => {
                     println!("yt-dlp download finished successfully: {:?}", dest_clone);

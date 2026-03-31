@@ -1180,17 +1180,55 @@ button:disabled,
 
 /* Audio Panel (2-Row Layout) */
 .audio-panel {
+  flex: 0 0 270px; /* Adjusted for right-side button */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-controls-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
-  min-width: 220px;
+  gap: 10px;
+}
+
+.btn-audio-reset {
+  width: 28px;
+  height: 54px; /* Vertical button on the right */
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-left: 4px;
+}
+
+.btn-audio-reset:hover {
+  background: var(--accent-primary);
+  color: #fff;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px var(--glow-primary);
+  border-color: var(--accent-primary);
+}
+
+.btn-audio-reset svg {
+  transition: transform 0.3s ease;
+}
+
+.btn-audio-reset:hover svg {
+  transform: rotate(-180deg);
 }
 
 .control-row {
   display: flex;
-  gap: 24px;
+  gap: 16px;
 }
 
 .control-row.volume-row {
@@ -1216,22 +1254,40 @@ button:disabled,
 .val-display { 
   color: var(--accent-primary); 
   cursor: pointer; 
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 4px;
   min-width: 45px;
   text-align: right;
   transition: all 0.2s;
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .val-display:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(59, 130, 246, 0.15);
+  transform: translateY(-1px);
 }
 
-.val-display.editing {
-  background: rgba(59, 130, 246, 0.15);
+.val-input {
+  font-size: 0.7rem;
+  font-weight: 800;
   color: #fff;
-  outline: 1px solid var(--accent-primary);
-  cursor: text;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  width: 40px;
+  padding: 1px 4px;
+  text-align: center;
+  outline: none;
+  font-family: 'JetBrains Mono', monospace;
+  -moz-appearance: textfield; /* Firefox */
+  appearance: none; /* Standard */
+}
+
+/* Chrome, Safari, Edge, Opera */
+.val-input::-webkit-outer-spin-button,
+.val-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .volume-container {

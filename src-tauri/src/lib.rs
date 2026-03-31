@@ -1,14 +1,13 @@
 use once_cell::sync::Lazy;
-use parking_lot::{Condvar, Mutex};
-use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
+use parking_lot::Mutex;
+use rodio::{Decoder, Source};
 use rodio::source::UniformSourceIterator;
 use serde::{Deserialize, Serialize};
 use cpal::traits::{HostTrait, DeviceTrait};
-use std::collections::{VecDeque, HashSet};
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Seek};
 use std::num::{NonZeroU16, NonZeroU32};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{async_runtime, Emitter, Manager, WebviewWindow, AppHandle};
@@ -22,9 +21,18 @@ pub mod audio_player;
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
 use crate::vocal_remover::{InferenceEngine, WaveformRemover};
-use crate::audio_player::*;
+use urlencoding;
+use crate::audio_player::{
+    AUDIO_HANDLER, AudioHandler, Status, PlaybackStatus, PlaybackProgress,
+    AppState, StreamingReader, StretchedSource, DynamicVolumeSource,
+    CANCEL_REQUESTS, sys_log, MAIN_WINDOW, ACTIVE_DOWNLOADS
+};
 use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider};
-use std::io::{Read, Seek, SeekFrom};
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::probe::Hint;
+
 
 // --- AI Engine ---
 static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
@@ -139,10 +147,11 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     } else {
         // Mono source (or streaming)
         let is_yt = path.starts_with("http");
-        let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e| format!("Failed to open stream: {}", e))?;
-        let decoder = Decoder::new(BufReader::new(reader)).map_err(|e| e.to_string())?;
+        let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e: std::io::Error| format!("Failed to open stream: {}", e))?;
+        let decoder = rodio::Decoder::new(std::io::BufReader::new(reader)).map_err(|e: rodio::decoder::DecoderError| e.to_string())?;
         
-        if let Some(d) = decoder.total_duration() {
+        let opt_d: Option<Duration> = decoder.total_duration();
+        if let Some(d) = opt_d {
             handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
         }
 
@@ -228,8 +237,20 @@ async fn set_tempo(ratio: f64) -> Result<(), String> {
 async fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
     let controller = handler.controller.lock();
+    
+    // 1. Seek the controller (Rodio internal)
     let _ = controller.try_seek(Duration::from_millis(position_ms));
-    handler.current_pos_samples.store(0, Ordering::Relaxed);
+    
+    // 2. Sync our progress counter to the new time position
+    // pos_samples = (ms * sample_rate) / 1000
+    let rate = handler.active_sample_rate as f64;
+    let target_samples = (position_ms as f64 * rate / 1000.0) as u64;
+    handler.current_pos_samples.store(target_samples, Ordering::Relaxed);
+    
+    // 3. Force play since seek can sometimes pause state or clear internal state
+    controller.play();
+    
+    // println!("[AUDIO] Seek to {}ms (Target Samples: {})", position_ms, target_samples);
     Ok(())
 }
 
@@ -330,21 +351,10 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
     let file_path = std::path::Path::new(&path);
     let file_name = file_path.file_name().unwrap_or_default().to_string_lossy().to_string();
     
-    let duration_str = match std::fs::File::open(&path) {
-        Ok(file) => {
-            match Decoder::new(std::io::BufReader::new(file)) {
-                Ok(decoder) => {
-                    if let Some(d) = decoder.total_duration() {
-                        let secs = d.as_secs();
-                        format!("{}:{:02}", secs / 60, secs % 60)
-                    } else {
-                        "0:00".into()
-                    }
-                },
-                Err(_) => "0:00".into(),
-            }
-        },
-        Err(_) => "0:00".into(),
+    // Improved duration extraction using symphonia (handles MP3 VBR etc better)
+    let duration_str = match probe_audio_duration(&path) {
+        Some(d) => d,
+        None => "0:00".into(),
     };
     
     Ok(SongMetadata {
@@ -429,6 +439,7 @@ async fn get_audio_devices() -> Result<Vec<String>, String> {
     let devices = host.output_devices().map_err(|e| e.to_string())?;
     let mut names = Vec::new();
     for d in devices {
+        let d: cpal::Device = d;
         if let Ok(name) = d.name() {
             let config = d.default_output_config().map(|c| format!("{}Hz, {}ch", u32::from(c.sample_rate()), c.channels())).unwrap_or_else(|_| "Unknown Config".into());
             names.push(format!("{} ({})", name, config));
@@ -599,6 +610,44 @@ fn load_library(app: AppHandle) -> Result<Vec<SongMetadata>, String> {
     Ok(songs)
 }
 
+fn probe_audio_duration(path: &str) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if path.to_lowercase().ends_with(".mp3") { hint.with_extension("mp3"); }
+
+    let format_opts = FormatOptions { enable_gapless: true, ..Default::default() };
+    let meta_opts = MetadataOptions::default();
+
+    let probed = symphonia::default::get_probe().format(&hint, mss, &format_opts, &meta_opts).ok()?;
+    let format = probed.format;
+
+    // Try default track first
+    let track = format.default_track().or_else(|| format.tracks().first())?;
+    let params = &track.codec_params;
+
+    if let Some(n_frames) = params.n_frames {
+        if let Some(rate) = params.sample_rate {
+            let total_secs = n_frames / (rate as u64);
+            return Some(format!("{}:{:02}", total_secs / 60, total_secs % 60));
+        }
+    }
+
+    // Fallback: Check metadata for duration tags or rodio decoder if n_frames is missing
+    // Sometimes MP3 duration is found in metadata tags (TLEN etc)
+    // Here we'll try rodio as secondary fallback
+    let f2 = File::open(path).ok()?;
+        if let Ok(decoder) = Decoder::new(BufReader::new(f2)) {
+            let opt_d: Option<Duration> = decoder.total_duration();
+            if let Some(d) = opt_d {
+                let s = d.as_secs();
+                return Some(format!("{}:{:02}", s / 60, s % 60));
+            }
+        }
+
+    None
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -610,18 +659,36 @@ pub fn run() {
                 let w_clone = w.clone();
                 std::thread::spawn(move || {
                     loop {
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(Duration::from_millis(200));
                         if let Ok(handler) = &*AUDIO_HANDLER {
-                                let samples = handler.current_pos_samples.load(Ordering::Relaxed);
-                                let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
-                                let rate = handler.active_sample_rate;
-                                if rate > 0 {
-                                    let pos_ms = (samples as f64 / rate as f64 * 1000.0) as u64;
-                                    let _ = w_clone.emit("playback-progress", PlaybackProgress {
-                                        position_ms: pos_ms,
-                                        duration_ms,
+                            let (samples, duration_ms, rate, is_empty) = {
+                                let controller = handler.controller.lock();
+                                (
+                                    handler.current_pos_samples.load(Ordering::Relaxed),
+                                    handler.total_duration_ms.load(Ordering::Relaxed),
+                                    handler.active_sample_rate,
+                                    controller.empty()
+                                )
+                            };
+
+                            if is_empty && duration_ms > 0 {
+                                let mut state = handler.state.lock();
+                                if state.is_playing {
+                                    state.is_playing = false;
+                                    let _ = w_clone.emit("playback-status", PlaybackStatus { 
+                                        status: Status::Finished, 
+                                        message: "Finished".into() 
                                     });
                                 }
+                            }
+
+                            if rate > 0 {
+                                let pos_ms = (samples as f64 / rate as f64 * 1000.0) as u64;
+                                let _ = w_clone.emit("playback-progress", PlaybackProgress {
+                                    position_ms: pos_ms,
+                                    duration_ms,
+                                });
+                            }
                         }
                     }
                 });
@@ -658,3 +725,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+

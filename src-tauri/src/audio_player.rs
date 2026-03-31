@@ -1,15 +1,29 @@
-use cpal::traits::{HostTrait, DeviceTrait};
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
-use rodio::Source;
+use rodio::{Source, Player};
 use parking_lot::Mutex;
+use once_cell::sync::Lazy;
+use tauri::{Emitter, WebviewWindow};
+use cpal::traits::{HostTrait, DeviceTrait};
+
+pub static ACTIVE_DOWNLOADS: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
+pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+pub fn sys_log(message: &str) {
+    println!("{}", message);
+    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
+        let _ = window.emit("sys-log", message.to_string());
+    }
+}
 
 // --- Status Types ---
 
@@ -35,12 +49,13 @@ pub struct PlaybackStatus {
 pub struct StreamingReader {
     pub file: File,
     pub is_youtube: bool,
+    pub path: PathBuf,
 }
 
 impl StreamingReader {
-    pub fn new(path: std::path::PathBuf, is_youtube: bool) -> std::io::Result<Self> {
+    pub fn new(path: PathBuf, is_youtube: bool) -> std::io::Result<Self> {
         let file = File::open(&path)?;
-        Ok(Self { file, is_youtube })
+        Ok(Self { file, is_youtube, path })
     }
 }
 
@@ -52,8 +67,19 @@ impl Read for StreamingReader {
                 // println!("[AUDIO_DEBUG] StreamingReader read {} bytes", n);
                 return Ok(n);
             } else if self.is_youtube {
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                continue;
+                // Check if still downloading
+                let still_downloading = {
+                    let downloads = ACTIVE_DOWNLOADS.lock();
+                    downloads.contains(&self.path)
+                };
+                
+                if still_downloading {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    continue;
+                } else {
+                    // Download finished and no more data
+                    return Ok(0);
+                }
             } else {
                 return Ok(0);
             }
@@ -210,24 +236,7 @@ impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
     }
 }
 
-use once_cell::sync::Lazy;
-use tauri::{Emitter, WebviewWindow};
-use std::collections::HashSet;
-use rodio::{DeviceSinkBuilder, Player};
-
-// --- Global Statics ---
-
-pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
-pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
-
-pub fn sys_log(message: &str) {
-    println!("{}", message);
-    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
-        let _ = window.emit("sys-log", message.to_string());
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackProgress {
     pub position_ms: u64,
@@ -285,7 +294,7 @@ pub struct AudioHandler {
 }
 
 pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
-    let stream_result = DeviceSinkBuilder::open_default_sink();
+    let stream_result: Result<rodio::MixerDeviceSink, _> = rodio::DeviceSinkBuilder::open_default_sink();
     let stream = match stream_result {
         Ok(s) => s,
         Err(e) => {
@@ -296,12 +305,16 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
     };
     
     let host = cpal::default_host();
-    let device = host.default_output_device();
-    let device_name = device.as_ref().and_then(|d| d.name().ok()).unwrap_or_else(|| "Unknown Device".into());
+    let device: Option<cpal::Device> = host.default_output_device();
+    let device_name = match device.as_ref() {
+        Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".to_string()),
+        None => "Unknown Device".to_string(),
+    };
     
     let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
-        if let Ok(config) = d.default_output_config() {
-            (u32::from(config.sample_rate()), config.channels().into())
+        let config_res: Result<cpal::SupportedStreamConfig, _> = d.default_output_config();
+        if let Ok(config) = config_res {
+            (u32::from(config.sample_rate()), config.channels() as u16)
         } else { (44100, 2) }
     } else { (44100, 2) };
 

@@ -114,6 +114,30 @@ export function initGlobalListeners() {
       if (state.currentTrack) state.currentTrack.pitch = parseFloat(val);
     };
     elements.pitchSlider.onchange = () => saveLibrary(state.songLibrary);
+    
+    // Middle-click to reset (0)
+    elements.pitchSlider.addEventListener("auxclick", (e) => {
+      if (e.button === 1) {
+        elements.pitchSlider.value = 0;
+        elements.pitchSlider.dispatchEvent(new Event("input"));
+        elements.pitchSlider.dispatchEvent(new Event("change"));
+      }
+    });
+    
+    // Wheel Interaction
+    elements.pitchSlider.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseInt(elements.pitchSlider.value);
+      if (e.deltaY < 0) val += 1; else val -= 1;
+      val = Math.max(-12, Math.min(12, val));
+      elements.pitchSlider.value = val;
+      elements.pitchSlider.dispatchEvent(new Event("input"));
+      elements.pitchSlider.dispatchEvent(new Event("change"));
+    }, { passive: false });
+  }
+
+  if (elements.pitchVal) {
+    setupDirectInput(elements.pitchVal, elements.pitchSlider);
   }
 
   if (elements.tempoSlider) {
@@ -124,6 +148,30 @@ export function initGlobalListeners() {
       if (state.currentTrack) state.currentTrack.tempo = parseFloat(val);
     };
     elements.tempoSlider.onchange = () => saveLibrary(state.songLibrary);
+
+    // Middle-click to reset (1.0)
+    elements.tempoSlider.addEventListener("auxclick", (e) => {
+      if (e.button === 1) {
+        elements.tempoSlider.value = 1.0;
+        elements.tempoSlider.dispatchEvent(new Event("input"));
+        elements.tempoSlider.dispatchEvent(new Event("change"));
+      }
+    });
+
+    // Wheel Interaction
+    elements.tempoSlider.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseFloat(elements.tempoSlider.value);
+      if (e.deltaY < 0) val += 0.05; else val -= 0.05;
+      val = Math.max(0.5, Math.min(2.0, val));
+      elements.tempoSlider.value = val.toFixed(2);
+      elements.tempoSlider.dispatchEvent(new Event("input"));
+      elements.tempoSlider.dispatchEvent(new Event("change"));
+    }, { passive: false });
+  }
+
+  if (elements.tempoVal) {
+    setupDirectInput(elements.tempoVal, elements.tempoSlider);
   }
 
   if (elements.volSlider) {
@@ -133,11 +181,51 @@ export function initGlobalListeners() {
       if (state.currentTrack) state.currentTrack.volume = parseFloat(val);
     };
     elements.volSlider.onchange = () => saveLibrary(state.songLibrary);
+
+    // Middle-click to reset (80)
+    elements.volSlider.addEventListener("auxclick", (e) => {
+      if (e.button === 1) {
+        elements.volSlider.value = 80;
+        elements.volSlider.dispatchEvent(new Event("input"));
+        elements.volSlider.dispatchEvent(new Event("change"));
+      }
+    });
+
+    // Wheel Interaction
+    elements.volSlider.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseInt(elements.volSlider.value);
+      if (e.deltaY < 0) val += 2; else val -= 2;
+      val = Math.max(0, Math.min(100, val));
+      elements.volSlider.value = val;
+      elements.volSlider.dispatchEvent(new Event("input"));
+      elements.volSlider.dispatchEvent(new Event("change"));
+    }, { passive: false });
   }
 
   if (elements.vocalBalance) {
     elements.vocalBalance.oninput = (e) => {
       setVocalBalance(e.target.value);
+    };
+  }
+
+  // Global Audio Reset Button
+  const btnReset = document.getElementById("btn-reset-audio");
+  if (btnReset) {
+    btnReset.onclick = () => {
+      if (elements.pitchSlider) {
+        elements.pitchSlider.value = 0;
+        elements.pitchSlider.dispatchEvent(new Event("input"));
+      }
+      if (elements.tempoSlider) {
+        elements.tempoSlider.value = 1.0;
+        elements.tempoSlider.dispatchEvent(new Event("input"));
+      }
+      if (elements.volSlider) {
+        elements.volSlider.value = 80;
+        elements.volSlider.dispatchEvent(new Event("input"));
+      }
+      saveLibrary(state.songLibrary);
     };
   }
 
@@ -152,8 +240,11 @@ export function initGlobalListeners() {
     elements.playbackBar.onchange = async (e) => {
       const pct = e.target.value;
       const posMs = (pct / 100) * state.trackDurationMs;
-      state.currentProgressMs = posMs;
+      
+      // Update local state immediately to avoid jump
       state.targetProgressMs = posMs;
+      state.currentProgressMs = posMs;
+      
       await seekTo(posMs);
       state.isSeeking = false;
     };
@@ -230,8 +321,15 @@ export function setupBackendListeners() {
     const { status, message } = event.payload;
     if (status === "Finished") {
       state.isPlaying = false;
+      state.currentProgressMs = 0;
+      state.targetProgressMs = 0;
       updateThumbnailOverlay();
       updatePlayButton();
+      
+      // Immediate UI Reset
+      if (elements.playbackBar) elements.playbackBar.value = 0;
+      if (elements.progressFill) elements.progressFill.style.width = "0%";
+      if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
     } else if (status === "Error") {
       showNotification(message, "error");
       state.isLoading = false;
@@ -308,3 +406,50 @@ window.cancelTask = async (path) => {
   delete state.activeTasks[path];
   updateTaskUI();
 };
+
+/**
+ * Helper to setup direct number input for value displays
+ */
+function setupDirectInput(displayEl, sliderEl) {
+  displayEl.onclick = (e) => {
+    e.stopPropagation();
+    if (displayEl.querySelector("input")) return;
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "val-input";
+    input.value = parseFloat(sliderEl.value);
+    input.step = sliderEl.step;
+    input.min = sliderEl.min;
+    input.max = sliderEl.max;
+
+    const originalText = displayEl.textContent;
+    displayEl.textContent = "";
+    displayEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    const save = () => {
+      let val = parseFloat(input.value);
+      if (isNaN(val)) val = parseFloat(sliderEl.value);
+      val = Math.max(parseFloat(sliderEl.min), Math.min(parseFloat(sliderEl.max), val));
+
+      sliderEl.value = val;
+      sliderEl.dispatchEvent(new Event("input"));
+      sliderEl.dispatchEvent(new Event("change"));
+    };
+
+    input.onkeydown = (ev) => {
+      if (ev.key === "Enter") {
+        save();
+      }
+      if (ev.key === "Escape") {
+        displayEl.textContent = originalText;
+      }
+    };
+
+    input.onblur = () => {
+      if (displayEl.contains(input)) save();
+    };
+  };
+}
