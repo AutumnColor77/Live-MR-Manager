@@ -483,7 +483,11 @@ h1 {
   flex-wrap: wrap;
   gap: 6px;
   min-height: 24px;
-  margin-top: auto; /* 제목/가수 길이에 상관없이 항상 하단 정렬 */
+}
+
+/* 그리드 모드에서는 태그를 하단으로 밀어줌 */
+.grid-layout .tag-container {
+  margin-top: auto;
 }
 
 .tag-container.no-info {
@@ -496,35 +500,119 @@ h1 {
 /* List View Card internal */
 .song-grid.list-view .song-card {
   display: flex;
-  flex-direction: row; /* 목록 보기에서는 가로 배열 */
+  flex-direction: row;
   align-items: center;
-  padding: 12px 20px;
-  gap: 20px;
-  height: auto; /* 목록 보기에서는 내용에 맞는 높이 */
+  padding: 10px 24px;
+  gap: 24px;
+  border-radius: 12px;
+  height: auto;
+  border-color: transparent;
+  background: transparent;
+}
+
+.song-grid.list-view .song-card:hover {
+  transform: translateX(8px);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.song-grid.list-view .song-card.active {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .song-grid.list-view .thumbnail {
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   margin-bottom: 0;
-  border-radius: 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
 
-.song-grid.list-view .song-info-content {
+.song-info-content.list-layout {
   flex: 1;
+  display: grid;
+  grid-template-columns: minmax(200px, 1.5fr) 120px 1fr 80px;
+  align-items: center;
+  gap: 24px;
+}
+
+.col-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.col-info .song-name {
+  margin-bottom: 0;
+  font-size: 0.95rem;
+}
+
+.col-info .song-artist-badge {
+  margin-bottom: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.col-category {
+  display: flex;
+  justify-content: center;
+}
+
+.col-tags {
   display: flex;
   align-items: center;
+  min-width: 0;
+}
+
+.col-tags .tag-container {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, black 80%, transparent 100%);
+}
+
+.col-duration {
+  display: flex;
+  justify-content: flex-end;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.song-info-content.grid-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.song-info-content.grid-layout .song-meta {
+  display: flex;
   justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-.song-grid.list-view .song-name {
-  margin-bottom: 0;
-  width: auto;
-  max-width: 400px;
+.tag-badge {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-.song-grid.list-view .song-meta {
-  gap: 20px;
+.category-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 /* Control Dock */
@@ -571,6 +659,48 @@ h1 {
   cursor: pointer;
 }
 
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.control-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.control-btn:active {
+  transform: translateY(0);
+}
+
+.control-btn svg {
+  transition: transform 0.2s;
+}
+
+.control-btn:hover svg {
+  transform: scale(1.1);
+}
+
 .thumb-overlay {
   position: absolute;
   inset: 0;
@@ -585,6 +715,7 @@ h1 {
 
 .thumb-overlay.active {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .thumb-overlay svg {
@@ -1211,6 +1342,113 @@ input:checked + .slider:before { transform: translateX(16px); }
   justify-content: center;
   transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
   cursor: pointer;
+}
+
+.drop-box:hover, .drop-box.song-card.active {
+  border-color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* --- List Mode Layout (Premium Decor) --- */
+.song-grid.list-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.song-card.list-row {
+  flex-direction: row;
+  width: 100%;
+  height: 72px;
+  min-height: 72px;
+  align-items: center;
+  padding-right: 20px;
+  gap: 0;
+  border-radius: 12px;
+}
+
+.song-card.list-row .thumbnail {
+  width: 120px;
+  min-width: 120px;
+  height: 100%;
+  padding-top: 0;
+  border-radius: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.song-card.list-row .thumbnail img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+.song-card.list-row .song-info-content.list-layout {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+}
+
+.song-card.list-row .col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.song-card.list-row .col-info {
+  flex: 2;
+}
+
+.song-card.list-row .col-category {
+  flex: 0 0 110px;
+  align-items: center;
+}
+
+.song-card.list-row .col-tags {
+  flex: 3;
+  overflow: hidden;
+}
+
+.song-card.list-row .col-duration {
+  flex: 0 0 60px;
+  align-items: flex-end;
+}
+
+/* Tag Truncation Logic */
+.song-card.list-row .tag-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, black 80%, transparent 100%);
+}
+
+.song-card.list-row .tag-badge {
+  flex-shrink: 0;
+}
+
+.song-card.list-row .song-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-card.list-row .song-artist-badge {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-top: 2px;
 }
 
 .drop-box:hover, .drop-box.drag-over {

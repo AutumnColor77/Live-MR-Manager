@@ -3,6 +3,7 @@ use parking_lot::{Condvar, Mutex};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use rodio::source::UniformSourceIterator;
 use serde::{Deserialize, Serialize};
+use cpal::traits::{HostTrait, DeviceTrait};
 use std::collections::{VecDeque, HashSet};
 use std::fs::File;
 use std::io::BufReader;
@@ -12,61 +13,26 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::{async_runtime, Emitter, Manager, WebviewWindow, AppHandle};
 use tauri::path::BaseDirectory;
-use cpal::traits::{DeviceTrait, HostTrait};
 
 mod youtube;
 mod model_manager;
 mod vocal_remover;
+pub mod audio_player;
+
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
 use crate::vocal_remover::{InferenceEngine, WaveformRemover};
+use crate::audio_player::*;
 use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider};
+use std::io::{Read, Seek, SeekFrom};
 
-// Rodio 0.22.2 aliases for clarity:
-pub type OSStream = MixerDeviceSink;
-pub type PlaybackController = Player;
+// --- AI Engine ---
+static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SeekToArgs {
-    pub position_ms: u64,
-}
+// --- Streaming Support ---
+// Audio processing types and handlers have been moved to audio_player.rs
 
-static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
-static ROFORMER_ENGINE: Lazy<Arc<Mutex<Option<Arc<dyn InferenceEngine>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-pub(crate) static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
-
-fn sys_log(message: &str) {
-    println!("{}", message);
-    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
-        let _ = window.emit("sys-log", message.to_string());
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[allow(dead_code)]
-enum Status {
-    Pending,
-    Downloading,
-    Decoding,
-    Playing,
-    Error,
-    Finished,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PlaybackStatus {
-    status: Status,
-    message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PlaybackProgress {
-    position_ms: u64,
-    duration_ms: u64,
-}
-
+// AppState, Status, PlaybackStatus, etc. are now imported from audio_player.rs
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SongMetadata {
@@ -86,222 +52,16 @@ pub struct SongMetadata {
     pub is_mr: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AppState {
-    pub current_track: Option<String>,
-    pub pitch: f32,
-    pub tempo: f32,
-    pub volume: f32,
-    pub vocal_enabled: bool,
-    pub lyric_enabled: bool,
-    pub is_playing: bool,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            current_track: None,
-            pitch: 0.0,
-            tempo: 1.0,
-            volume: 80.0,
-            vocal_enabled: true,
-            lyric_enabled: false,
-            is_playing: false,
-        }
-    }
-}
-
-pub struct AudioHandler {
-    _stream: OSStream,
-    controller: Mutex<PlaybackController>,
-    pub state: Mutex<AppState>,
-    pub active_pitch: Arc<AtomicU32>, // bits of f32
-    pub active_tempo: Arc<AtomicU32>, // bits of f32
-    pub current_pos_samples: Arc<AtomicU64>,
-    pub total_duration_ms: Arc<AtomicU64>,
-    pub active_sample_rate: u32,
-    pub active_channels: u16,
-    pub vocal_volume: Arc<AtomicU32>, // 0-100
-    pub instrumental_volume: Arc<AtomicU32>,
-    pub playback_cv: Condvar,
-}
-
-static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
-    let stream_result = DeviceSinkBuilder::open_default_sink();
-    let stream = match stream_result {
-        Ok(s) => s,
-        Err(e) => {
-            let err_msg = format!("무료 오디오 출력을 열지 못했습니다: {}", e);
-            sys_log(&format!("[AUDIO] CRITICAL ERROR: {}", err_msg));
-            return Err(err_msg);
-        }
-    };
-    
-    // Detect system device config once:
-    let host = cpal::default_host();
-    let device = host.default_output_device();
-    let device_name = device.as_ref().and_then(|d| d.name().ok()).unwrap_or_else(|| "Unknown Device".into());
-    
-    let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
-        if let Ok(config) = d.default_output_config() {
-            (config.sample_rate().into(), config.channels())
-        } else { (44100, 2) }
-    } else { (44100, 2) };
-
-    // Safety: some virtual drivers or misconfigured devices report 0 Hz.
-    if device_rate == 0 {
-        sys_log("[AUDIO] Warning: System reported 0Hz. Falling back to 44100Hz.");
-        device_rate = 44100;
-    }
-    if device_channels == 0 {
-        device_channels = 2;
-    }
-
-    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
-    
-    let controller = Player::connect_new(&stream.mixer());
-    Ok(Arc::new(AudioHandler {
-        _stream: stream,
-        controller: Mutex::new(controller),
-        state: Mutex::new(AppState::default()),
-        active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
-        active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
-        current_pos_samples: Arc::new(AtomicU64::new(0)),
-        total_duration_ms: Arc::new(AtomicU64::new(0)),
-        active_sample_rate: device_rate,
-        active_channels: device_channels,
-        vocal_volume: Arc::new(AtomicU32::new(100)),
-        instrumental_volume: Arc::new(AtomicU32::new(100)),
-        playback_cv: Condvar::new(),
-    }))
-});
-
-struct DynamicVolumeSource<S> where S: Source<Item = f32> {
-    input: S,
-    volume: Arc<AtomicU32>,
-}
-
-impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
-    type Item = f32;
-    fn next(&mut self) -> Option<Self::Item> {
-        let s = self.input.next()?;
-        let vol = self.volume.load(Ordering::Relaxed) as f32 / 100.0;
-        Some(s * vol)
-    }
-}
-
-impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
-    fn current_span_len(&self) -> Option<usize> { self.input.current_span_len() }
-    fn channels(&self) -> NonZeroU16 { self.input.channels() }
-    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
-    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
-    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
-        self.input.try_seek(pos)
-    }
-}
-
-struct StretchedSource<S> where S: Source<Item = f32> {
-    input: S,
-    stretcher: signalsmith_stretch::Stretch, // Will be replaced/recreated if rate changes, but we use fixed rate
-    pitch: Arc<AtomicU32>,
-    tempo: Arc<AtomicU32>,
-    pos: Arc<AtomicU64>,
-    buffer: VecDeque<f32>,
-    input_channels: usize,
-}
-
-impl<S> StretchedSource<S> where S: Source<Item = f32> {
-    fn new(input: S, pitch: Arc<AtomicU32>, tempo: Arc<AtomicU32>, pos: Arc<AtomicU64>) -> Self {
-        let channels = input.channels().get() as u32;
-        let rate = input.sample_rate().get();
-        Self {
-            input,
-            stretcher: signalsmith_stretch::Stretch::preset_default(channels, rate),
-            pitch,
-            tempo,
-            pos,
-            buffer: VecDeque::new(),
-            input_channels: channels as usize,
-        }
-    }
-}
-
-impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
-    type Item = f32;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(s) = self.buffer.pop_front() {
-            // Only increment frame counter once per frame (after all channels of that frame are popped)
-            if self.buffer.len() % self.input_channels == 0 {
-                self.pos.fetch_add(1, Ordering::Relaxed);
-            }
-            return Some(s);
-        }
-
-        let pitch_semitones = f32::from_bits(self.pitch.load(Ordering::Relaxed));
-        let tempo_scale = f32::from_bits(self.tempo.load(Ordering::Relaxed));
-        
-        let pitch_factor = 2.0f32.powf(pitch_semitones / 12.0);
-        self.stretcher.set_transpose_factor(pitch_factor, None);
-
-        // signalsmith-stretch 0.1.3 expects interleaved &[f32] for inputs/outputs
-        let block_size = 1024;
-        let mut input_interleaved: Vec<f32> = Vec::with_capacity(block_size * self.input_channels);
-        for _ in 0..block_size {
-            for _ in 0..self.input_channels {
-                if let Some(s) = self.input.next() {
-                    input_interleaved.push(s);
-                }
-            }
-        }
-
-        let frames_read = input_interleaved.len() / self.input_channels;
-        if frames_read == 0 { return None; }
-
-        // Calculate output buffer size based on tempo. 
-        // 0.1.3 doesn't have output_frames_required; we use a safe estimate.
-        let output_frames_est = (frames_read as f32 / tempo_scale).ceil() as usize + 64; 
-        let mut output_interleaved = vec![0.0; output_frames_est * self.input_channels];
-        
-        // Use flat slices for 0.1.3 process method
-        self.stretcher.process(&input_interleaved, &mut output_interleaved);
-        
-        // Collect results into our dequeue for popping
-        for s in output_interleaved {
-            self.buffer.push_back(s);
-        }
-
-        self.buffer.pop_front().map(|s| {
-            if self.buffer.len() % self.input_channels == 0 {
-                self.pos.fetch_add(1, Ordering::Relaxed);
-            }
-            s
-        })
-    }
-}
-
-impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
-    fn current_span_len(&self) -> Option<usize> { None }
-    fn channels(&self) -> NonZeroU16 { NonZeroU16::new(self.input_channels as u16).unwrap() }
-    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
-    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
-    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
-        self.input.try_seek(pos)?;
-        self.buffer.clear();
-        self.stretcher.reset();
-        Ok(())
-    }
-}
-
 #[tauri::command]
-async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
-    let res = play_track_internal(window.clone(), path).await;
+async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>) -> Result<(), String> {
+    let res = play_track_internal(window.clone(), path, duration_ms).await;
     if let Err(ref e) = res {
         let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
     }
     res
 }
 
-async fn play_track_internal(window: WebviewWindow, path: String) -> Result<(), String> {
+async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hint: Option<u64>) -> Result<(), String> {
     let handler = match &*AUDIO_HANDLER {
         Ok(h) => h.clone(),
         Err(e) => return Err(e.clone()),
@@ -316,7 +76,10 @@ async fn play_track_internal(window: WebviewWindow, path: String) -> Result<(), 
         controller.clear();
     }
     handler.current_pos_samples.store(0, Ordering::Relaxed);
-    handler.total_duration_ms.store(0, Ordering::Relaxed);
+    
+    // Set initial duration from hint immediately to avoid zero-flicker
+    let initial_duration = duration_ms_hint.unwrap_or(0);
+    handler.total_duration_ms.store(initial_duration, Ordering::Relaxed);
 
     // 2. Metadata and path setup
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
@@ -367,63 +130,44 @@ async fn play_track_internal(window: WebviewWindow, path: String) -> Result<(), 
         let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
         
         let resampled_v = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_v, volume: handler.vocal_volume.clone() }, target_channels_nz, target_rate_nz);
-        let resampled_i = UniformSourceIterator::new(stretched_i, target_channels_nz, target_rate_nz);
+        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_i, volume: handler.instrumental_volume.clone() }, target_channels_nz, target_rate_nz);
 
         let mixed = resampled_i.mix(resampled_v);
         let controller = handler.controller.lock();
         controller.append(mixed);
         controller.play();
     } else {
-        // Mono source
-        let file = File::open(&play_path).map_err(|e| e.to_string())?;
-        let decoder = Decoder::new(BufReader::new(file)).map_err(|e| e.to_string())?;
+        // Mono source (or streaming)
+        let is_yt = path.starts_with("http");
+        let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e| format!("Failed to open stream: {}", e))?;
+        let decoder = Decoder::new(BufReader::new(reader)).map_err(|e| e.to_string())?;
         
         if let Some(d) = decoder.total_duration() {
             handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
         }
 
         let stretched = StretchedSource::new(decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
-        let resampled = UniformSourceIterator::new(stretched, target_channels_nz, target_rate_nz);
+        let dyn_vol = DynamicVolumeSource { input: stretched, volume: handler.vocal_volume.clone() };
+        let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
         
         let controller = handler.controller.lock();
         controller.append(resampled);
-        controller.play();
+        controller.play(); // Ensure it starts
+        println!("[AUDIO] Track appended to controller and play() called");
     }
 
-    let mut state = handler.state.lock();
-    state.current_track = Some(path.clone());
-    state.is_playing = true;
+    {
+        let mut state = handler.state.lock();
+        state.current_track = Some(path.clone());
+        state.is_playing = true;
+    }
     
     window.emit("playback-status", PlaybackStatus { status: Status::Playing, message: "Playing".into() }).unwrap();
     Ok(())
 }
 
 #[tauri::command]
-async fn set_pitch(semitones: f32) -> Result<(), String> {
-    if let Ok(handler) = &*AUDIO_HANDLER {
-        handler.active_pitch.store(semitones.to_bits(), Ordering::Relaxed);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn set_vocal_volume(volume: f32) -> Result<(), String> {
-    if let Ok(handler) = &*AUDIO_HANDLER {
-        handler.vocal_volume.store(volume as u32, Ordering::Relaxed);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn set_tempo(ratio: f32) -> Result<(), String> {
-    if let Ok(handler) = &*AUDIO_HANDLER {
-        handler.active_tempo.store(ratio.to_bits(), Ordering::Relaxed);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn set_volume(volume: f32) -> Result<(), String> {
+fn set_master_volume(volume: f32) -> Result<(), String> {
     if let Ok(handler) = &*AUDIO_HANDLER {
         let controller = handler.controller.lock();
         controller.set_volume(volume / 100.0);
@@ -448,6 +192,39 @@ async fn toggle_playback() -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn set_volume(volume: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    handler.vocal_volume.store((volume as f32).to_bits(), Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_vocal_balance(balance: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    // balance: 0 (inst only) to 100 (vocal only)
+    let b = balance as f32;
+    let v_vol = b;
+    let i_vol = 100.0 - b;
+    handler.vocal_volume.store(v_vol.to_bits(), Ordering::Relaxed);
+    handler.instrumental_volume.store(i_vol.to_bits(), Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_pitch(semitones: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    handler.active_pitch.store((semitones as f32).to_bits(), Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_tempo(ratio: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    handler.active_tempo.store((ratio as f32).to_bits(), Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
 async fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
     let controller = handler.controller.lock();
@@ -463,7 +240,7 @@ async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String>
         match feature.as_str() {
             "vocal" => {
                 state.vocal_enabled = enabled;
-                handler.vocal_volume.store(if enabled { 100 } else { 0 }, Ordering::Relaxed);
+                handler.vocal_volume.store((if enabled { 100.0f32 } else { 0.0f32 }).to_bits(), Ordering::Relaxed);
             },
             "lyric" => state.lyric_enabled = enabled,
             _ => {}
@@ -746,7 +523,7 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
     let window_clone = window.clone();
     let path_clone = path.clone();
 
-    let result = async_runtime::spawn_blocking(move || {
+    let result = async_runtime::spawn_blocking(move || -> Result<(), String> {
         let w = window_clone.clone();
         let p = path_clone.clone();
         engine.separate(&source_path, &cache_dir, Box::new(move |percentage| {
@@ -759,7 +536,8 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
                 percentage,
                 status: "Processing".into(),
             });
-        }))
+        }))?;
+        Ok(())
     }).await.map_err(|e| format!("처리 중 오류(Panic)가 발생했습니다: {}", e));
     
     // Check if what we got back is an error
@@ -859,7 +637,8 @@ pub fn run() {
             set_pitch,
             set_tempo,
             set_volume,
-            set_vocal_volume,
+            set_master_volume,
+            set_vocal_balance,
             toggle_ai_feature,
             check_mr_separated,
             start_mr_separation,

@@ -1,205 +1,328 @@
+use cpal::traits::{HostTrait, DeviceTrait};
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use serde::{Deserialize, Serialize};
 
-use rodio::source::{Source, UniformSourceIterator};
-use rodio::{Decoder, Sample, Sink};
-use parking_lot::{Condvar, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait};
+use rodio::Source;
+use parking_lot::Mutex;
 
-use crate::state::{AUDIO_HANDLER, AppState};
+// --- Status Types ---
 
-// --- Audio Handler Struct ---
-
-pub struct AudioHandler {
-    pub sink: Mutex<Sink>,
-    pub state: Mutex<AppState>,
-    pub active_pitch: Arc<AtomicU32>, // bits of f32
-    pub active_tempo: Arc<AtomicU32>, // bits of f32
-    pub current_pos_samples: Arc<AtomicU64>,
-    pub active_sample_rate: u32,
-    pub active_channels: u16,
-    pub vocal_volume: Arc<AtomicU32>,      // 0-100
-    pub instrumental_volume: Arc<AtomicU32>, // 0-100
-    pub playback_cv: Condvar,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Status {
+    Pending,
+    Downloading,
+    Decoding,
+    Playing,
+    Error,
+    Finished,
 }
 
-// --- Custom Audio Sources for Processing ---
-
-// Source for applying dynamic volume control
-pub struct DynamicVolumeSource<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
-    input: S,
-    volume: Arc<AtomicU32>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackStatus {
+    pub status: Status,
+    pub message: String,
 }
 
-impl<S> DynamicVolumeSource<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
-    pub fn new(input: S, volume: Arc<AtomicU32>) -> Self {
-        Self { input, volume }
+// --- Streaming Support ---
+
+pub struct StreamingReader {
+    pub file: File,
+    pub is_youtube: bool,
+}
+
+impl StreamingReader {
+    pub fn new(path: std::path::PathBuf, is_youtube: bool) -> std::io::Result<Self> {
+        let file = File::open(&path)?;
+        Ok(Self { file, is_youtube })
     }
 }
 
+impl Read for StreamingReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let n = self.file.read(buf)?;
+            if n > 0 {
+                // println!("[AUDIO_DEBUG] StreamingReader read {} bytes", n);
+                return Ok(n);
+            } else if self.is_youtube {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                continue;
+            } else {
+                return Ok(0);
+            }
+        }
+    }
+}
 
-impl<S> Iterator for DynamicVolumeSource<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
-    type Item = S::Item;
+impl Seek for StreamingReader {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        self.file.seek(pos)
+    }
+}
 
+// --- Custom Audio Sources ---
+
+/// Dynamic volume control source using atomic bits for f32 volume.
+pub struct DynamicVolumeSource<S> where S: Source<Item = f32> {
+    pub input: S,
+    pub volume: Arc<AtomicU32>, // bits of f32
+}
+
+impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
+    type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
-        let sample = self.input.next()?;
-        let vol = self.volume.load(Ordering::Relaxed) as f32 / 100.0;
-        Some(sample.amplify(vol))
+        let s = self.input.next()?;
+        let vol_bits = self.volume.load(Ordering::Relaxed);
+        let vol = f32::from_bits(vol_bits) / 100.0;
+        
+        // Debug: 샘플이 흘러가는지 확인 (터미널에 너무 많으면 나중에 주석 처리)
+        // if s.abs() > 0.1 { println!("[AUDIO_DEBUG] Sample Flow: {:.3}, Vol: {:.2}", s, vol); }
+        
+        Some(s * vol)
     }
 }
 
-impl<S> Source for DynamicVolumeSource<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
-    fn current_frame_len(&self) -> Option<usize> {
-        self.input.current_frame_len()
-    }
-    fn channels(&self) -> u16 {
-        self.input.channels()
-    }
-    fn sample_rate(&self) -> u32 {
-        self.input.sample_rate()
-    }
-    fn total_duration(&self) -> Option<Duration> {
-        self.input.total_duration()
+impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
+    fn current_span_len(&self) -> Option<usize> { self.input.current_span_len() }
+    fn channels(&self) -> NonZeroU16 { self.input.channels() }
+    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
+    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.input.try_seek(pos)
     }
 }
 
-
-// Source for applying real-time pitch and tempo shifting
-pub struct StretchedSource<S>
-where
-    S: Source<Item = f32>,
-{
-    input: UniformSourceIterator<S, f32>,
-    stretcher: signalsmith_stretch::Stretch,
-    pitch: Arc<AtomicU32>,
-    tempo: Arc<AtomicU32>,
-    pos_tracker: Arc<AtomicU64>,
-    output_buffer: VecDeque<f32>,
-    input_channels: usize,
+/// Source for real-time pitch and tempo shifting.
+pub struct StretchedSource<S> where S: Source<Item = f32> {
+    pub input: S,
+    pub stretcher: signalsmith_stretch::Stretch,
+    pub pitch: Arc<AtomicU32>,
+    pub tempo: Arc<AtomicU32>,
+    pub pos: Arc<AtomicU64>,
+    pub buffer: VecDeque<f32>,
+    pub input_channels: usize,
 }
 
-impl<S> StretchedSource<S>
-where
-    S: Source<Item = f32>,
-{
-    pub fn new(
-        input: S,
-        pitch: Arc<AtomicU32>,
-        tempo: Arc<AtomicU32>,
-        pos_tracker: Arc<AtomicU64>,
-    ) -> Self {
-        let channels = input.channels();
-        let sample_rate = input.sample_rate();
-
-        // The stretcher needs a fixed sample rate. We'll resample the input to it.
-        // We use UniformSourceIterator to resample and convert to f32 at the same time.
-        let resampled_input = UniformSourceIterator::new(input, channels, sample_rate);
-
+impl<S> StretchedSource<S> where S: Source<Item = f32> {
+    pub fn new(input: S, pitch: Arc<AtomicU32>, tempo: Arc<AtomicU32>, pos: Arc<AtomicU64>) -> Self {
+        let channels = input.channels().get() as u32;
+        let rate = input.sample_rate().get();
         Self {
-            input: resampled_input,
-            stretcher: signalsmith_stretch::Stretch::preset_default(channels as usize, sample_rate),
+            input,
+            stretcher: signalsmith_stretch::Stretch::preset_default(channels, rate),
             pitch,
             tempo,
-            pos_tracker,
-            output_buffer: VecDeque::new(),
+            pos,
+            buffer: VecDeque::new(),
             input_channels: channels as usize,
         }
     }
 }
 
-impl<S> Iterator for StretchedSource<S>
-where
-    S: Source<Item = f32>,
-{
+impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(sample) = self.output_buffer.pop_front() {
-            // Only increment position tracker on the first channel to count frames, not samples
-            if self.output_buffer.len() % self.input_channels == 0 {
-                 self.pos_tracker.fetch_add(1, Ordering::Relaxed);
+        // 1. Pop from buffer if available
+        if let Some(s) = self.buffer.pop_front() {
+            if self.buffer.len() % self.input_channels == 0 {
+                self.pos.fetch_add(1, Ordering::Relaxed);
             }
-            return Some(sample);
+            return Some(s);
         }
 
+        // 2. Read parameters
         let pitch_semitones = f32::from_bits(self.pitch.load(Ordering::Relaxed));
         let tempo_scale = f32::from_bits(self.tempo.load(Ordering::Relaxed));
 
-        self.stretcher.set_transpose_factor(2.0f32.powf(pitch_semitones / 12.0));
-        self.stretcher.set_rate_factor(tempo_scale);
-
-        let block_size = 1024; // Process in blocks
-        let mut input_block_interleaved: Vec<f32> = self.input.by_ref().take(block_size * self.input_channels).collect();
-        if input_block_interleaved.is_empty() {
-            return None; // End of source
-        }
-
-        let num_frames = input_block_interleaved.len() / self.input_channels;
-
-        // De-interleave for stretcher
-        let mut input_block_deinterleaved: Vec<Vec<f32>> = vec![vec![0.0; num_frames]; self.input_channels];
-        for i in 0..num_frames {
-            for c in 0..self.input_channels {
-                input_block_deinterleaved[c][i] = input_block_interleaved[i * self.input_channels + c];
-            }
-        }
-        
-        let output_frames_required = self.stretcher.output_frames_required(num_frames);
-        let mut output_block_deinterleaved = vec![vec![0.0; output_frames_required]; self.input_channels];
-        
-        self.stretcher.process(&input_block_deinterleaved, &mut output_block_deinterleaved);
-        
-        // Interleave back into the output buffer
-        for i in 0..output_frames_required {
-            for c in 0..self.input_channels {
-                self.output_buffer.push_back(output_block_deinterleaved[c][i]);
+        // 3. Read input block
+        let block_size = 1024;
+        let mut input_interleaved: Vec<f32> = Vec::with_capacity(block_size * self.input_channels);
+        for _ in 0..block_size {
+            for _ in 0..self.input_channels {
+                if let Some(s) = self.input.next() {
+                    input_interleaved.push(s);
+                }
             }
         }
 
-        self.output_buffer.pop_front().map(|sample| {
-            if self.output_buffer.len() % self.input_channels == 0 {
-                 self.pos_tracker.fetch_add(1, Ordering::Relaxed);
+        let frames_read = input_interleaved.len() / self.input_channels;
+        if frames_read == 0 { 
+            println!("[AUDIO_DEBUG] EOF reached in StretchedSource");
+            return None; 
+        }
+
+        if pitch_semitones != 0.0 || (tempo_scale - 1.0).abs() > 0.001 {
+            println!("[AUDIO_DEBUG] Processing frames: {}, Pitch: {:.2}, Tempo: {:.2}", frames_read, pitch_semitones, tempo_scale);
+        }
+
+        // 4. Processing logic
+        if pitch_semitones == 0.0 && (tempo_scale - 1.0).abs() < 0.001 {
+            // Bypass mode: 소리가 아예 안 난다면 이 루프가 문제일 수 있음
+            for s in &input_interleaved {
+                self.buffer.push_back(*s);
             }
-            sample
+            // println!("[AUDIO_DEBUG] Bypass mode: {} samples buffered", input_interleaved.len());
+        } else {
+            // Stretch mode
+            let pitch_factor = 2.0f32.powf(pitch_semitones / 12.0);
+            self.stretcher.set_transpose_factor(pitch_factor, None);
+            
+            // 안정적인 출력 버퍼 크기 계산 (충분한 공간 확보)
+            let output_frames_est = (frames_read as f32 / tempo_scale).ceil() as usize + 64;
+            let mut output_interleaved = vec![0.0; output_frames_est * self.input_channels];
+            
+            self.stretcher.process(&input_interleaved, &mut output_interleaved);
+            // println!("[AUDIO_DEBUG] Stretched block: {} -> {} frames", frames_read, output_frames_est);
+            
+            for s in output_interleaved {
+                self.buffer.push_back(s);
+            }
+        }
+
+        // 5. Return first sample from new buffer
+        self.buffer.pop_front().map(|s| {
+            if self.buffer.len() % self.input_channels == 0 {
+                self.pos.fetch_add(1, Ordering::Relaxed);
+            }
+            s
         })
     }
 }
 
-impl<S> Source for StretchedSource<S>
-where
-    S: Source<Item = f32>,
-{
-    fn current_frame_len(&self) -> Option<usize> {
-        None // We are a dynamic-length source
-    }
-    fn channels(&self) -> u16 {
-        self.input_channels as u16
-    }
-    fn sample_rate(&self) -> u32 {
-        self.input.sample_rate()
-    }
-    fn total_duration(&self) -> Option<Duration> {
-        None // Duration is dynamic due to tempo changes
+impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> NonZeroU16 { NonZeroU16::new(self.input_channels as u16).unwrap() }
+    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
+    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.input.try_seek(pos)?;
+        self.buffer.clear();
+        self.stretcher.reset();
+        Ok(())
     }
 }
+
+use once_cell::sync::Lazy;
+use tauri::{Emitter, WebviewWindow};
+use std::collections::HashSet;
+use rodio::{DeviceSinkBuilder, Player};
+
+// --- Global Statics ---
+
+pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
+pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+pub fn sys_log(message: &str) {
+    println!("{}", message);
+    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
+        let _ = window.emit("sys-log", message.to_string());
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackProgress {
+    pub position_ms: u64,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SeekToArgs {
+    pub position_ms: u64,
+}
+
+// --- App Handler Struct ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AppState {
+    pub current_track: Option<String>,
+    pub pitch: f32,
+    pub tempo: f32,
+    pub volume: f32,
+    pub vocal_enabled: bool,
+    pub lyric_enabled: bool,
+    pub is_playing: bool,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            current_track: None,
+            pitch: 0.0,
+            tempo: 1.0,
+            volume: 80.0,
+            vocal_enabled: true,
+            lyric_enabled: false,
+            is_playing: false,
+        }
+    }
+}
+
+pub type OSStream = rodio::MixerDeviceSink;
+pub type PlaybackController = rodio::Player;
+
+pub struct AudioHandler {
+    pub _stream: OSStream, // Keep alive
+    pub controller: Mutex<PlaybackController>,
+    pub state: Mutex<AppState>,
+    pub active_pitch: Arc<AtomicU32>,
+    pub active_tempo: Arc<AtomicU32>,
+    pub current_pos_samples: Arc<AtomicU64>,
+    pub total_duration_ms: Arc<AtomicU64>,
+    pub active_sample_rate: u32,
+    pub active_channels: u16,
+    pub vocal_volume: Arc<AtomicU32>, // 0-100
+    pub instrumental_volume: Arc<AtomicU32>,
+    pub playback_cv: parking_lot::Condvar,
+}
+
+pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
+    let stream_result = DeviceSinkBuilder::open_default_sink();
+    let stream = match stream_result {
+        Ok(s) => s,
+        Err(e) => {
+            let err_msg = format!("오디오 출력을 열지 못했습니다: {}", e);
+            sys_log(&format!("[AUDIO] CRITICAL ERROR: {}", err_msg));
+            return Err(err_msg);
+        }
+    };
+    
+    let host = cpal::default_host();
+    let device = host.default_output_device();
+    let device_name = device.as_ref().and_then(|d| d.name().ok()).unwrap_or_else(|| "Unknown Device".into());
+    
+    let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
+        if let Ok(config) = d.default_output_config() {
+            (u32::from(config.sample_rate()), config.channels().into())
+        } else { (44100, 2) }
+    } else { (44100, 2) };
+
+    if device_rate == 0 { device_rate = 44100; }
+    if device_channels == 0 { device_channels = 2; }
+
+    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
+    
+    let controller = Player::connect_new(&stream.mixer());
+    Ok(Arc::new(AudioHandler {
+        _stream: stream,
+        controller: Mutex::new(controller),
+        state: Mutex::new(AppState::default()),
+        active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
+        active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+        current_pos_samples: Arc::new(AtomicU64::new(0)),
+        total_duration_ms: Arc::new(AtomicU64::new(0)),
+        active_sample_rate: device_rate,
+        active_channels: device_channels,
+        vocal_volume: Arc::new(AtomicU32::new(80.0f32.to_bits())),
+        instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
+        playback_cv: parking_lot::Condvar::new(),
+    }))
+});

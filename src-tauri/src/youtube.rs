@@ -137,6 +137,8 @@ impl YoutubeManager {
                 "--progress-template",
                 "%(progress)j",
                 "--no-check-certificates",
+                "--no-part", // Use real extension immediately for streaming
+                "--buffer-size", "16K",
                 "-f", "ba",
                 "-x",
                 "--audio-format", "m4a",
@@ -151,40 +153,69 @@ impl YoutubeManager {
         let stdout = child.stdout.take().unwrap();
         let mut reader = FramedRead::new(stdout, LinesCodec::new());
         let window_clone = window.clone();
+        let dest_clone = destination.clone();
 
-        while let Some(line_result) = reader.next().await {
-            match line_result {
-                Ok(line) => {
-                    if let Ok(progress) = serde_json::from_str::<Value>(&line) {
-                        if let Some(status) = progress.get("status").and_then(|s| s.as_str()) {
-                            if status == "downloading" {
-                                let downloaded = progress.get("downloaded_bytes").and_then(|b| b.as_u64()).unwrap_or(0);
-                                let total = progress.get("total_bytes")
-                                    .or_else(|| progress.get("total_bytes_estimate"))
-                                    .and_then(|b| b.as_u64());
+        // Spawn a background task to monitor progress and wait for completion
+        tokio::spawn(async move {
+            while let Some(line_result) = reader.next().await {
+                match line_result {
+                    Ok(line) => {
+                        if let Ok(progress) = serde_json::from_str::<Value>(&line) {
+                            if let Some(status) = progress.get("status").and_then(|s| s.as_str()) {
+                                if status == "downloading" {
+                                    let downloaded = progress.get("downloaded_bytes").and_then(|b| b.as_u64()).unwrap_or(0);
+                                    let total = progress.get("total_bytes")
+                                        .or_else(|| progress.get("total_bytes_estimate"))
+                                        .and_then(|b| b.as_u64());
 
-                                let percentage = if let Some(t) = total {
-                                    (downloaded as f32 / t as f32) * 100.0
-                                } else {
-                                    0.0
-                                };
+                                    let percentage = if let Some(t) = total {
+                                        (downloaded as f32 / t as f32) * 100.0
+                                    } else {
+                                        0.0
+                                    };
 
-                                let _ = window_clone.emit("youtube-download-progress", DownloadProgress {
-                                    percentage,
-                                    current_chunk: downloaded as usize,
-                                    total_size: total,
-                                });
+                                    let _ = window_clone.emit("youtube-download-progress", DownloadProgress {
+                                        percentage,
+                                        current_chunk: downloaded as usize,
+                                        total_size: total,
+                                    });
+                                }
                             }
                         }
                     }
+                    Err(e) => println!("Error reading yt-dlp output: {}", e),
                 }
-                Err(e) => println!("Error reading yt-dlp output: {}", e),
             }
+
+            let status = child.wait().await;
+            match status {
+                Ok(s) if s.success() => {
+                    println!("yt-dlp download finished successfully: {:?}", dest_clone);
+                    let _ = window_clone.emit("youtube-download-finished", dest_clone.to_string_lossy());
+                },
+                Ok(s) => println!("yt-dlp download failed with status: {}", s),
+                Err(e) => println!("yt-dlp wait error: {}", e),
+            }
+        });
+
+        // Wait for the file to exist and have at least some bytes (for audio headers)
+        let start_wait = std::time::Instant::now();
+        let mut file_ready = false;
+        
+        while start_wait.elapsed().as_secs() < 10 {
+            if destination.exists() {
+                if let Ok(meta) = std::fs::metadata(&destination) {
+                    if meta.len() > 8192 { // Wait for 8KB (typical header size)
+                        file_ready = true;
+                        break;
+                    }
+                }
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         }
 
-        let status = child.wait().await.map_err(|e| format!("yt-dlp wait error: {}", e))?;
-        if !status.success() {
-            return Err("yt-dlp download failed".to_string());
+        if !file_ready && !destination.exists() {
+            return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
         }
 
         Ok(destination)

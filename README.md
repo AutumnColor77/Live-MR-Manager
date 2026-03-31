@@ -26,12 +26,14 @@
 ## 🚀 현재 구현된 주요 기능 (Current Features)
 
 ### 🤖 온디바이스 오디오 엔진 (DSP Engine)
+- **고성능 모듈화 아키텍처**: 오디오 처리 로직을 `audio_player.rs`로 분리하여 코드 가독성과 확장성 극대화. 전역 `AUDIO_HANDLER`를 통한 정밀한 상태 관리.
 - **실시간 Pitch/Tempo 독립 제어**: `signalsmith-stretch` 및 `Rodio 0.22.x` 기반의 고성능 오디오 파이프라인. 음질 손실 없이 `-12` ~ `+12` 반음 및 `0.5x` ~ `2.0x` 속도 조절 지원.
 - **초저지연 Passthrough**: 피치와 속도가 기본값일 때 DSP 엔진을 우회하여 레이턴시를 최소화하고 원래 음원을 그대로 재생.
 - **다중 채널 완벽 지원**: 스테레오 채널 분리 및 위상 정합 처리(Planar processing)를 통해 위상 뒤틀림 없는 사운드 재생.
 
 ### 🎥 유튜브 및 로컬 스트리밍 (Streaming & Local)
-- **yt-dlp 고도화 통합**: 백그라운드에서 실시간 유튜브 오디오 추출 및 재생. `yt-dlp` 출력 노이즈(WARNING 등) 자동 필터링 및 견고한 JSON 파싱 로직 적용.
+- **yt-dlp 고도화 통합**: 백엔드에서 실시간 유튜브 오디오 추출 및 재생. `yt-dlp` 출력 노이즈(WARNING 등) 자동 필터링 및 견고한 JSON 파싱 로직 적용.
+- **레이스 컨디션 해결 및 스트리밍 최적화**: 유튜브 첫 재생 시 파일 생성 지연 문제를 `--no-part` 옵션과 파일 준비 대기 로직으로 완벽 해결.
 - **데이터 저장소 현대화**: 기존 `Roaming` 경로의 불안정성을 해결하기 위해 **`LocalAppData`(`app_local_data_dir`)**로 라이브러리 및 AI 모델 저장소를 일원화하여 신뢰성 확보.
 - **견고한 메타데이터 수집**: 음원 파일 손상이나 네트워크 지연 시에도 에러 없이 기본 정보를 생성하여 리스트에 즉각 추가되는 무중단(Robust) 추가 로직 구현.
 - **썸네일 로컬 캐싱**: 유튜브 썸네일 차단 문제(Tracking Prevention)를 해결하기 위해 로컬 앱 데이터 폴더에 썸네일을 자동 저장하고 캐싱.
@@ -60,10 +62,10 @@
 
 | 레이어 | 명칭 | 기술 구성 및 역할 |
 | :--- | :--- | :--- |
-| **Layer 3** | **UI Layer** | React/Dashboard UI 기반 퍼포머 대시보드. Tauri Event API 연동. |
+| **Layer 3** | **UI Layer** | JavaScript/UI 컴포넌트 기반 퍼포머 대시보드. Tauri Event API 연동. |
 | **Layer 2** | **IPC Layer** | Tauri 커맨드 핸들러. Rust 기반 비동기 스트리밍 설계. |
-| **Layer 1** | **Audio Engine** | **Rodio 0.22 (Low-level playback control)**. Cpal 오디오 드라이버 연동. |
-| **Layer 0** | **DSP Engine** | **signalsmith-stretch** (Rust optimized). 실시간 샘플 도메인 오디오 변환. |
+| **Layer 1** | **Audio Engine** | **audio_player.rs (Modularized Engine)**. Rodio 0.22 기반 저수준 제어. |
+| **Layer 0** | **DSP Engine** | **signalsmith-stretch 0.1.3**. 실시간 샘플 도메인 오디오 변환. |
 
 ---
 
