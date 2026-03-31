@@ -52,20 +52,18 @@
     <main class="viewport">
       <header class="top-bar">
         <div class="view-header">
-          <h1 id="view-title">Music Library</h1>
-          <div class="stream-timer">
-            <span class="timer-dot"></span>
-            <span id="stream-time">00:00:00</span>
+          <div class="title-row">
+            <h1 id="view-title">Music Library</h1>
+            <div class="view-controls">
+              <button class="view-btn active" id="view-grid" title="Grid View">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zM13 3h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>
+              </button>
+              <button class="view-btn" id="view-list" title="List View">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 4h18v2H3V4zm0 10h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+              </button>
+            </div>
           </div>
-        </div>
-        
-        <div class="view-controls">
-          <button class="view-btn active" id="view-grid" title="Grid View">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zM13 3h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>
-          </button>
-          <button class="view-btn" id="view-list" title="List View">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
-          </button>
+          </div>
         </div>
 
 
@@ -78,8 +76,11 @@
       <div class="scroll-area">
         <!-- 유튜브 입력 섹션 -->
         <section class="search-section" id="youtube-search">
-          <div class="search-glass">
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input" />
+          <div class="yt-search-container">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input" />
+            </div>
             <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
           </div>
         </section>
@@ -158,6 +159,7 @@
                     <span id="ai-model-status" class="status-badge status-offline">상태 확인 중...</span>
                   </div>
                   <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
+                  <button id="btn-open-cache" class="btn-ai-action secondary">저장 폴더 열기</button>
                 </div>
                 <div class="ai-model-desc">
                   고품질 보컬/반주 분리를 위해 약 300MB의 AI 모델 파일이 필요합니다.
@@ -319,14 +321,10 @@
             <label>태그 (쉼표로 구분)</label>
             <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브">
           </div>
-          <div class="input-group">
-            <label>썸네일 URL</label>
-            <input type="text" id="edit-thumb">
-          </div>
         </div>
         <footer class="modal-footer">
           <button class="secondary-btn" id="modal-cancel">취소</button>
-          <button class="primary-btn" id="modal-save">변경사항 저장</button>
+          <button class="primary-btn" id="modal-save">저장</button>
         </footer>
       </div>
     </div>

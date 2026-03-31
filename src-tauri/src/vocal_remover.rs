@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use ort::session::Session;
 use ort::value::Value;
-use ort::Error;
 use ndarray::{self, Array3};
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -120,10 +119,13 @@ impl InferenceEngine for WaveformRemover {
                     self.tensor_to_vec_2d(&i_mag_tensor.1, &i_mag_tensor.0)
                 } else {
                     // Fallback: If only vocal is provided, compute instrumental as (Original - Vocal)
-                    // For magnitude-based masks, this is often: Inst_Mag = Original_Mag - Vocal_Mag
-                    let mut diff_mag = vec![vec![0.0f32; CHUNK_FRAMES]; 801];
-                    for f in 0..CHUNK_FRAMES {
-                        for b in 0..801 {
+                    let current_bins = v_mag.len();
+                    let current_frames = if current_bins > 0 { v_mag[0].len() } else { 0 };
+                    
+                    let mut diff_mag = vec![vec![0.0f32; current_frames]; current_bins];
+                    for f in 0..std::cmp::min(current_frames, mag.len()) {
+                        for b in 0..std::cmp::min(current_bins, if mag.len() > 0 { mag[0].len() } else { 0 }) {
+                            // Note: mag is [Frames][Bins], v_mag is [Bins][Frames]
                             diff_mag[b][f] = (mag[f][b] - v_mag[b][f]).max(0.0);
                         }
                     }
@@ -167,11 +169,9 @@ impl WaveformRemover {
         let mut reader = hound::WavReader::open(path).map_err(|e| format!("Failed to open WAV: {}", e))?;
         let spec = reader.spec();
         
-        // We force 2 channels (Stereo)
         let mut channels = vec![vec![]; 2];
         let original_channels = spec.channels as usize;
 
-        // Load all samples with correct bit-depth handling and NO unwrap()
         let raw_samples: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
             (hound::SampleFormat::Int, 16) => {
                 reader.samples::<i16>()
@@ -180,14 +180,12 @@ impl WaveformRemover {
                     .map_err(|e| format!("16비트 오디오 읽기 실패: {}", e))?
             },
             (hound::SampleFormat::Int, 24) => {
-                // 24-bit is read as i32, and range is [-2^23, 2^23-1]
                 reader.samples::<i32>()
                     .map(|s| s.map(|v| v as f32 / 8388608.0))
                     .collect::<Result<Vec<f32>, _>>()
                     .map_err(|e| format!("24비트 오디오 읽기 실패: {}", e))?
             },
             (hound::SampleFormat::Int, 32) => {
-                // 32-bit range is [-2^31, 2^31-1]
                 reader.samples::<i32>()
                     .map(|s| s.map(|v| v as f32 / 2147483648.0))
                     .collect::<Result<Vec<f32>, _>>()
@@ -211,11 +209,9 @@ impl WaveformRemover {
             }
         }
 
-        // Handle Mono to Stereo conversion
         if original_channels == 1 {
             channels[1] = channels[0].clone();
         } else if channels[1].is_empty() && !channels[0].is_empty() {
-            // Safety in case channel count was somehow 1 but reported differently
             channels[1] = channels[0].clone();
         }
 
@@ -223,14 +219,40 @@ impl WaveformRemover {
     }
 
     fn tensor_to_vec_2d(&self, data: &[f32], shape: &[i64]) -> Vec<Vec<f32>> {
-        // Assume shape [1, Bins, Frames]
-        let n_bins = shape[1] as usize;
-        let n_frames = shape[2] as usize;
-        let mut result = vec![vec![0.0; n_frames]; n_bins];
+        let is_complex = shape.last().map(|&s| s == 2).unwrap_or(false);
+        let n_dims = shape.len();
         
-        for b in 0..n_bins {
-            for f in 0..n_frames {
-                result[b][f] = data[b * n_frames + f];
+        let (n_bins, n_frames) = if is_complex && n_dims >= 3 {
+            (shape[n_dims - 3] as usize, shape[n_dims - 2] as usize)
+        } else if n_dims >= 2 {
+            (shape[n_dims - 2] as usize, shape[n_dims - 1] as usize)
+        } else {
+            return Vec::new();
+        };
+
+        sys_log(&format!("DEBUG: Interpreting tensor: {} bins, {} frames (Complex: {})", n_bins, n_frames, is_complex));
+
+        let mut result = vec![vec![0.0; n_frames]; n_bins];
+        if is_complex {
+            for b in 0..n_bins {
+                for f in 0..n_frames {
+                    let re_idx = (b * n_frames + f) * 2;
+                    let im_idx = re_idx + 1;
+                    if im_idx < data.len() {
+                        let re = data[re_idx];
+                        let im = data[im_idx];
+                        result[b][f] = (re * re + im * im).sqrt();
+                    }
+                }
+            }
+        } else {
+            for b in 0..n_bins {
+                for f in 0..n_frames {
+                    let idx = b * n_frames + f;
+                    if idx < data.len() {
+                        result[b][f] = data[idx];
+                    }
+                }
             }
         }
         result
@@ -245,7 +267,6 @@ impl WaveformRemover {
         let mut magnitudes = vec![vec![0.0f32; n_bins]; n_frames];
         let mut phases = vec![vec![0.0f32; n_bins]; n_frames];
         
-        // Hanning window
         let window: Vec<f32> = (0..n_fft).map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (n_fft - 1) as f32).cos())).collect();
 
         for f in 0..n_frames {
@@ -271,7 +292,8 @@ impl WaveformRemover {
     fn istft(&self, magnitude: &Vec<Vec<f32>>, phase: &Vec<Vec<f32>>, n_fft: usize, hop_length: usize) -> Vec<f32> {
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_inverse(n_fft);
-        let n_bins = magnitude.len(); // magnitude is [Bins][Frames] -> wait, I need [Frames][Bins]
+        if magnitude.is_empty() { return Vec::new(); }
+        let n_bins = magnitude.len();
         let n_frames = magnitude[0].len();
         
         let output_len = n_frames * hop_length + n_fft;
@@ -283,11 +305,10 @@ impl WaveformRemover {
         for f in 0..n_frames {
             let mut input: Vec<Complex<f32>> = (0..n_fft).map(|i| {
                 if i < n_bins {
-                    Complex::from_polar(magnitude[i][f], phase[f][i]) // magnitude is [Bins, Frames], phase is [Frames, Bins]
+                    Complex::from_polar(magnitude[i][f], if f < phase.len() && i < phase[0].len() { phase[f][i] } else { 0.0 })
                 } else if i > 0 && n_fft - i < n_bins {
-                    // Conjugate symmetry for real-to-complex FFT
                     let b = n_fft - i;
-                    Complex::from_polar(magnitude[b][f], phase[f][b]).conj()
+                    Complex::from_polar(magnitude[b][f], if f < phase.len() && b < phase[0].len() { phase[f][b] } else { 0.0 }).conj()
                 } else {
                     Complex::new(0.0, 0.0)
                 }
@@ -302,13 +323,11 @@ impl WaveformRemover {
             }
         }
         
-        // Normalize by window sum
         for i in 0..output_len {
             if window_sum[i] > 1e-6 {
                 samples[i] /= window_sum[i];
             }
         }
-        
         samples
     }
 
