@@ -1,30 +1,30 @@
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-// DOM Elements
-let ytUrlInput, ytFetchBtn, viewTitle, youtubeSearchSection, songGrid;
-let localDropSection, localDropBox;
+// --- DOM Elements ---
+let ytUrlInput, ytFetchBtn, viewTitle, youtubeSection, songGrid;
+let localSection, localDropBox;
 let dockTitle, dockArtist, dockThumb;
 let pitchSlider, tempoSlider, pitchVal, tempoVal;
 let playbackBar, progressFill, timeCurrent, timeTotal;
 let toggleVocal, toggleLyric;
 let thumbOverlay, contextMenu, menuPlay, menuSeparate, menuEdit, menuDelete;
 let libraryControls, libSearchInput, libCategoryFilter, libSortSelect;
-let metadataModal, editTitle, editArtist, editCategorySelect, editCategoryCustom, editTags, editThumb, modalSave;
+let metadataModal, editTitle, editArtist, editCategorySelect, editCategoryCustom, editTags, modalSave;
 let confirmModal, confirmTitle, confirmMessage, confirmOk, confirmCancel, confirmCloseIcon;
-let editingSongIndex = -1;
-let isSeparating = false;
-let streamStartTime, streamTimerInterval;
-let activeTasks = {}; // path -> { title, percentage, status }
 
-// Playback State
-let isMuted = false;
-let prevVolume = 80;
+// --- Global State ---
+let songLibrary = [];
+let currentTrack = null;
 let isPlaying = false;
 let isLoading = false;
 let isAiModelReady = false;
-let currentTrack = null;
-let isSeeking = false;
+let isSeparating = false;
+let editingSongIndex = -1;
+let viewMode = localStorage.getItem("viewMode") || "grid";
+let isMuted = false;
+let prevVolume = 80;
+let activeTasks = {}; // path -> { title, percentage, status }
 
 // Interpolation State
 let targetProgressMs = 0;
@@ -32,27 +32,48 @@ let currentProgressMs = 0;
 let trackDurationMs = 1;
 let rafId = null;
 let lastRafTime = 0;
+let isSeeking = false;
 
-// Library State
-let songLibrary = [];
-let viewMode = localStorage.getItem("viewMode") || "grid";
+const DEFAULT_CATEGORIES = [
+  { val: "pop", text: "POP" },
+  { val: "ballad", text: "발라드" },
+  { val: "dance", text: "댄스" },
+  { val: "rock", text: "락/메탈" },
+  { val: "jpop", text: "J-POP" },
+  { val: "kpop", text: "K-POP" }
+];
 
+// --- Core Backend Functions ---
 async function loadLibrary() {
   try {
+    console.log("[UI] Loading library from backend...");
     const songs = await invoke("load_library");
-    songLibrary = songs;
+    songLibrary = Array.isArray(songs) ? songs : [];
+    console.log(`[UI] Loaded ${songLibrary.length} songs.`);
+    updateCategoryDropdowns();
     renderLibrary();
   } catch (err) {
     console.error("Failed to load library:", err);
+    showNotification("라이브러리를 불러오는데 실패했습니다.", "error");
   }
 }
 
 async function saveLibrary() {
   try {
     await invoke("save_library", { songs: songLibrary });
+    console.log("[UI] Library saved to backend.");
   } catch (err) {
     console.error("Failed to save library:", err);
+    showNotification("라이브러리 저장 실패", "error");
   }
+}
+
+function addToLibrary(song) {
+  if (!song.dateAdded) song.dateAdded = Date.now();
+  songLibrary.push(song);
+  saveLibrary();
+  updateCategoryDropdowns();
+  renderLibrary();
 }
 
 async function checkAiModelStatus() {
@@ -65,839 +86,90 @@ async function checkAiModelStatus() {
 }
 
 function updateAiUI() {
-  const statusIdx = document.getElementById("ai-model-status");
+  const statusBadge = document.getElementById("ai-model-status") || document.querySelector(".status-indicator");
   const downloadBtn = document.getElementById("btn-download-model");
-  const vocalToggle = document.getElementById("toggle-vocal");
-  const menuSeparate = document.getElementById("menu-separate");
-
+  
   if (isAiModelReady) {
-    if (statusIdx) {
-      statusIdx.textContent = "READY";
-      statusIdx.className = "status-badge status-online";
+    if (statusBadge) {
+      statusBadge.textContent = "READY";
+      statusBadge.className = "status-badge status-online";
     }
     if (downloadBtn) {
       downloadBtn.textContent = "모델 재설치";
       downloadBtn.disabled = false;
     }
-    if (vocalToggle) vocalToggle.disabled = false;
-    if (menuSeparate) menuSeparate.classList.remove("disabled");
   } else {
-    if (statusIdx) {
-      statusIdx.textContent = "REQUIRED";
-      statusIdx.className = "status-badge status-offline";
+    if (statusBadge) {
+      statusBadge.textContent = "REQUIRED";
+      statusBadge.className = "status-badge status-offline";
     }
     if (downloadBtn) {
       downloadBtn.textContent = "모델 다운로드";
       downloadBtn.disabled = false;
     }
-    if (vocalToggle) vocalToggle.disabled = true;
-    if (menuSeparate) menuSeparate.classList.add("disabled");
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  // Primary Elements
-  ytUrlInput = document.querySelector("#yt-url-input");
-  ytFetchBtn = document.querySelector("#yt-fetch-btn");
-  viewTitle = document.querySelector("#view-title");
+// --- UI Rendering ---
+function renderLibrary() {
+  if (!songGrid) return;
+  songGrid.innerHTML = "";
   
-  // Sections
-  youtubeSearchSection = document.querySelector("#youtube-search");
-  localDropSection = document.querySelector("#local-drop-section");
-  localDropBox = document.querySelector("#local-drop-box");
-  songGrid = document.querySelector("#song-grid");
-
-  // Dock Elements
-  dockTitle = document.querySelector("#dock-title");
-  dockArtist = document.querySelector("#dock-artist");
-  dockThumb = document.querySelector("#dock-thumb");
-
-  // Audio Control Elements
-  pitchSlider = document.querySelector("#pitch-slider");
-  tempoSlider = document.querySelector("#tempo-slider");
-  pitchVal = document.querySelector("#pitch-val");
-  tempoVal = document.querySelector("#tempo-val");
-  
-  playbackBar = document.querySelector("#playback-bar");
-  progressFill = document.querySelector("#progress-fill");
-  timeCurrent = document.querySelector("#time-current");
-  timeTotal = document.querySelector("#time-total");
-  // Dock Elements Initialized (No Play Button)
-
-  // AI Toggles
-  toggleVocal = document.querySelector("#toggle-vocal");
-  toggleLyric = document.querySelector("#toggle-lyric");
-
-  // New Elements
-  thumbOverlay = document.querySelector("#thumb-overlay");
-  contextMenu = document.querySelector("#context-menu");
-  menuPlay = document.querySelector("#menu-play");
-  menuSeparate = document.querySelector("#menu-separate");
-  menuEdit = document.querySelector("#menu-edit");
-  menuDelete = document.querySelector("#menu-delete");
-
-  // Library Controls
-  libraryControls = document.querySelector("#library-controls");
-  libSearchInput = document.querySelector("#lib-search-input");
-  libCategoryFilter = document.querySelector("#lib-category-filter");
-  libSortSelect = document.querySelector("#lib-sort-select");
-
-  // Metadata Modal
-  metadataModal = document.querySelector("#metadata-modal");
-  editTitle = document.querySelector("#edit-title");
-  editArtist = document.querySelector("#edit-artist");
-  editCategorySelect = document.querySelector("#edit-category-select");
-  editCategoryCustom = document.querySelector("#edit-category-custom");
-  editTags = document.querySelector("#edit-tags");
-  editThumb = document.querySelector("#edit-thumb");
-  modalSave = document.querySelector("#modal-save");
-
-  initEventListeners();
-  initDragAndDrop();
-  initNativeFileDrop();
-  initPlaybackStatusListener();
-  initSystemLogListener();
-  initContextMenu();
-  initCustomDropdowns();
-  initModalListeners();
-  initConfirmModalListeners();
-  initViewToggle();
-  initAiModelControls(); // AI 모델 관리 리스너 초기화
-  switchTab("library");
-  startStreamingTimer();
-  
-  // Load saved library on startup
-  loadLibrary();
-  checkAiModelStatus();
-
-  // Check AI Runtime Environment
-  invoke("check_ai_runtime")
-    .then(providers => {
-      console.log("%c[AI-RUNTIME] Available Accelerators:", "color: #00ffcc; font-weight: bold;", providers);
-      if (providers.some(p => p.includes("GPU"))) {
-        console.log("%c[AI-RUNTIME] GPU Acceleration is ENABLED.", "color: #00ff00;");
-      } else {
-        console.log("%c[AI-RUNTIME] Running on CPU only. Performance might be limited during separation.", "color: #ff9d00;");
-      }
-    })
-    .catch(err => console.error("AI Runtime check failed:", err));
-});
-
-function initEventListeners() {
-  // Tab Navigation
-  document.querySelectorAll(".nav-item").forEach(item => {
-    item.addEventListener("click", () => {
-      const tabId = item.id.replace("nav-", "");
-      switchTab(tabId);
-      
-      document.querySelectorAll(".nav-item").forEach(i => i.classList.remove("active"));
-      item.classList.add("active");
-    });
-  });
-
-  // YouTube Fetch
-  ytFetchBtn.addEventListener("click", async () => {
-    const url = ytUrlInput.value.trim();
-    if (!url) return;
-
-    ytFetchBtn.disabled = true;
-    ytFetchBtn.textContent = "Processing...";
-
-    try {
-      const metadata = await invoke("get_youtube_metadata", { url });
-      addToLibrary(metadata);
-      showNotification("곡이 추가되었습니다", "success");
-      ytUrlInput.value = "";
-      await checkAiModelStatus();
-    } catch (error) {
-      console.error("Fetch failed:", error);
-      showNotification("유튜브 정보를 가져오는데 실패했습니다", "error");
-    } finally {
-      ytFetchBtn.disabled = false;
-      ytFetchBtn.textContent = "정보 가져오기";
-    }
-  });
-
-  // Library Controls Events
-  libSearchInput.addEventListener("input", renderLibrary);
-  libCategoryFilter.addEventListener("change", renderLibrary);
-  libSortSelect.addEventListener("change", renderLibrary);
-
-// Playback Controls
-  // Playback Controls (Thumbnail Toggle Remains)
-  dockThumb.addEventListener("click", handlePlaybackToggle);
-
-  // Real-time Audio Controls Visual Feedback
-  pitchSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    pitchVal.textContent = val > 0 ? `+${val}` : val;
-    updatePitch(val);
-  });
-
-  tempoSlider.addEventListener("input", (e) => {
-    const val = parseFloat(e.target.value).toFixed(2);
-    tempoVal.textContent = `${val}x`;
-    updateTempo(val);
-  });
-
-  // Direct Input Support (Inline editing on click)
-  const enableDirectInput = (element, slider, unit, min, max, isFloat, formatter) => {
-    element.addEventListener("click", () => {
-      if (element.classList.contains("editing")) return;
-      
-      const originalText = element.textContent;
-      const originalValue = slider.value;
-      
-      element.classList.add("editing");
-      element.contentEditable = true;
-      element.focus();
-      
-      // Select all text
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-
-      const finishEdit = (commit) => {
-        element.contentEditable = false;
-        element.classList.remove("editing");
-        
-        if (!commit) {
-          element.textContent = originalText;
-          return;
-        }
-
-        let rawVal = element.textContent.replace(unit, "").replace("+", "").trim();
-        let val = isFloat ? parseFloat(rawVal) : parseInt(rawVal);
-
-        if (!isNaN(val) && val >= min && val <= max) {
-          slider.value = val;
-          element.textContent = formatter ? formatter(val) : val;
-          if (unit === "x") updateTempo(val);
-          else updatePitch(val);
-        } else {
-          showNotification(`유효한 범위(${min} ~ ${max})를 입력해주세요.`, "error");
-          element.textContent = originalText;
-        }
-      };
-
-      const handleKey = (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          element.removeEventListener("keydown", handleKey);
-          finishEdit(true);
-        } else if (e.key === "Escape") {
-          element.removeEventListener("keydown", handleKey);
-          finishEdit(false);
-        }
-      };
-
-      element.addEventListener("keydown", handleKey);
-
-      element.addEventListener("blur", () => {
-        finishEdit(true);
-      }, { once: true });
-    });
-  };
-
-  enableDirectInput(pitchVal, pitchSlider, "", -12, 12, false, (v) => v > 0 ? `+${v}` : v);
-  enableDirectInput(tempoVal, tempoSlider, "x", 0.5, 1.5, true, (v) => `${parseFloat(v).toFixed(2)}x`);
-
-  toggleVocal.addEventListener("change", (e) => {
-    invoke("toggle_ai_feature", { feature: "vocal", enabled: e.target.checked });
-  });
-  
-  toggleLyric.addEventListener("change", (e) => {
-    invoke("toggle_ai_feature", { feature: "lyric", enabled: e.target.checked });
-  });
-
-  // Volume Control
-  const volSlider = document.querySelector(".volume-slider");
-  const volIcon = document.querySelector(".icon-volume");
-
-  volSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    updateVolume(val);
-    
-    if (val > 0 && isMuted) {
-      isMuted = false;
-      volIcon.classList.remove("muted");
-    } else if (val === 0 && !isMuted) {
-      isMuted = true;
-      volIcon.classList.add("muted");
-    }
-  });
-
-  volIcon.addEventListener("click", () => {
-    isMuted = !isMuted;
-    
-    if (isMuted) {
-      prevVolume = parseInt(volSlider.value);
-      volSlider.value = 0;
-      volIcon.classList.add("muted");
-      console.log("Audio Muted");
-    } else {
-      volSlider.value = prevVolume > 0 ? prevVolume : 80;
-      volIcon.classList.remove("muted");
-      console.log(`Audio Unmuted: ${volSlider.value}%`);
-    }
-  });
-
-
-  // Playback Bar Seeking
-  playbackBar.addEventListener("input", (e) => {
-    isSeeking = true;
-    const val = e.target.value;
-    progressFill.style.width = `${val}%`;
-  });
-
-  playbackBar.addEventListener("change", async (e) => {
-    const val = e.target.value;
-    const duration = parseFloat(playbackBar.dataset.durationMs || 0);
-    const seekMs = (val / 100) * duration;
-    
-    try {
-      await invoke("seek_to", { positionMs: Math.floor(seekMs) });
-    } catch (err) {
-      console.error("Seek failed:", err);
-    } finally {
-      isSeeking = false;
-    }
-  });
-
-  // Track settings sync to library
-  const syncSettings = () => {
-    if (currentTrack) {
-      const storedSong = songLibrary.find(s => s.path === currentTrack.path);
-      if (storedSong) {
-        storedSong.pitch = parseInt(pitchSlider.value);
-        storedSong.tempo = parseFloat(tempoSlider.value);
-        storedSong.volume = parseInt(document.querySelector(".volume-slider").value);
-        saveLibrary();
-      }
-    }
-  };
-
-  pitchSlider.addEventListener("change", syncSettings);
-  tempoSlider.addEventListener("change", syncSettings);
-  document.querySelector(".volume-slider").addEventListener("change", syncSettings);
-
-  // Global click to close custom selects
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".custom-select")) {
-      document.querySelectorAll(".custom-select").forEach(s => s.classList.remove("active"));
-    }
-  });
-}
-
-// Playback Control Functions
-async function handlePlaybackToggle() {
-  if (!currentTrack) {
-    showNotification("재생할 곡이 선택되지 않았습니다.", "info");
-    return;
-  }
-  try {
-    const newIsPlaying = await invoke("toggle_playback");
-    isPlaying = newIsPlaying;
-    isLoading = false; // Toggle is usually instant
-    updateThumbnailOverlay();
-    await checkAiModelStatus();
-    
-    if (isPlaying && !rafId) {
-      lastRafTime = performance.now();
-      rafId = requestAnimationFrame(updateProgressBar);
-    } else if (!isPlaying && rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-
-    showNotification(isPlaying ? "재생을 재개합니다" : "재생이 일시정지되었습니다", "info");
-  } catch (error) {
-    console.error("Playback toggle failed:", error);
-    showNotification("재생에 실패했습니다", "error");
-  }
-}
-
-function updateThumbnailOverlay() {
-  const isCurrentActive = !!currentTrack;
-
-  // Update Dock Overlay
-  thumbOverlay.classList.remove("loading", "playing", "paused", "active");
-  if (isCurrentActive) {
-    if (isLoading) {
-      thumbOverlay.classList.add("active", "loading");
-    } else if (!isPlaying) {
-      thumbOverlay.classList.add("active", "paused");
-    }
-    // No "playing" state for dock as requested (hide during play)
-  }
-
-  // Update Grid Card Indicators
-  document.querySelectorAll(".song-card").forEach(card => {
-    const overlay = card.querySelector(".thumb-overlay");
-    if (overlay) {
-      overlay.classList.remove("loading", "playing", "paused", "active");
-      if (isCurrentActive && card.dataset.path === currentTrack.path) {
-        overlay.classList.add("active");
-        if (isLoading) {
-          overlay.classList.add("loading");
-        } else if (isPlaying) {
-          overlay.classList.add("playing");
-        } else {
-          overlay.classList.add("paused");
-        }
-      }
-    }
-  });
-}
-
-function initContextMenu() {
-  let targetSong = null;
-  let targetCard = null;
-
-  // Global click to hide
-  document.addEventListener("click", () => {
-    contextMenu.style.display = "none";
-  });
-
-  menuPlay.addEventListener("click", () => {
-    if (targetSong) selectTrack(targetSong);
-  });
-
-  menuDelete.addEventListener("click", () => {
-    if (targetCard) {
-      targetCard.remove();
-      showNotification("곡이 삭제되었습니다", "success");
-    }
-  });
-
-  window.showSongContextMenu = (e, song, card) => {
-    e.preventDefault();
-    targetSong = song;
-    targetCard = card;
-
-    contextMenu.style.display = "flex";
-    contextMenu.style.left = `${e.clientX}px`;
-    contextMenu.style.top = `${e.clientY}px`;
-  };
-}
-
-// updatePlayPauseButton removed as the button was removed from UI
-
-
-// Global invocation helpers for real-time controls
-function updatePitch(val) {
-  invoke("set_pitch", { semitones: parseFloat(val) }).catch(console.error);
-}
-
-function updateTempo(val) {
-  invoke("set_tempo", { ratio: parseFloat(val) }).catch(console.error);
-}
-
-function updateVolume(val) {
-  invoke("set_volume", { volume: parseFloat(val) }).catch(console.error);
-}
-
-function initDragAndDrop() {
-  if (!localDropBox) return;
-
-  localDropBox.addEventListener("dragenter", (e) => {
-    e.preventDefault();
-    localDropBox.classList.add("drag-over");
-  });
-
-  localDropBox.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    localDropBox.classList.add("drag-over");
-  });
-
-  localDropBox.addEventListener("dragleave", (e) => {
-    e.preventDefault();
-    localDropBox.classList.remove("drag-over");
-  });
-
-  localDropBox.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    localDropBox.classList.remove("drag-over");
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      processDroppedFiles(files);
-    }
-  });
-
-  // 클릭 시 파일 선택창 열기 (플러스 알파)
-  localDropBox.addEventListener("click", () => {
-    // Tauri 파일 다이얼로그 연동 가능
-    console.log("Drop box clicked - Open file picker");
-  });
-}
-
-async function initNativeFileDrop() {
-  await listen("tauri://drag-drop", (event) => {
-    // In Tauri 2, the payload contains a 'paths' array
-    const paths = event.payload.paths;
-    if (paths && Array.isArray(paths)) {
-      paths.forEach(path => {
-        // Ext name check (simple)
-        const ext = path.split('.').pop().toLowerCase();
-        if (["mp3", "wav", "flac", "m4a"].includes(ext)) {
-          const fileName = path.split(/[\\/]/).pop();
-          
-          // 백엔드에서 안정적으로 메타데이터를 가져오거나 기본값을 반환함
-          invoke("get_audio_metadata", { path: path })
-            .then(metadata => {
-              addToLibrary(metadata);
-              showNotification("곡이 추가되었습니다", "success");
-            })
-            .catch(err => {
-              console.warn("Unexpected backend error for audio metadata:", err);
-              addToLibrary({
-                title: fileName,
-                path: path,
-                thumbnail: "",
-                duration: "0:00",
-                source: "local"
-              });
-              showNotification("곡이 추가되었습니다", "success");
-            });
-        }
-      });
-    }
-  });
-}
-
-async function initSystemLogListener() {
-  await listen("sys-log", (event) => {
-    const message = event.payload;
-    console.log(`%c[SYSTEM-LOG] %c${message}`, "color: #ff9d00; font-weight: bold;", "color: white;");
-    
-    // 치명적 에러인 경우 사용자에게 알림
-    if (message.includes("CRITICAL ERROR") || message.includes("Failed to open audio output")) {
-      showNotification(message, "error");
-    }
-  });
-}
-
-async function initPlaybackStatusListener() {
-  await listen("playback-status", (event) => {
-    const { status, message } = event.payload;
-    console.log(`[Playback Status] ${status}: ${message}`);
-    
-    let type = "info";
-    let icon = "ℹ️";
-    
-    if (status === "Error") {
-      type = "error";
-      icon = "❌";
-    } else if (status === "Playing") {
-      type = "success";
-      icon = "🎵";
-    } else if (status === "Downloading") {
-      type = "info";
-      icon = "📥";
-    }
-
-    if (message.toLowerCase() === "playback started") {
-      showNotification("재생을 시작합니다", "success");
-    } else if (status === "Error") {
-      showNotification("재생에 실패했습니다", "error");
-    }
-    
-    // Update Dock UI according to status
-    if (status === "Playing") {
-      isPlaying = true;
-      isLoading = false;
-      updateThumbnailOverlay();
-      if (currentTrack) {
-        dockTitle.textContent = currentTrack.title;
-      }
-      if (!rafId) {
-        lastRafTime = performance.now();
-        rafId = requestAnimationFrame(updateProgressBar);
-      }
-    } else if (status === "Downloading" || status === "Decoding") {
-      isLoading = true;
-      updateThumbnailOverlay();
-    } else if (status === "Error" || status === "Stopped" || status === "Finished" || status === "Playing") {
-      isPlaying = false;
-      isLoading = false;
-      updateThumbnailOverlay();
-      
-      // Hide model download overlay if it was showing
-      const modelOverlay = document.getElementById("model-download-overlay");
-      if (modelOverlay) modelOverlay.style.display = "none";
-
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-    }
-  });
-
-  let lastSavedDuration = "";
-  await listen("playback-progress", (event) => {
-    let { positionMs, durationMs } = event.payload;
-    if (!durationMs || isNaN(durationMs) || durationMs <= 0) durationMs = 1;
-    if (isNaN(positionMs) || positionMs < 0) positionMs = 0;
-
-    targetProgressMs = positionMs;
-    trackDurationMs = durationMs;
-    playbackBar.dataset.durationMs = durationMs;
-
-    // 실시간 메타데이터 보정: 곡의 실제 시간 정보가 수집되면 1회에 한해 저장
-    if (currentTrack && durationMs > 1000) {
-      const formatted = formatTime(durationMs / 1000);
-      const needsUpdate = !currentTrack.duration || 
-                          currentTrack.duration === "-" || 
-                          currentTrack.duration === "--:--" || 
-                          currentTrack.duration === "0:00";
-      
-      if (needsUpdate && formatted !== "0:00" && formatted !== lastSavedDuration) {
-        currentTrack.duration = formatted;
-        timeTotal.textContent = formatted;
-        lastSavedDuration = formatted;
-        
-        console.log(`[UI] Updating duration for '${currentTrack.title}': ${formatted}`);
-        saveLibrary();
-        renderLibrary();
-      }
-    }
-  });
-
-  await listen("model-download-progress", (event) => {
-    const percentage = event.payload;
-    const overlay = document.getElementById("model-download-overlay");
-    const bar = document.getElementById("model-download-bar");
-    const text = document.getElementById("model-download-percent");
-    
-    if (overlay && bar && text) {
-      overlay.style.display = "flex";
-      bar.style.width = `${percentage}%`;
-      text.textContent = `${Math.round(percentage)}%`;
-    }
-  });
-
-  await listen("separation-progress", (event) => {
-    const { path, percentage, status } = event.payload;
-    updateTaskProgress(path, percentage, status);
-  });
-}
-
-function updateTaskProgress(path, percentage, status) {
-  const fileName = path.split(/[\\/]/).pop();
-  
-  if (!activeTasks[path]) {
-    activeTasks[path] = { title: fileName, percentage: 0, status: "Starting" };
-  }
-  
-  activeTasks[path].percentage = percentage;
-  activeTasks[path].status = status;
-
-  if (status === "Finished") {
-    // Keep it on the list for a short while so user sees 100%
-    setTimeout(() => {
-      delete activeTasks[path];
-      renderTasks();
-      updateTaskBadge();
-    }, 3000);
-  }
-
-  renderTasks();
-  updateTaskBadge();
-}
-
-function renderTasks() {
-  const list = document.getElementById("active-tasks-list");
-  if (!list) return;
-
-  const paths = Object.keys(activeTasks);
-  if (paths.length === 0) {
-    list.innerHTML = `<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>`;
+  if (!Array.isArray(songLibrary)) {
+    console.error("songLibrary is not an array:", songLibrary);
     return;
   }
 
-  list.innerHTML = paths.map(path => {
-    const task = activeTasks[path];
-    return `
-      <div class="task-card" data-path="${path}">
-        <div class="task-header-info">
-          <div class="task-icon">🧠</div>
-          <div class="task-title">${task.title}</div>
-          <button class="btn-task-cancel" onclick="cancelTask('${path.replace(/\\/g, '\\\\')}')" title="Cancel Task">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="task-info">
-          <div class="task-progress-container">
-            <div class="task-progress-bar" style="width: ${task.percentage}%"></div>
-          </div>
-          <div class="task-status-row">
-            <span class="task-status-text">${task.status}</span>
-            <span class="task-percentage">${Math.round(task.percentage)}%</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-window.cancelTask = async (path) => {
-  if (activeTasks[path]) {
-    activeTasks[path].status = "Cancelling...";
-    renderTasks();
+  const currentTab = document.querySelector(".nav-item.active")?.id.replace("nav-", "") || "library";
+  console.log(`[UI] Rendering Library for tab: ${currentTab}. Total songs: ${songLibrary.length}`);
+  
+  let filtered = [...songLibrary.map((s, i) => ({ ...s, originalIndex: i }))];
+  
+  // Tab-based Source Filtering
+  if (currentTab === "youtube") {
+    filtered = filtered.filter(s => s.source === "youtube");
+  } else if (currentTab === "local") {
+    filtered = filtered.filter(s => s.source === "local");
   }
-  try {
-    await invoke("cancel_separation", { path });
-    showNotification("작업 취소 요청을 보냈습니다.", "info");
-  } catch (err) {
-    console.error("Cancel failed:", err);
+
+  // Search & Category Filtering
+  const query = (libSearchInput?.value || "").toLowerCase().trim();
+  const categoryFilter = libCategoryFilter?.value || "all";
+  const sortBy = libSortSelect?.value || "dateNew";
+
+  if (query) {
+    filtered = filtered.filter(s => 
+      s.title.toLowerCase().includes(query) || 
+      (s.artist && s.artist.toLowerCase().includes(query)) ||
+      (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
+    );
   }
-};
 
-function updateTaskBadge() {
-  const badge = document.getElementById("task-badge");
-  if (!badge) return;
-  const count = Object.keys(activeTasks).length;
-  badge.textContent = count;
-  badge.style.display = count > 0 ? "flex" : "none";
-}
+  if (categoryFilter !== "all" && categoryFilter !== "") {
+    filtered = filtered.filter(s => s.category === categoryFilter);
+  }
 
-function updateProgressBar(timestamp) {
-  if (!isPlaying) {
-    rafId = null;
+  // Sorting
+  filtered.sort((a, b) => {
+    switch (sortBy) {
+      case "title": return (a.title || "").localeCompare(b.title || "");
+      case "dateNew": return (b.dateAdded || 0) - (a.dateAdded || 0);
+      case "dateOld": return (a.dateAdded || 0) - (b.dateAdded || 0);
+      case "plays": return (b.playCount || 0) - (a.playCount || 0);
+      default: return 0;
+    }
+  });
+
+  if (filtered.length === 0) {
+    songGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dim);">검색 결과가 없거나 라이브러리가 비어있습니다.</div>`;
     return;
   }
 
-  const delta = timestamp - lastRafTime;
-  lastRafTime = timestamp;
-
-  // Jump if seeked or huge lag gap
-  const diff = targetProgressMs - currentProgressMs;
-  if (Math.abs(diff) > 2000) {
-    currentProgressMs = targetProgressMs;
-  } else {
-    // Interpolate according to tempo slider
-    const tempo = parseFloat(tempoSlider.value) || 1.0;
-    currentProgressMs += delta * tempo;
-
-    // Hard clamp if drifting too far from absolute server truth
-    // Only clamp if we have received at least one server update (targetProgressMs > 0)
-    if (targetProgressMs > 0) {
-      if (currentProgressMs > targetProgressMs + 500) currentProgressMs = targetProgressMs + 500;
-      if (currentProgressMs < targetProgressMs - 500) currentProgressMs = targetProgressMs - 500;
-    }
-  }
-
-  if (!isSeeking) {
-    let progressVal = (currentProgressMs / trackDurationMs) * 100;
-    if (isNaN(progressVal) || !isFinite(progressVal)) progressVal = 0;
-    if (progressVal > 100) progressVal = 100;
-
-    playbackBar.value = progressVal;
-    progressFill.style.width = `${progressVal}%`;
-
-    timeCurrent.textContent = formatTime(currentProgressMs / 1000);
-    timeTotal.textContent = formatTime(trackDurationMs / 1000);
-  }
-
-  rafId = requestAnimationFrame(updateProgressBar);
-}
-
-function formatTime(seconds) {
-  if (isNaN(seconds) || seconds < 0 || !isFinite(seconds)) return "0:00";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-async function processDroppedFiles(files) {
-  for (const file of files) {
-    if (file.type.startsWith("audio/") || 
-        file.name.endsWith(".mp3") || 
-        file.name.endsWith(".wav") || 
-        file.name.endsWith(".flac") ||
-        file.name.endsWith(".m4a")) {
-      
-      try {
-        const metadata = await invoke("get_audio_metadata", { path: file.path });
-        addToLibrary(metadata);
-        showNotification(`${file.name} 곡이 추가되었습니다`, "success");
-      } catch (error) {
-        console.error("Failed to get audio metadata:", error);
-        // Fallback for metadata failure
-        addToLibrary({
-          title: file.name,
-          thumbnail: "",
-          duration: "--:--",
-          source: "local",
-          path: file.path
-        });
-      }
-    }
-  }
-}
-
-function startStreamingTimer() {
-  streamStartTime = Date.now();
-  streamTimerInterval = setInterval(() => {
-    const elapsed = Date.now() - streamStartTime;
-    const hours = Math.floor(elapsed / 3600000);
-    const mins = Math.floor((elapsed % 3600000) / 60000);
-    const secs = Math.floor((elapsed % 60000) / 1000);
-    
-    document.querySelector("#stream-time").textContent = 
-      `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, 1000);
-}
-
-function switchTab(tabId) {
-  viewTitle.textContent = getTabTitle(tabId);
+  filtered.forEach(song => {
+    addSongToGrid(song, song.originalIndex);
+  });
   
-  // Tab Content Visibility
-  const settingsPage = document.getElementById("settings-page");
-  const tasksPage = document.getElementById("tasks-page");
-  
-  youtubeSearchSection.style.display = tabId === "youtube" ? "block" : "none";
-  localDropSection.style.display = tabId === "local" ? "block" : "none";
-  libraryControls.style.display = tabId === "library" ? "flex" : "none";
-  if (settingsPage) settingsPage.style.display = tabId === "settings" ? "block" : "none";
-  if (tasksPage) tasksPage.style.display = tabId === "tasks" ? "block" : "none";
-  
-  // Show song grid ONLY for library and add-song tabs
-  songGrid.style.display = (tabId === "library" || tabId === "youtube" || tabId === "local") ? (viewMode === "list" ? "flex" : "grid") : "none";
-  
-  console.log(`[UI] Switched to tab: ${tabId}`);
-}
-
-function getTabTitle(tabId) {
-  const titles = {
-    library: "Music Library",
-    youtube: "Add from YouTube",
-    local: "Add from My Files",
-    settings: "System Settings",
-    tasks: "Active Processing Tasks"
-  };
-  return titles[tabId] || "Live MR Manager";
-}
-
-function getThumbnailUrl(path, song) {
-  if (!path) return "assets/images/Thumb_Music.png";
-  if (path.startsWith("http") || path.startsWith("assets/")) return path;
-  
-  try {
-    const converted = convertFileSrc(path);
-    // 윈도우 경로인 경우 명시적으로 검증 (에러 시 폴백)
-    return converted;
-  } catch (err) {
-    console.warn(`[UI] Thumbnail conversion failed for ${path}:`, err);
-    // 로컬 경로 변환 실패 시, 만약 유튜브 곡이라면 원본 URL 소스가 있는지 확인 (없으면 기본 이미지)
-    return (song && song.source === "youtube") ? song.path : "assets/images/Thumb_Music.png";
-  }
+  updateThumbnailOverlay();
 }
 
 function addSongToGrid(song, originalIndex) {
@@ -906,12 +178,9 @@ function addSongToGrid(song, originalIndex) {
   
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
   
-  // Grid vs List consistent structure
   card.innerHTML = `
     <div class="thumbnail">
-      <img src="${thumbUrl}" 
-           alt="${song.title}" 
-           style="width:100%; height:100%; object-fit:cover;">
+      <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
       <div class="thumb-overlay">
         <svg class="icon-loading" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3">
           <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
@@ -940,7 +209,7 @@ function addSongToGrid(song, originalIndex) {
     </div>
   `;
   
-  // Async check for MR separation status
+  // MR Separated Badge Check
   invoke("check_mr_separated", { path: song.path })
     .then(isSeparated => {
       if (isSeparated) {
@@ -966,183 +235,121 @@ function addSongToGrid(song, originalIndex) {
 
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    editingSongIndex = originalIndex;
-    contextMenu.style.display = "flex";
-    contextMenu.style.top = `${e.clientY}px`;
-    contextMenu.style.left = `${e.clientX}px`;
-    
-    // Bind context menu actions
-    menuPlay.onclick = () => {
-      selectTrack(originalIndex);
-      contextMenu.style.display = "none";
-    };
-    menuSeparate.onclick = async () => {
-      contextMenu.style.display = "none";
-      if (isSeparating) {
-        showNotification("이미 다른 작업을 처리 중입니다.", "warning");
-        return;
-      }
-      
-      try {
-        isSeparating = true;
-        showNotification("AI MR 분리를 시작합니다. 몇 분 정도 소요될 수 있습니다.", "info");
-        
-        // Add loading overlay to the card
-        const cardThumb = card.querySelector(".thumbnail");
-        const overlay = document.createElement("div");
-        overlay.className = "separating-overlay";
-        overlay.innerHTML = `<div class="spinner"></div><span>분리 중...</span>`;
-        cardThumb.appendChild(overlay);
-
-        await invoke("start_mr_separation", { path: song.path });
-        
-        overlay.remove();
-        isSeparating = false;
-        showNotification("MR 분리가 완료되었습니다!", "success");
-        renderLibrary(); // Re-render to show badge
-      } catch (err) {
-        isSeparating = false;
-        showNotification(`분리 실패: ${err}`, "error");
-        const overlay = card.querySelector(".separating-overlay");
-        if (overlay) overlay.remove();
-        console.error("Separation failed:", err);
-      }
-    };
-    menuEdit.onclick = () => {
-      showEditModal(song);
-      contextMenu.style.display = "none";
-    };
-    menuDelete.onclick = () => {
-      showConfirm("곡 삭제", `'${song.title}' 곡을 라이브러리에서 정말 삭제하시겠습니까?`, () => {
-        songLibrary.splice(originalIndex, 1);
-        saveLibrary();
-        renderLibrary();
-        showNotification("곡이 삭제되었습니다.", "info");
-      });
-      contextMenu.style.display = "none";
-    };
+    showSongContextMenu(e, song, originalIndex);
   });
 
   songGrid.appendChild(card);
 }
 
-function showEditModal(song) {
-  editTitle.value = song.title;
-  editArtist.value = song.artist || "";
-  editThumb.value = song.thumbnail || "";
-  editTags.value = song.tags ? song.tags.join(", ") : "";
+// --- Tab & Navigation ---
+function switchTab(tabId) {
+  if (viewTitle) viewTitle.textContent = getTabTitle(tabId);
   
-  // Update custom dropdown
-  const categories = ["pop", "ballad", "dance", "rock", "etc"];
-  const currentCat = song.category || "";
-  const isPredefined = categories.includes(currentCat);
-  
-  const hiddenInput = document.getElementById("edit-category-select");
-  const dropdown = document.getElementById("edit-category-dropdown");
-  const selectedText = dropdown.querySelector(".selected-text");
-  const options = dropdown.querySelectorAll(".option-item");
-
-  hiddenInput.value = isPredefined ? currentCat : "";
-  selectedText.textContent = isPredefined ? 
-    [...options].find(o => o.dataset.value === currentCat)?.textContent || "카테고리 선택..." : 
-    "카테고리 선택...";
-    
-  options.forEach(o => {
-    o.classList.toggle("selected", o.dataset.value === hiddenInput.value);
+  // Update Navigation UI
+  document.querySelectorAll(".nav-item").forEach(i => {
+    i.classList.toggle("active", i.id === `nav-${tabId}`);
   });
 
-  editCategoryCustom.value = isPredefined ? "" : currentCat;
-  metadataModal.classList.add("active");
-}
-
-function initModalListeners() {
-  const closeBtn = document.querySelector("#modal-close");
-  const cancelBtn = document.querySelector("#modal-cancel");
-
-  closeBtn.onclick = () => metadataModal.classList.remove("active");
-  cancelBtn.onclick = () => metadataModal.classList.remove("active");
+  // Tab Content Visibility Matching global variables
+  if (youtubeSection) youtubeSection.style.display = tabId === "youtube" ? "block" : "none";
+  if (localSection) localSection.style.display = tabId === "local" ? "block" : "none";
   
-  modalSave.onclick = () => {
-    if (editingSongIndex === -1) return;
-    
-    const song = songLibrary[editingSongIndex];
-    song.title = editTitle.value.trim();
-    song.artist = editArtist.value.trim();
-    song.thumbnail = editThumb.value.trim();
-    song.tags = editTags.value.split(",").map(t => t.trim()).filter(t => t !== "");
-    
-    // Category: Custom entry takes priority
-    song.category = editCategoryCustom.value.trim() || editCategorySelect.value;
-    
-    saveLibrary();
+  // Show library controls and grid in library, youtube, and local tabs
+  const isMusicTab = (tabId === "library" || tabId === "youtube" || tabId === "local");
+  if (libraryControls) libraryControls.style.display = isMusicTab ? "flex" : "none";
+  
+  const settingsPage = document.getElementById("settings-page");
+  const tasksPage = document.getElementById("tasks-page");
+  if (settingsPage) settingsPage.style.display = tabId === "settings" ? "block" : "none";
+  if (tasksPage) tasksPage.style.display = tabId === "tasks" ? "block" : "none";
+  
+  if (songGrid) {
+    songGrid.style.display = isMusicTab ? (viewMode === "list" ? "flex" : "grid") : "none";
+  }
+
+  if (viewTitle) {
+    if (tabId === "library") viewTitle.textContent = "Music Library";
+    else if (tabId === "youtube") viewTitle.textContent = "YouTube 추가";
+    else if (tabId === "local") viewTitle.textContent = "내 파일 추가";
+    else if (tabId === "tasks") viewTitle.textContent = "처리 현황";
+    else if (tabId === "settings") viewTitle.textContent = "시스템 설정";
+  }
+
+  // Clear filters when switching between major music tabs
+  if (tabId === "library" || tabId === "youtube" || tabId === "local") {
+    libSearchInput.value = "";
+    libCategoryFilter.value = "all";
+    const selectedCatText = document.querySelector("#lib-category-dropdown .selected-text");
+    if (selectedCatText) selectedCatText.textContent = "전체 카테고리";
     renderLibrary();
-    metadataModal.classList.remove("active");
-    showNotification("곡 정보가 저장되었습니다.", "success");
-  };
-
-  metadataModal.onclick = (e) => {
-    if (e.target === metadataModal) metadataModal.classList.remove("active");
-  };
+  }
 }
 
-function initConfirmModalListeners() {
-  confirmModal = document.getElementById("confirm-modal");
-  confirmTitle = document.getElementById("confirm-title");
-  confirmMessage = document.getElementById("confirm-message");
-  confirmOk = document.getElementById("confirm-ok");
-  confirmCancel = document.getElementById("confirm-cancel");
-  confirmCloseIcon = document.getElementById("confirm-close-icon");
-
-  const close = () => confirmModal.classList.remove("active");
-  confirmCancel.onclick = close;
-  confirmCloseIcon.onclick = close;
-  confirmModal.onclick = (e) => {
-    if (e.target === confirmModal) close();
+function getTabTitle(tabId) {
+  const titles = {
+    library: "Music Library",
+    youtube: "Add from YouTube",
+    local: "Add from My Files",
+    settings: "System Settings",
+    tasks: "Active Tasks"
   };
+  return titles[tabId] || "Live MR Manager";
 }
 
-function showConfirm(title, message, onConfirm) {
-  confirmTitle.textContent = title;
-  confirmMessage.textContent = message;
-  confirmModal.classList.add("active");
-  
-  confirmOk.onclick = () => {
-    onConfirm();
-    confirmModal.classList.remove("active");
-  };
+// --- Playback Controls ---
+async function handlePlaybackToggle() {
+  if (!currentTrack) {
+    showNotification("재생할 곡이 선택되지 않았습니다.", "info");
+    return;
+  }
+  try {
+    const newIsPlaying = await invoke("toggle_playback");
+    isPlaying = newIsPlaying;
+    isLoading = false;
+    updateThumbnailOverlay();
+    
+    if (isPlaying && !rafId) {
+      lastRafTime = performance.now();
+      rafId = requestAnimationFrame(updateProgressBar);
+    }
+    showNotification(isPlaying ? "재생을 재개합니다" : "재생이 일시정지되었습니다", "info");
+  } catch (error) {
+    console.error("Playback toggle failed:", error);
+    showNotification("재생에 실패했습니다", "error");
+  }
 }
 
-function selectTrack(index) {
+async function selectTrack(index) {
   const song = songLibrary[index];
   if (!song) return;
 
+  console.log(`[UI] Selecting track: ${song.title}`);
+  
   // Track play count
   song.playCount = (song.playCount || 0) + 1;
   saveLibrary();
 
   // Update Control Dock
   dockTitle.textContent = song.title;
-  dockArtist.textContent = song.artist || (song.source === "youtube" ? "YouTube Stream" : "Local File");
+  dockArtist.textContent = song.artist || "Unknown Artist";
   
-  const thumbUrl = getThumbnailUrl(song.thumbnail, song);
-  dockThumb.style.backgroundImage = `url("${thumbUrl}")`;
-  dockThumb.style.backgroundSize = "cover";
+  const thumbImg = document.querySelector(".dock-thumb img");
+  if (thumbImg) thumbImg.src = getThumbnailUrl(song.thumbnail, song);
   
   currentTrack = song;
-  isPlaying = false; // Immediately stopped on backend too
+  isPlaying = false;
   isLoading = true;
   
   // Reset Progress State for UI
   targetProgressMs = 0;
   currentProgressMs = 0;
   
-  // Parse duration string (e.g., "3:45") to ms for initial duration
   if (song.duration && song.duration.includes(":")) {
     const parts = song.duration.split(":");
-    const sec = (parseInt(parts[0]) * 60) + parseInt(parts[1]);
+    const sec = (parseInt(parts[0]) * 60) + (parseInt(parts[1]) || 0);
     trackDurationMs = sec * 1000;
   } else {
-    trackDurationMs = 0; // Better than 1 to avoid instant full bar
+    trackDurationMs = 1;
   }
   
   playbackBar.value = 0;
@@ -1152,260 +359,498 @@ function selectTrack(index) {
   
   updateThumbnailOverlay();
 
-  // Load per-song settings
-  if (song.pitch !== undefined) {
-    pitchSlider.value = song.pitch;
-    pitchVal.textContent = song.pitch > 0 ? `+${song.pitch}` : song.pitch;
-    updatePitch(song.pitch);
-  }
-  if (song.tempo !== undefined) {
-    tempoSlider.value = song.tempo;
-    tempoVal.textContent = `${parseFloat(song.tempo).toFixed(2)}x`;
-    updateTempo(song.tempo);
-  }
-  if (song.volume !== undefined) {
-    document.querySelector(".volume-slider").value = song.volume;
-    updateVolume(song.volume);
-  }
-
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-
-  if (song.path) {
-    invoke("play_track", { path: song.path })
-      .then(() => {
-        isPlaying = true;
-        isLoading = false;
-        updateThumbnailOverlay();
-        showNotification("재생을 시작합니다", "success");
-        
-        if (!rafId) {
-          lastRafTime = performance.now();
-          rafId = requestAnimationFrame(updateProgressBar);
-        }
-      })
-      .catch(err => {
-        console.error("Playback failed:", err);
-        showNotification("재생에 실패했습니다", "error");
-        currentTrack = null;
-        isPlaying = false;
-        isLoading = false;
-        updateThumbnailOverlay();
-      });
-  }
-}
-
-function showNotification(message, type = "info") {
-  const container = document.getElementById("notification-container");
-  if (!container) return;
-
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
+  // Apply stored settings
+  const p = song.pitch || 0;
+  const t = song.tempo || 1.0;
+  const v = song.volume || 80;
   
-  const icons = {
-    info: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-    success: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
-    error: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
-    warning: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
-  };
+  pitchSlider.value = p;
+  pitchVal.textContent = p > 0 ? `+${p}` : p;
+  tempoSlider.value = t;
+  tempoVal.textContent = `${parseFloat(t).toFixed(2)}x`;
+  const volSliderInput = document.querySelector(".volume-slider");
+  if (volSliderInput) volSliderInput.value = v;
 
-  toast.innerHTML = `
-    <div class="toast-icon">${icons[type] || icons.info}</div>
-    <div class="toast-message">${message}</div>
-  `;
+  // Reset internal progress
+  targetProgressMs = 0;
+  currentProgressMs = 0;
+  lastRafTime = performance.now();
 
-  container.appendChild(toast);
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
 
-  setTimeout(() => {
-    toast.classList.add("removing");
-    setTimeout(() => toast.remove(), 400);
-  }, 4000);
-}
+  try {
+    // Initial volume/pitch/tempo Sync
+    await invoke("set_pitch", { semitones: parseFloat(p) });
+    await invoke("set_tempo", { ratio: parseFloat(t) });
+    await invoke("set_volume", { volume: parseFloat(v) });
 
-function initViewToggle() {
-  const gridBtn = document.querySelector("#view-grid");
-  const listBtn = document.querySelector("#view-list");
-  if (!gridBtn || !listBtn) return;
-
-  const setView = (mode) => {
-    viewMode = mode;
-    localStorage.setItem("viewMode", mode);
+    await invoke("play_track", { path: song.path });
+    isPlaying = true;
+    isLoading = false;
+    updateThumbnailOverlay();
     
-    if (mode === "list") {
-      songGrid.classList.add("list-view");
-      listBtn.classList.add("active");
-      gridBtn.classList.remove("active");
-    } else {
-      songGrid.classList.remove("list-view");
-      gridBtn.classList.add("active");
-      listBtn.classList.remove("active");
+    // Safety: ensure volume is set again after sink might have been re-created in backend
+    setTimeout(() => invoke("set_volume", { volume: parseFloat(v) }), 100);
+
+    if (!rafId) {
+      lastRafTime = performance.now();
+      rafId = requestAnimationFrame(updateProgressBar);
     }
-    
-    renderLibrary();
-  };
-
-  gridBtn.addEventListener("click", () => setView("grid"));
-  listBtn.addEventListener("click", () => setView("list"));
-  setView(viewMode);
+  } catch (err) {
+    console.error("Playback failed:", err);
+    showNotification("재생에 실패했습니다.", "error");
+    isLoading = false;
+    isPlaying = false;
+    updateThumbnailOverlay();
+  }
 }
 
-function initAiModelControls() {
-  const downloadBtn = document.getElementById("btn-download-model");
-  const modalOverlay = document.getElementById("model-download-overlay");
+function updateProgressBar(timestamp) {
+  if (!isPlaying) { rafId = null; return; }
 
-  if (downloadBtn) {
-    downloadBtn.addEventListener("click", async () => {
-      try {
-        downloadBtn.disabled = true;
-        downloadBtn.textContent = "다운로드 중...";
-        
-        if (modalOverlay) modalOverlay.style.display = "flex";
+  const delta = timestamp - lastRafTime;
+  lastRafTime = timestamp;
 
-        await invoke("download_ai_model");
-        
-        await checkAiModelStatus();
-        showNotification("AI 모델 다운로드 완료!", "success");
-      } catch (err) {
-        showNotification(`다운로드 실패: ${err}`, "error");
-        downloadBtn.disabled = false;
-        updateAiUI();
+  const diff = targetProgressMs - currentProgressMs;
+  if (Math.abs(diff) > 2000) {
+    currentProgressMs = targetProgressMs;
+  } else {
+    const tempo = parseFloat(tempoSlider.value) || 1.0;
+    currentProgressMs += delta * tempo;
+    if (targetProgressMs > 0) {
+      if (currentProgressMs > targetProgressMs + 500) currentProgressMs = targetProgressMs + 500;
+      if (currentProgressMs < targetProgressMs - 500) currentProgressMs = targetProgressMs - 500;
+    }
+  }
+
+  if (!isSeeking) {
+    let progressVal = (currentProgressMs / trackDurationMs) * 100;
+    if (isNaN(progressVal) || !isFinite(progressVal)) progressVal = 0;
+    if (progressVal > 100) progressVal = 100;
+
+    playbackBar.value = progressVal;
+    progressFill.style.width = `${progressVal}%`;
+    timeCurrent.textContent = formatTime(currentProgressMs / 1000);
+    timeTotal.textContent = formatTime(trackDurationMs / 1000);
+  }
+
+  rafId = requestAnimationFrame(updateProgressBar);
+}
+
+// --- Context Menu & Modals ---
+function showSongContextMenu(e, song, originalIndex) {
+  editingSongIndex = originalIndex;
+  contextMenu.style.top = `${e.clientY}px`;
+  contextMenu.style.left = `${e.clientX}px`;
+  contextMenu.classList.add("active");
+  
+  menuPlay.onclick = () => { selectTrack(originalIndex); contextMenu.classList.remove("active"); };
+  menuEdit.onclick = () => { openEditModal(song, originalIndex); contextMenu.classList.remove("active"); };
+  menuDelete.onclick = () => { deleteSong(originalIndex); contextMenu.classList.remove("active"); };
+}
+
+function openEditModal(song, index) {
+  editingSongIndex = index;
+  editTitle.value = song.title || "";
+  editArtist.value = song.artist || "";
+  editTags.value = (song.tags || []).join(", ");
+  
+  const currentCategory = song.category || "etc";
+  const isDefault = DEFAULT_CATEGORIES.some(c => c.val === currentCategory);
+  
+  if (isDefault) {
+    editCategorySelect.value = currentCategory;
+    editCategoryCustom.style.display = "none";
+  } else {
+    editCategorySelect.value = "etc";
+    editCategoryCustom.style.display = "block";
+    editCategoryCustom.value = currentCategory;
+  }
+
+  // Sync Dropdown UI
+  const dropdown = document.getElementById("edit-category-dropdown");
+  if (dropdown) {
+    const selectedText = dropdown.querySelector(".selected-text");
+    const options = dropdown.querySelectorAll(".option-item");
+    options.forEach(opt => {
+      opt.classList.remove("selected");
+      if (opt.dataset.value === (isDefault ? currentCategory : "etc")) {
+        opt.classList.add("selected");
+        selectedText.textContent = opt.textContent;
       }
     });
   }
+  metadataModal.classList.add("active");
 }
 
-function addToLibrary(song) {
-  if (!song) {
-    console.error("Attempted to add null/undefined song to library");
-    return;
-  }
+function deleteSong(index) {
+  const song = songLibrary[index];
+  if (!song) return;
 
-  // 중복 체크: 이미 존재하는 경로면 업데이트 처리
-  const existingIndex = songLibrary.findIndex(s => s.path === song.path);
-  if (existingIndex !== -1) {
-    // 기존 데이터 보존하면서 새로운 메타데이터(시간 등) 덮어쓰기
-    songLibrary[existingIndex] = { ...songLibrary[existingIndex], ...song };
-    console.log(`[UI] Updated existing song: ${song.title}`);
+  confirmTitle.textContent = "곡 삭제";
+  confirmMessage.textContent = `'${song.title}' 곡을 삭제하시겠습니까?`;
+  confirmOk.onclick = () => {
+    songLibrary.splice(index, 1);
     saveLibrary();
     renderLibrary();
-    return;
-  }
-  
-  // Initialize default settings if not present
-  if (song.pitch === undefined) song.pitch = 0;
-  if (song.tempo === undefined) song.tempo = 1.0;
-  if (song.volume === undefined) song.volume = 80;
-  if (!song.dateAdded) song.dateAdded = Date.now();
-
-  songLibrary.push(song);
-  
-  // Important: Clear any search/filter before rendering the newly added song
-  // to ensure it's visible in the library
-  libSearchInput.value = "";
-  libCategoryFilter.value = "all";
-  const selectedCatText = document.querySelector("#lib-category-dropdown .selected-text");
-  if (selectedCatText) selectedCatText.textContent = "전체 카테고리";
-  
-  renderLibrary();
-  saveLibrary();
-  
-  // Automatically switch to library tab to show the result
-  switchTab("library");
-  
-  // Highlight the active nav item
-  document.querySelectorAll(".nav-item").forEach(i => i.classList.remove("active"));
-  document.querySelector("#nav-library").classList.add("active");
+    confirmModal.classList.remove("active");
+    showNotification("곡이 삭제되었습니다.", "success");
+  };
+  confirmModal.classList.add("active");
 }
 
-function renderLibrary() {
-  if (!songGrid) return;
-  songGrid.innerHTML = "";
+// --- Initialization & Event Listeners ---
+document.addEventListener("DOMContentLoaded", () => {
+  // Assign DOM Elements Matching index.html
+  ytUrlInput = document.getElementById("yt-url-input");
+  ytFetchBtn = document.getElementById("yt-fetch-btn");
+  viewTitle = document.getElementById("view-title");
+  youtubeSection = document.getElementById("youtube-search");
+  songGrid = document.getElementById("song-grid");
+  localSection = document.getElementById("local-drop-section");
+  localDropBox = document.getElementById("local-drop-box");
+
+  dockTitle = document.getElementById("dock-title");
+  dockArtist = document.getElementById("dock-artist");
+  dockThumb = document.querySelector(".dock-thumb img");
   
-  if (!Array.isArray(songLibrary)) {
-    console.error("songLibrary is not an array:", songLibrary);
-    return;
+  pitchSlider = document.getElementById("pitch-slider");
+  tempoSlider = document.getElementById("tempo-slider");
+  pitchVal = document.getElementById("pitch-val");
+  tempoVal = document.getElementById("tempo-val");
+  
+  playbackBar = document.getElementById("playback-bar");
+  progressFill = document.getElementById("progress-fill");
+  timeCurrent = document.getElementById("time-current");
+  timeTotal = document.getElementById("time-total");
+
+  toggleVocal = document.getElementById("toggle-vocal");
+  toggleLyric = document.getElementById("toggle-lyric");
+
+  thumbOverlay = document.getElementById("thumb-overlay");
+  contextMenu = document.getElementById("context-menu");
+  menuPlay = document.getElementById("menu-play");
+  menuSeparate = document.getElementById("menu-separate");
+  menuEdit = document.getElementById("menu-edit");
+  menuDelete = document.getElementById("menu-delete");
+
+  libraryControls = document.getElementById("library-controls");
+  libSearchInput = document.getElementById("lib-search-input");
+  libCategoryFilter = document.getElementById("lib-category-filter");
+  libSortSelect = document.getElementById("lib-sort-select");
+
+  metadataModal = document.getElementById("metadata-modal"); // Updated to match index.html
+  editTitle = document.getElementById("edit-title");
+  editArtist = document.getElementById("edit-artist");
+  editCategorySelect = document.getElementById("edit-category-select");
+  editCategoryCustom = document.getElementById("edit-category-custom");
+  editTags = document.getElementById("edit-tags");
+  modalSave = document.getElementById("modal-save"); // Updated
+  
+  confirmModal = document.getElementById("confirm-modal");
+  confirmTitle = document.getElementById("confirm-title");
+  confirmMessage = document.getElementById("confirm-message");
+  confirmOk = document.getElementById("confirm-ok");
+  confirmCancel = document.getElementById("confirm-cancel");
+  confirmCloseIcon = document.getElementById("confirm-close-icon"); // Updated
+
+  initNavigation();
+  initPlaybackControls();
+  initEventListeners();
+  initLocalDrop();
+  initMetadataModal();
+  initConfirmModalListeners();
+  initCustomDropdowns();
+  initAiModelControls();
+  initViewToggle();
+  initFolderControls();
+
+  // Load Initial Data
+  loadLibrary();
+  checkAiModelStatus();
+  listenForEvents();
+
+  // Global click to close UI
+  document.addEventListener("click", () => {
+    if (contextMenu && contextMenu.classList.contains("active")) {
+      contextMenu.classList.remove("active");
+    }
+    document.querySelectorAll(".active").forEach(el => {
+      if (el.classList.contains("custom-select")) el.classList.remove("active");
+    });
+  });
+});
+
+function initNavigation() {
+  document.querySelectorAll(".nav-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const tabId = item.id.replace("nav-", "");
+      switchTab(tabId);
+    });
+  });
+}
+
+function initEventListeners() {
+  if (ytFetchBtn) ytFetchBtn.addEventListener("click", fetchYoutube);
+  if (ytUrlInput) ytUrlInput.addEventListener("keypress", (e) => { if (e.key === "Enter") fetchYoutube(); });
+  
+  if (libSearchInput) libSearchInput.addEventListener("input", renderLibrary);
+  if (libCategoryFilter) libCategoryFilter.addEventListener("change", renderLibrary);
+  if (libSortSelect) libSortSelect.addEventListener("change", renderLibrary);
+
+  const volSlider = document.querySelector(".volume-slider");
+  const volIcon = document.querySelector(".icon-volume");
+  if (volSlider) {
+    volSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value);
+      invoke("set_volume", { volume: parseFloat(val) });
+      if (val === 0) volIcon.classList.add("muted");
+      else volIcon.classList.remove("muted");
+    });
   }
 
-  console.log(`[UI] Rendering Library: ${songLibrary.length} total songs.`);
-  let filtered = [...songLibrary.map((s, i) => ({ ...s, originalIndex: i }))];
-  const query = libSearchInput.value.toLowerCase().trim();
-  const categoryFilter = libCategoryFilter.value;
-  const sortBy = libSortSelect.value;
-
-  if (query) {
-    filtered = filtered.filter(s => 
-      s.title.toLowerCase().includes(query) || 
-      (s.artist && s.artist.toLowerCase().includes(query)) ||
-      (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
-    );
+  if (playbackBar) {
+    playbackBar.addEventListener("input", (e) => { isSeeking = true; progressFill.style.width = `${e.target.value}%`; });
+    playbackBar.addEventListener("change", async (e) => {
+      const seekMs = (e.target.value / 100) * trackDurationMs;
+      await invoke("seek_to", { positionMs: Math.floor(seekMs) });
+      isSeeking = false;
+    });
   }
 
-  if (categoryFilter !== "all") {
-    filtered = filtered.filter(s => s.category === categoryFilter);
+  if (pitchSlider) {
+    pitchSlider.addEventListener("input", (e) => {
+      pitchVal.textContent = e.target.value > 0 ? `+${e.target.value}` : e.target.value;
+      invoke("set_pitch", { semitones: parseFloat(e.target.value) });
+    });
   }
 
-  // Sorting
-  filtered.sort((a, b) => {
-    switch (sortBy) {
-      case "title": return a.title.localeCompare(b.title);
-      case "dateNew": return (b.dateAdded || 0) - (a.dateAdded || 0);
-      case "dateOld": return (a.dateAdded || 0) - (b.dateAdded || 0);
-      case "plays": return (b.playCount || 0) - (a.playCount || 0);
-      default: return 0;
+  if (tempoSlider) {
+    tempoSlider.addEventListener("input", (e) => {
+      tempoVal.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+      invoke("set_tempo", { ratio: parseFloat(e.target.value) });
+    });
+  }
+  
+  if (dockThumb) dockThumb.addEventListener("click", handlePlaybackToggle);
+}
+
+function initMetadataModal() {
+  const cancelBtn = document.getElementById("modal-cancel");
+  const closeBtn = document.getElementById("modal-close");
+  if (cancelBtn) cancelBtn.onclick = () => metadataModal.classList.remove("active");
+  if (closeBtn) closeBtn.onclick = () => metadataModal.classList.remove("active");
+  if (modalSave) {
+    modalSave.onclick = async () => {
+      if (editingSongIndex === -1) return;
+      const song = songLibrary[editingSongIndex];
+      song.title = editTitle.value.trim();
+      song.artist = editArtist.value.trim();
+      song.tags = editTags.value.split(",").map(t => t.trim()).filter(t => t !== "");
+      const selCat = editCategorySelect.value;
+      song.category = (selCat === "etc") ? editCategoryCustom.value.trim() : selCat;
+      
+      await saveLibrary();
+      updateCategoryDropdowns();
+      renderLibrary();
+      metadataModal.classList.remove("active");
+      showNotification("저장되었습니다.", "success");
+    };
+  }
+}
+
+function initConfirmModalListeners() {
+  if (confirmCancel) confirmCancel.onclick = () => confirmModal.classList.remove("active");
+  if (confirmCloseIcon) confirmCloseIcon.onclick = () => confirmModal.classList.remove("active");
+}
+
+function listenForEvents() {
+  listen("playback-progress", (event) => {
+    if (isSeeking) return;
+    targetProgressMs = event.payload.positionMs;
+    trackDurationMs = event.payload.durationMs || 1;
+    if (currentTrack && trackDurationMs > 1000 && (!currentTrack.duration || currentTrack.duration === "0:00" || currentTrack.duration === "--:--")) {
+       currentTrack.duration = formatTime(trackDurationMs/1000);
+       saveLibrary();
+       renderLibrary();
     }
   });
 
-  filtered.forEach(song => {
-    addSongToGrid(song, song.originalIndex);
+  listen("tauri://drag-drop", (event) => {
+    const paths = event.payload.paths;
+    if (paths) {
+      paths.forEach(path => {
+        const ext = path.split('.').pop().toLowerCase();
+        if (["mp3", "wav", "flac", "m4a"].includes(ext)) {
+          invoke("get_audio_metadata", { path }).then(m => {
+            m.source = "local";
+            addToLibrary(m);
+            showNotification("곡이 추가되었습니다.", "success");
+          }).catch(e => console.error("Drop meta fail", e));
+        }
+      });
+    }
   });
 }
 
-// Custom Dropdown Logic
-function initCustomDropdowns() {
-  // Library Category Filter
-  initCustomSelect("lib-category-dropdown", "lib-category-filter", () => renderLibrary());
-  
-  // Library Sort Select
-  initCustomSelect("lib-sort-dropdown", "lib-sort-select", () => renderLibrary());
-  
-  // Modal Category Select
-  initCustomSelect("edit-category-dropdown", "edit-category-select");
+// --- Helpers ---
+function formatTime(sec) {
+  if (isNaN(sec) || sec < 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function initCustomSelect(dropdownId, hiddenInputId, callback) {
-  const dropdown = document.getElementById(dropdownId);
-  if (!dropdown) return;
+function getThumbnailUrl(path, song) {
+  if (!path) return "assets/images/Thumb_Music.png";
+  if (path.startsWith("http")) return path;
+  try { return convertFileSrc(path); } 
+  catch (e) { return (song && song.source === "youtube") ? song.path : "assets/images/Thumb_Music.png"; }
+}
+
+function updateCategoryDropdowns() {
+  const libCategories = [...new Set(songLibrary.map(s => s.category).filter(c => c))];
+  const customCategories = libCategories.filter(c => !DEFAULT_CATEGORIES.some(dc => dc.val === c));
   
-  const hiddenInput = document.getElementById(hiddenInputId);
-  const trigger = dropdown.querySelector(".select-trigger");
-  const selectedText = dropdown.querySelector(".selected-text");
-  const options = dropdown.querySelectorAll(".option-item");
+  const options = [
+    { val: "all", text: "전체 카테고리" },
+    ...DEFAULT_CATEGORIES,
+    ...customCategories.map(c => ({ val: c, text: c })),
+    { val: "etc", text: "기타" }
+  ];
 
-  trigger.onclick = (e) => {
-    e.stopPropagation();
-    // Close others
-    document.querySelectorAll(".custom-select").forEach(s => {
-      if (s !== dropdown) s.classList.remove("active");
-    });
-    dropdown.classList.toggle("active");
-  };
+  renderDropdownOptions("lib-category-dropdown", options, (val) => {
+    libCategoryFilter.value = val;
+    renderLibrary();
+  });
 
-  options.forEach(opt => {
+  renderDropdownOptions("edit-category-dropdown", [
+    ...DEFAULT_CATEGORIES,
+    ...customCategories.map(c => ({ val: c, text: c })),
+    { val: "etc", text: "직접 입력" }
+  ], (val) => {
+    editCategorySelect.value = val;
+    editCategoryCustom.style.display = (val === "etc") ? "block" : "none";
+  });
+}
+
+function renderDropdownOptions(id, opts, cb) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const container = el.querySelector(".select-options");
+  const selectedText = el.querySelector(".selected-text");
+  container.innerHTML = opts.map(o => `<div class="option-item" data-value="${o.val}">${o.text}</div>`).join("");
+  container.querySelectorAll(".option-item").forEach(opt => {
     opt.onclick = (e) => {
       e.stopPropagation();
-      const val = opt.dataset.value;
-      const text = opt.textContent;
-
-      hiddenInput.value = val;
-      selectedText.textContent = text;
-      
-      options.forEach(o => o.classList.remove("selected"));
-      opt.classList.add("selected");
-      
-      dropdown.classList.remove("active");
-      if (callback) callback(val);
+      selectedText.textContent = opt.textContent;
+      el.classList.remove("active");
+      cb(opt.dataset.value);
     };
   });
 }
+
+function initCustomDropdowns() {
+  document.querySelectorAll(".custom-select").forEach(el => {
+    const trigger = el.querySelector(".select-trigger");
+    if (trigger) trigger.onclick = (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".custom-select").forEach(s => { if (s !== el) s.classList.remove("active"); });
+      el.classList.toggle("active");
+    };
+  });
+  initCustomSelect("lib-sort-dropdown", "lib-sort-select", () => renderLibrary());
+}
+
+function initCustomSelect(id, inputId, cb) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const input = document.getElementById(inputId);
+  const trigger = el.querySelector(".select-trigger");
+  const selectedText = el.querySelector(".selected-text");
+  
+  el.querySelectorAll(".option-item").forEach(opt => {
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      input.value = opt.dataset.value;
+      selectedText.textContent = opt.textContent;
+      el.classList.remove("active");
+      cb(opt.dataset.value);
+    };
+  });
+}
+
+function updateThumbnailOverlay() {
+  const isCurrentActive = !!currentTrack;
+  if (thumbOverlay) {
+    thumbOverlay.classList.toggle("active", isCurrentActive);
+    thumbOverlay.classList.toggle("loading", isLoading);
+    thumbOverlay.classList.toggle("playing", isPlaying && !isLoading);
+    thumbOverlay.classList.toggle("paused", !isPlaying && !isLoading);
+  }
+  document.querySelectorAll(".song-card").forEach(card => {
+    const overlay = card.querySelector(".thumb-overlay");
+    const active = isCurrentActive && card.dataset.path === currentTrack.path;
+    if (overlay) {
+      overlay.classList.toggle("active", active);
+      overlay.classList.toggle("playing", active && isPlaying && !isLoading);
+      overlay.classList.toggle("paused", active && !isPlaying && !isLoading);
+      overlay.classList.toggle("loading", active && isLoading);
+    }
+  });
+}
+
+async function fetchYoutube() {
+  const url = ytUrlInput.value.trim();
+  if (!url) return;
+  ytFetchBtn.disabled = true;
+  ytFetchBtn.textContent = "가져오기...";
+  try {
+    const m = await invoke("get_youtube_metadata", { url });
+    m.source = "youtube";
+    addToLibrary(m);
+    showNotification("곡이 추가됨", "success");
+    ytUrlInput.value = "";
+  } catch (e) { showNotification("실패했습니다.", "error"); }
+  finally { ytFetchBtn.disabled = false; ytFetchBtn.textContent = "정보 가져오기"; }
+}
+
+function initLocalDrop() {
+  if (!localDropBox) return;
+  localDropBox.addEventListener("dragover", (e) => { e.preventDefault(); localDropBox.classList.add("drag-over"); });
+  localDropBox.addEventListener("dragleave", () => localDropBox.classList.remove("drag-over"));
+  localDropBox.addEventListener("click", () => showNotification("파일을 드래그해서 추가하세요.", "info"));
+}
+
+function initViewToggle() {
+  const g = document.getElementById("view-grid"), l = document.getElementById("view-list");
+  if (!g || !l) return;
+  const set = (m) => {
+    viewMode = m; localStorage.setItem("viewMode", m);
+    if (songGrid) songGrid.classList.toggle("list-view", m === "list");
+    g.classList.toggle("active", m === "grid");
+    l.classList.toggle("active", m === "list");
+    renderLibrary();
+  };
+  g.onclick = () => set("grid");
+  l.onclick = () => set("list");
+  set(viewMode);
+}
+
+function initAiModelControls() {
+  const btn = document.getElementById("btn-download-model");
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = "다운로드 중...";
+    const overlay = document.getElementById("model-download-overlay");
+    if (overlay) overlay.style.display = "flex";
+    try { await invoke("download_ai_model"); await checkAiModelStatus(); showNotification("완료!", "success"); }
+    catch (e) { showNotification("실패!", "error"); }
+  };
+}
+
+function initFolderControls() {
+  const btn = document.getElementById("btn-open-cache");
+  if (btn) btn.onclick = () => invoke("open_cache_folder").catch(e => showNotification("폴더 열기 실패", "error"));
+}
+
+function initPlaybackControls() {}

@@ -122,25 +122,45 @@ pub struct AudioHandler {
     pub active_sample_rate: u32,
     pub active_channels: u16,
     pub vocal_volume: Arc<AtomicU32>, // 0-100
+    pub instrumental_volume: Arc<AtomicU32>,
     pub playback_cv: Condvar,
 }
 
-static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
+static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
     let stream_result = DeviceSinkBuilder::open_default_sink();
-    let stream = stream_result.expect("Failed to open audio output");
+    let stream = match stream_result {
+        Ok(s) => s,
+        Err(e) => {
+            let err_msg = format!("무료 오디오 출력을 열지 못했습니다: {}", e);
+            sys_log(&format!("[AUDIO] CRITICAL ERROR: {}", err_msg));
+            return Err(err_msg);
+        }
+    };
     
     // Detect system device config once:
     let host = cpal::default_host();
-    let (device_rate, device_channels) = if let Some(device) = host.default_output_device() {
-        if let Ok(config) = device.default_output_config() {
-            (config.sample_rate(), config.channels())
+    let device = host.default_output_device();
+    let device_name = device.as_ref().and_then(|d| d.name().ok()).unwrap_or_else(|| "Unknown Device".into());
+    
+    let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
+        if let Ok(config) = d.default_output_config() {
+            (config.sample_rate().into(), config.channels())
         } else { (44100, 2) }
     } else { (44100, 2) };
 
-    sys_log(&format!("System audio initialized: {} Hz, {} ch", device_rate, device_channels));
+    // Safety: some virtual drivers or misconfigured devices report 0 Hz.
+    if device_rate == 0 {
+        sys_log("[AUDIO] Warning: System reported 0Hz. Falling back to 44100Hz.");
+        device_rate = 44100;
+    }
+    if device_channels == 0 {
+        device_channels = 2;
+    }
+
+    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
     
     let controller = Player::connect_new(&stream.mixer());
-    Arc::new(AudioHandler {
+    Ok(Arc::new(AudioHandler {
         _stream: stream,
         controller: Mutex::new(controller),
         state: Mutex::new(AppState::default()),
@@ -151,8 +171,9 @@ static AUDIO_HANDLER: Lazy<Arc<AudioHandler>> = Lazy::new(|| {
         active_sample_rate: device_rate,
         active_channels: device_channels,
         vocal_volume: Arc::new(AtomicU32::new(100)),
+        instrumental_volume: Arc::new(AtomicU32::new(100)),
         playback_cv: Condvar::new(),
-    })
+    }))
 });
 
 struct DynamicVolumeSource<S> where S: Source<Item = f32> {
@@ -209,7 +230,10 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(s) = self.buffer.pop_front() {
-            self.pos.fetch_add(1, Ordering::Relaxed);
+            // Only increment frame counter once per frame (after all channels of that frame are popped)
+            if self.buffer.len() % self.input_channels == 0 {
+                self.pos.fetch_add(1, Ordering::Relaxed);
+            }
             return Some(s);
         }
 
@@ -219,32 +243,37 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
         let pitch_factor = 2.0f32.powf(pitch_semitones / 12.0);
         self.stretcher.set_transpose_factor(pitch_factor, None);
 
-        // Fetch input blocks
+        // signalsmith-stretch 0.1.3 expects interleaved &[f32] for inputs/outputs
         let block_size = 1024;
-        let mut input_block: Vec<f32> = Vec::with_capacity(block_size * self.input_channels);
-        
+        let mut input_interleaved: Vec<f32> = Vec::with_capacity(block_size * self.input_channels);
         for _ in 0..block_size {
             for _ in 0..self.input_channels {
                 if let Some(s) = self.input.next() {
-                    input_block.push(s);
+                    input_interleaved.push(s);
                 }
             }
         }
 
-        let frames_read = input_block.len() / self.input_channels;
+        let frames_read = input_interleaved.len() / self.input_channels;
         if frames_read == 0 { return None; }
+
+        // Calculate output buffer size based on tempo. 
+        // 0.1.3 doesn't have output_frames_required; we use a safe estimate.
+        let output_frames_est = (frames_read as f32 / tempo_scale).ceil() as usize + 64; 
+        let mut output_interleaved = vec![0.0; output_frames_est * self.input_channels];
         
-        let output_frames = (frames_read as f32 / tempo_scale) as usize;
-        let mut output_block: Vec<f32> = vec![0.0; output_frames * self.input_channels];
+        // Use flat slices for 0.1.3 process method
+        self.stretcher.process(&input_interleaved, &mut output_interleaved);
         
-        self.stretcher.process(&input_block, &mut output_block);
-        
-        for s in output_block {
+        // Collect results into our dequeue for popping
+        for s in output_interleaved {
             self.buffer.push_back(s);
         }
 
         self.buffer.pop_front().map(|s| {
-            self.pos.fetch_add(1, Ordering::Relaxed);
+            if self.buffer.len() % self.input_channels == 0 {
+                self.pos.fetch_add(1, Ordering::Relaxed);
+            }
             s
         })
     }
@@ -265,7 +294,18 @@ impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
 
 #[tauri::command]
 async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
-    let handler = AUDIO_HANDLER.clone();
+    let res = play_track_internal(window.clone(), path).await;
+    if let Err(ref e) = res {
+        let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
+    }
+    res
+}
+
+async fn play_track_internal(window: WebviewWindow, path: String) -> Result<(), String> {
+    let handler = match &*AUDIO_HANDLER {
+        Ok(h) => h.clone(),
+        Err(e) => return Err(e.clone()),
+    };
     
     // 1. Initial status
     window.emit("playback-status", PlaybackStatus { status: Status::Pending, message: "Preparing...".into() }).unwrap();
@@ -360,79 +400,74 @@ async fn play_track(window: WebviewWindow, path: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn set_pitch(semitones: f32) -> Result<(), String> {
-    sys_log(&format!("Pitch command: {}", semitones));
-    AUDIO_HANDLER.active_pitch.store(semitones.to_bits(), Ordering::Relaxed);
-    AUDIO_HANDLER.state.lock().pitch = semitones;
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        handler.active_pitch.store(semitones.to_bits(), Ordering::Relaxed);
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn set_vocal_volume(volume: f32) -> Result<(), String> {
-    sys_log(&format!("Vocal Volume command: {}", volume));
-    AUDIO_HANDLER.vocal_volume.store(volume as u32, Ordering::Relaxed);
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        handler.vocal_volume.store(volume as u32, Ordering::Relaxed);
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn set_tempo(ratio: f32) -> Result<(), String> {
-    sys_log(&format!("Tempo adjusting: {}", ratio));
-    AUDIO_HANDLER.active_tempo.store(ratio.to_bits(), Ordering::Relaxed);
-    AUDIO_HANDLER.state.lock().tempo = ratio;
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        handler.active_tempo.store(ratio.to_bits(), Ordering::Relaxed);
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn set_volume(volume: f32) -> Result<(), String> {
-    sys_log(&format!("Volume adjusting: {}", volume));
-    let handler = AUDIO_HANDLER.clone();
-    let controller = handler.controller.lock();
-    controller.set_volume(volume / 100.0);
-    handler.state.lock().volume = volume;
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        let controller = handler.controller.lock();
+        controller.set_volume(volume / 100.0);
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn toggle_playback() -> Result<bool, String> {
-    let handler = AUDIO_HANDLER.clone();
-    let controller = handler.controller.lock();
-    let mut state = handler.state.lock();
-    
-    if state.is_playing {
-        controller.pause();
-        state.is_playing = false;
-        sys_log("Playback Paused");
-    } else {
-        controller.play();
-        state.is_playing = true;
-        sys_log("Playback Resumed");
-    }
-    Ok(state.is_playing)
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let is_playing = {
+        let controller = handler.controller.lock();
+        if controller.is_paused() {
+            controller.play();
+            true
+        } else {
+            controller.pause();
+            false
+        }
+    };
+    Ok(is_playing)
 }
 
 #[tauri::command]
 async fn seek_to(position_ms: u64) -> Result<(), String> {
-    sys_log(&format!("Seeking to: {}ms", position_ms));
-    let handler = AUDIO_HANDLER.clone();
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
     let controller = handler.controller.lock();
-    controller.try_seek(Duration::from_millis(position_ms)).map_err(|e: rodio::source::SeekError| e.to_string())?;
-    
-    // Update our position counter as well
-    handler.current_pos_samples.store((position_ms as f64 / 1000.0 * handler.active_sample_rate as f64) as u64, Ordering::Relaxed);
+    let _ = controller.try_seek(Duration::from_millis(position_ms));
+    handler.current_pos_samples.store(0, Ordering::Relaxed);
     Ok(())
 }
 
 #[tauri::command]
 async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
-    sys_log(&format!("AI Toggle: {} = {}", feature, enabled));
-    let handler = AUDIO_HANDLER.clone();
-    let mut state = handler.state.lock();
-    match feature.as_str() {
-        "vocal" => {
-            state.vocal_enabled = enabled;
-            handler.vocal_volume.store(if enabled { 100 } else { 0 }, Ordering::Relaxed);
-        },
-        "lyric" => state.lyric_enabled = enabled,
-        _ => {}
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        let mut state = handler.state.lock();
+        match feature.as_str() {
+            "vocal" => {
+                state.vocal_enabled = enabled;
+                handler.vocal_volume.store(if enabled { 100 } else { 0 }, Ordering::Relaxed);
+            },
+            "lyric" => state.lyric_enabled = enabled,
+            _ => {}
+        }
     }
     Ok(())
 }
@@ -485,7 +520,6 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
 #[tauri::command]
 async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
     if path.starts_with("http") {
-        // YouTube URL case
         let metadata_res = YoutubeManager::get_video_metadata(&path).await;
         let (title, thumbnail, duration, artist) = match metadata_res {
             Ok(m) => {
@@ -519,7 +553,6 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
     let file_path = std::path::Path::new(&path);
     let file_name = file_path.file_name().unwrap_or_default().to_string_lossy().to_string();
     
-    // Attempt to extract duration (optional, don't fail if decoder fails)
     let duration_str = match std::fs::File::open(&path) {
         Ok(file) => {
             match Decoder::new(std::io::BufReader::new(file)) {
@@ -562,24 +595,28 @@ async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), 
 
 #[tauri::command]
 async fn stop_playback() -> Result<(), String> {
-    let handler = AUDIO_HANDLER.clone();
-    let controller = handler.controller.lock();
-    controller.clear();
-    let mut state = handler.state.lock();
-    state.is_playing = false;
-    state.current_track = None;
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        let controller = handler.controller.lock();
+        controller.clear();
+        let mut state = handler.state.lock();
+        state.is_playing = false;
+        state.current_track = None;
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn get_playback_state() -> Result<AppState, String> {
-    Ok(AUDIO_HANDLER.state.lock().clone())
+    if let Ok(handler) = &*AUDIO_HANDLER {
+        Ok(handler.state.lock().clone())
+    } else {
+        Ok(AppState::default())
+    }
 }
 
 #[tauri::command]
 async fn check_ai_runtime() -> Result<Vec<String>, String> {
     let mut providers = Vec::new();
-    // Use ort 2.x API:
     if CUDAExecutionProvider::default().is_available().unwrap_or(false) {
         providers.push("CUDA".to_string());
     }
@@ -592,13 +629,9 @@ async fn check_ai_runtime() -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn check_model_ready(handle: AppHandle) -> bool {
     let manager = ModelManager::new(&handle);
-    
-    // Check Resources first
     if let Ok(res_path) = handle.path().resolve("resources/bs_roformer.onnx", BaseDirectory::Resource) {
         if res_path.exists() { return true; }
     }
-    
-    // Check AppData
     manager.get_model_path("bs_roformer.onnx").exists()
 }
 
@@ -606,14 +639,42 @@ async fn check_model_ready(handle: AppHandle) -> bool {
 async fn download_ai_model(window: WebviewWindow) -> Result<(), String> {
     let app_handle = window.app_handle();
     let manager = ModelManager::new(app_handle);
-    
     window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 다운로드 시작...".into() }).unwrap();
-    
-    // BS-Roformer (Viperx-1297) FP16 Mirror from Hugging Face
     let model_url = "https://huggingface.co/safescribeai/bs-roformer-onnx-fp16/resolve/main/bs_roformer_fp16.onnx";
     let _model_path = manager.ensure_model(app_handle, "bs_roformer.onnx", model_url).await?;
-    
     window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "AI 모델 다운로드 완료".into() }).unwrap();
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_audio_devices() -> Result<Vec<String>, String> {
+    let host = cpal::default_host();
+    let devices = host.output_devices().map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    for d in devices {
+        if let Ok(name) = d.name() {
+            let config = d.default_output_config().map(|c| format!("{}Hz, {}ch", u32::from(c.sample_rate()), c.channels())).unwrap_or_else(|_| "Unknown Config".into());
+            names.push(format!("{} ({})", name, config));
+        }
+    }
+    Ok(names)
+}
+
+#[tauri::command]
+async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
+    let app_dir = window.app_handle().path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let path = app_dir.join("cache").join("separated");
+    if !path.exists() {
+        std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("explorer")
+            .arg(path.to_string_lossy().to_string())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -685,7 +746,7 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
     let window_clone = window.clone();
     let path_clone = path.clone();
 
-    async_runtime::spawn_blocking(move || {
+    let result = async_runtime::spawn_blocking(move || {
         let w = window_clone.clone();
         let p = path_clone.clone();
         engine.separate(&source_path, &cache_dir, Box::new(move |percentage| {
@@ -699,9 +760,29 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
                 status: "Processing".into(),
             });
         }))
-    }).await.map_err(|e| format!("처리 중 오류(Panic)가 발생했습니다: {}", e))??;
+    }).await.map_err(|e| format!("처리 중 오류(Panic)가 발생했습니다: {}", e));
     
-    // Task Final Emission
+    // Check if what we got back is an error
+    if let Ok(Err(ref e)) = result {
+        if e.contains("Cancelled by user") {
+            let _ = window.emit("separation-progress", SeparationProgress {
+                path: path.clone(),
+                percentage: 0.0,
+                status: "Cancelled".into(),
+            });
+        } else {
+            // General Error Emission
+            let _ = window.emit("separation-progress", SeparationProgress {
+                path: path.clone(),
+                percentage: 0.0,
+                status: "Error".into(),
+            });
+        }
+    }
+
+    result??;
+    
+    // Task Final Emission (Finished)
     window.emit("separation-progress", SeparationProgress {
         path: path.clone(),
         percentage: 100.0,
@@ -748,21 +829,21 @@ pub fn run() {
             if let Some(w) = window {
                 *MAIN_WINDOW.lock() = Some(w.clone());
                 
-                // Progress monitoring thread
                 let w_clone = w.clone();
                 std::thread::spawn(move || {
                     loop {
                         std::thread::sleep(Duration::from_millis(100));
-                        let handler = AUDIO_HANDLER.clone();
-                        let samples = handler.current_pos_samples.load(Ordering::Relaxed);
-                        let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
-                        let rate = handler.active_sample_rate;
-                        if rate > 0 {
-                            let pos_ms = (samples as f64 / rate as f64 * 1000.0) as u64;
-                            let _ = w_clone.emit("playback-progress", PlaybackProgress {
-                                position_ms: pos_ms,
-                                duration_ms,
-                            });
+                        if let Ok(handler) = &*AUDIO_HANDLER {
+                                let samples = handler.current_pos_samples.load(Ordering::Relaxed);
+                                let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+                                let rate = handler.active_sample_rate;
+                                if rate > 0 {
+                                    let pos_ms = (samples as f64 / rate as f64 * 1000.0) as u64;
+                                    let _ = w_clone.emit("playback-progress", PlaybackProgress {
+                                        position_ms: pos_ms,
+                                        duration_ms,
+                                    });
+                                }
                         }
                     }
                 });
@@ -791,7 +872,9 @@ pub fn run() {
             download_ai_model,
             save_library,
             load_library,
-            cancel_separation
+            cancel_separation,
+            get_audio_devices,
+            open_cache_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
