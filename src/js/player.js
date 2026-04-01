@@ -147,7 +147,7 @@ export async function selectTrack(index) {
     await setTempo(t);
     await setVolume(v);
 
-    await apiPlayTrack(song.path);
+    await apiPlayTrack(song.path, state.trackDurationMs);
     
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");

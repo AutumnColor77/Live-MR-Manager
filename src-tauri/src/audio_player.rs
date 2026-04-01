@@ -17,6 +17,7 @@ use cpal::traits::{HostTrait, DeviceTrait};
 pub static ACTIVE_DOWNLOADS: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
 pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+pub static IS_PREPARING_PLAYBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn sys_log(message: &str) {
     println!("{}", message);
@@ -288,6 +289,7 @@ pub struct AudioHandler {
     pub total_duration_ms: Arc<AtomicU64>,
     pub active_sample_rate: u32,
     pub active_channels: u16,
+    pub track_sample_rate: Arc<AtomicU32>,
     pub vocal_volume: Arc<AtomicU32>, // 0-100
     pub instrumental_volume: Arc<AtomicU32>,
     pub playback_cv: parking_lot::Condvar,
@@ -334,6 +336,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         total_duration_ms: Arc::new(AtomicU64::new(0)),
         active_sample_rate: device_rate,
         active_channels: device_channels,
+        track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
         vocal_volume: Arc::new(AtomicU32::new(80.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         playback_cv: parking_lot::Condvar::new(),

@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use ort::session::Session;
 use ort::value::Value;
+use ort::value::ValueType;
 use ndarray::{self, Array3};
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -60,11 +61,31 @@ impl InferenceEngine for WaveformRemover {
         let n_channels = samples.len();
         let n_samples = samples[0].len();
         
-        // 2. STFT Parameters (Aligned with model: [1, 801, 4100])
-        const N_FFT: usize = 1600;
-        const HOP_LENGTH: usize = 400;
-        const CHUNK_FRAMES: usize = 4100;
-        let chunk_samples = CHUNK_FRAMES * HOP_LENGTH;
+        // 2. Query Model Input Shape to determine STFT parameters
+        let session_guard = self.session.lock();
+        let inputs = session_guard.inputs();
+        let input_shape = match inputs[0].dtype() {
+            ValueType::Tensor { shape, .. } => shape.clone(),
+            _ => return Err("Unexpected input type".into()),
+        };
+        drop(session_guard);
+
+        sys_log(&format!("DEBUG: [WaveformRemover] Model Input Shape: {:?}", input_shape));
+
+        // Detect indices based on rank
+        // Rank 3: [Batch, Freq, Time] -> n_bins at 1, chunk_frames at 2
+        // Rank 4: [Batch, Channel, Freq, Time] -> n_bins at 2, chunk_frames at 3
+        let (n_bins, chunk_frames) = if input_shape.len() == 4 {
+            (input_shape[2] as usize, input_shape[3] as usize)
+        } else {
+            (input_shape[1] as usize, input_shape[2] as usize)
+        };
+
+        let n_fft = (n_bins - 1) * 2;
+        let hop_length = n_fft / 4; // Usual default
+        let chunk_samples = chunk_frames * hop_length;
+
+        sys_log(&format!("DEBUG: [WaveformRemover] Deduced Params: FFT={}, HOP={}, CHUNKS={}", n_fft, hop_length, chunk_frames));
 
         let mut vocal_out = vec![vec![0.0f32; n_samples]; n_channels];
         let mut inst_out = vec![vec![0.0f32; n_samples]; n_channels];
@@ -95,30 +116,47 @@ impl InferenceEngine for WaveformRemover {
                 }
 
                 // A. STFT
-                let (mag, phase) = self.stft(&chunk, N_FFT, HOP_LENGTH);
+                let (mag, phase) = self.stft(&chunk, n_fft, hop_length);
                 
-                // B. Prepare Tensor [1, 801, 4100]
-                // mag shape is [Frames, Bins], currently [4100, 801]
-                let mut input_array = Array3::<f32>::zeros((1, 801, 4100));
-                for f in 0..CHUNK_FRAMES {
-                    for b in 0..801 {
-                        input_array[[0, b, f]] = mag[f][b];
+                // B. Prepare Tensor
+                let mut input_array = Array3::<f32>::zeros((1, n_bins, chunk_frames));
+                
+                let mut sum_val = 0.0;
+                let mut max_val = 0.0f32;
+                for f in 0..chunk_frames {
+                    for b in 0..n_bins {
+                        let val = mag[f][b];
+                        input_array[[0, b, f]] = val;
+                        sum_val += val;
+                        max_val = max_val.max(val);
                     }
+                }
+                
+                if offset == 0 {
+                    sys_log(&format!("DEBUG: Input Tensor Stats - Max: {:.4}, Mean: {:.4}", max_val, sum_val / (n_bins * chunk_frames) as f32));
                 }
 
                 // C. Inference
                 let input_value = Value::from_array(input_array.into_dyn()).map_err(|e| e.to_string())?;
-                let inputs = ort::inputs!["input" => input_value];
-
                 let mut session_guard = self.session.lock();
-                let outputs = session_guard.run(inputs).map_err(|e| e.to_string())?;
+                
+                // Use fixed array of SessionInputValue for positional inputs
+                let outputs = session_guard.run([input_value.into()]).map_err(|e| e.to_string())?;
                 
                 sys_log(&format!("DEBUG: Model inference complete. Output count: {}", outputs.len()));
 
                 // D. Extract & iSTFT
                 // Some models only have 1 output (Vocal), others have 2 (Vocal, Inst)
                 let v_mag_tensor = outputs[0].try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
-                let v_mag = self.tensor_to_vec_2d(&v_mag_tensor.1, &v_mag_tensor.0); // [801, 4100]
+                
+                // Logging output stats for the first chunk
+                if offset == 0 {
+                    let out_data = v_mag_tensor.1;
+                    let out_max = out_data.iter().fold(0.0f32, |m, &x| m.max(x));
+                    sys_log(&format!("DEBUG: Output Tensor Stats - Max: {:.4}", out_max));
+                }
+
+                let v_mag = self.tensor_to_vec_2d(&v_mag_tensor.1, &v_mag_tensor.0); 
 
                 let i_mag = if outputs.len() > 1 {
                     let i_mag_tensor = outputs[1].try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
@@ -138,8 +176,8 @@ impl InferenceEngine for WaveformRemover {
                     diff_mag
                 };
 
-                let v_reconstructed = self.istft(&v_mag, &phase, N_FFT, HOP_LENGTH);
-                let i_reconstructed = self.istft(&i_mag, &phase, N_FFT, HOP_LENGTH);
+                let v_reconstructed = self.istft(&v_mag, &phase, n_fft, hop_length);
+                let i_reconstructed = self.istft(&i_mag, &phase, n_fft, hop_length);
 
                 // E. Overlap-Add back to result buffer
                 for i in 0..std::cmp::min(actual_samples, v_reconstructed.len()) {

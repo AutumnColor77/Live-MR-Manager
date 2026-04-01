@@ -38,3 +38,10 @@ export const DEFAULT_CATEGORIES = [
   { val: "jpop", text: "J-POP" },
   { val: "kpop", text: "K-POP" }
 ];
+
+export const SORT_OPTIONS = [
+  { val: "dateNew", text: "최근 추가순" },
+  { val: "dateOld", text: "오래된순" },
+  { val: "title", text: "제목순 (A-Z)" },
+  { val: "plays", text: "재생 횟수순" }
+];

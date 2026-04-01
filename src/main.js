@@ -3,7 +3,7 @@
  */
 
 import { state } from './js/state.js';
-import { elements, initDomReferences, renderLibrary, updateCategoryDropdowns, updateAiModelStatus } from './js/ui.js';
+import { elements, initDomReferences, renderLibrary, updateCategoryDropdowns, updateSortDropdown, updateAiModelStatus } from './js/ui.js';
 import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab } from './js/events.js';
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
@@ -36,6 +36,7 @@ async function initApp() {
   switchTab(initialTab);
   
   updateCategoryDropdowns();
+  updateSortDropdown();
   
   // Initialize View Mode UI based on saved state
   if (elements.songGrid) {

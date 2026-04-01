@@ -15,12 +15,12 @@ use tauri::path::BaseDirectory;
 
 mod youtube;
 mod model_manager;
-mod vocal_remover;
+pub mod vocal_remover;
 pub mod audio_player;
 
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
-use crate::vocal_remover::{InferenceEngine, WaveformRemover};
+pub use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use urlencoding;
 use crate::audio_player::{
     AUDIO_HANDLER, Status, PlaybackStatus, PlaybackProgress,
@@ -37,6 +37,7 @@ use symphonia::core::probe::Hint;
 // --- AI Engine ---
 static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
 static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
 
 // --- Streaming Support ---
@@ -64,30 +65,58 @@ pub struct SongMetadata {
 
 #[tauri::command]
 async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>) -> Result<(), String> {
-    let res = play_track_internal(window.clone(), path, duration_ms).await;
+    let res = play_track_internal(window.clone(), path, duration_ms, None).await;
     if let Err(ref e) = res {
         let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
     }
     res
 }
 
-async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hint: Option<u64>) -> Result<(), String> {
+async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hint: Option<u64>, start_pos_ms: Option<u64>) -> Result<(), String> {
     let handler = match &*AUDIO_HANDLER {
         Ok(h) => h.clone(),
         Err(e) => return Err(e.clone()),
     };
     
-    // 1. Initial status
-    window.emit("playback-status", PlaybackStatus { status: Status::Pending, message: "Preparing...".into() }).unwrap();
+    let target_version = PLAYBACK_VERSION.fetch_add(1, Ordering::SeqCst) + 1;
+    sys_log(&format!("[DEBUG] play_track_internal Start: version={}, path={}, start_pos={:?}ms", target_version, path, start_pos_ms));
+    
+    struct PlaybackPreparationGuard;
+    impl Drop for PlaybackPreparationGuard {
+        fn drop(&mut self) {
+            crate::audio_player::IS_PREPARING_PLAYBACK.store(false, Ordering::SeqCst);
+        }
+    }
+    let _prep_guard = PlaybackPreparationGuard;
+    crate::audio_player::IS_PREPARING_PLAYBACK.store(true, Ordering::SeqCst);
+    
+    // 1. Initial status - Only if not a seek (Silent Seek)
+    if start_pos_ms.is_none() {
+        window.emit("playback-status", PlaybackStatus { status: Status::Pending, message: "Preparing...".into() }).unwrap();
+    }
 
     // 1. Immediate stop and reset
     {
         let controller = handler.controller.lock();
         controller.clear();
+        sys_log("[DEBUG] Step 0: Controller cleared");
     }
-    handler.current_pos_samples.store(0, Ordering::Relaxed);
     
-    // Set initial duration from hint immediately to avoid zero-flicker
+    let rate = handler.track_sample_rate.load(Ordering::Relaxed) as f64;
+    let start_samples = if let Some(ms) = start_pos_ms {
+        (ms as f64 * rate / 1000.0) as u64
+    } else {
+        0
+    };
+    handler.current_pos_samples.store(start_samples, Ordering::Relaxed);
+    
+    // Set initial duration from hint immediately to avoid zero-flicker and fix FLAC/VBR finished detection
+    if let Some(d) = duration_ms_hint {
+        handler.total_duration_ms.store(d, Ordering::Relaxed);
+    } else {
+        handler.total_duration_ms.store(0, Ordering::Relaxed);
+    }
+    
     // 2. Metadata and path setup
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
     let cache_key = urlencoding::encode(&path).to_string();
@@ -96,10 +125,12 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     let inst_path = cache_dir.join("inst.wav");
     
     let play_path = if path.starts_with("http") {
-        window.emit("playback-status", PlaybackStatus { 
-            status: Status::Downloading, 
-            message: "유튜브 오디오 다운로드 중...".to_string() 
-        }).ok();
+        if start_pos_ms.is_none() {
+            window.emit("playback-status", PlaybackStatus { 
+                status: Status::Downloading, 
+                message: "유튜브 오디오 다운로드 중...".to_string() 
+            }).ok();
+        }
         
         // Restore actual YouTube download logic
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
@@ -111,10 +142,13 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         }
         final_path
     } else {
-        window.emit("playback-status", PlaybackStatus { 
-            status: Status::Decoding, 
-            message: "파일 읽기 및 디코딩 중...".to_string() 
-        }).ok();
+        if start_pos_ms.is_none() {
+            window.emit("playback-status", PlaybackStatus { 
+                status: Status::Decoding, 
+                message: "파일 읽기 및 디코딩 중...".to_string() 
+            }).ok();
+        }
+        sys_log(&format!("[DEBUG] Step 1: Local file path confirmed: {:?}", path));
         std::path::PathBuf::from(&path)
     };
 
@@ -135,8 +169,30 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         let v_file = File::open(vocal_path).map_err(|e| e.to_string())?;
         let i_file = File::open(inst_path).map_err(|e| e.to_string())?;
         
-        let v_decoder = Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
-        let i_decoder = Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
+        let mut v_decoder = Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
+        let mut i_decoder = Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
+        
+        handler.track_sample_rate.store(v_decoder.sample_rate().into(), Ordering::Relaxed);
+
+        // Before pipeline creation, check if we are still relevant
+        let current_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
+        if current_v != target_version { 
+            sys_log(&format!("[DEBUG] Playback cancelled (Version Mismatch): current={}, target={}", current_v, target_version));
+            return Ok(()); 
+        }
+
+        // Apply start position if provided
+        if let Some(ms) = start_pos_ms {
+            sys_log(&format!("[DEBUG] Step 2: Attempting seek to {}ms", ms));
+            match v_decoder.try_seek(Duration::from_millis(ms)) {
+                Ok(_) => sys_log("[DEBUG] Step 3: Vocal seek success"),
+                Err(e) => sys_log(&format!("[DEBUG] Step 3: Vocal seek failed: {:?}", e)),
+            }
+            match i_decoder.try_seek(Duration::from_millis(ms)) {
+                Ok(_) => sys_log("[DEBUG] Step 3: Instrumental seek success"),
+                Err(e) => sys_log(&format!("[DEBUG] Step 3: Instrumental seek failed: {:?}", e)),
+            }
+        }
         
         // Capture duration from one of them
         if let Some(d) = i_decoder.total_duration() {
@@ -150,14 +206,35 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         let resampled_i = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_i, volume: handler.instrumental_volume.clone() }, target_channels_nz, target_rate_nz);
 
         let mixed = resampled_i.mix(resampled_v);
+        
+        // Final check before appending to controller
+        let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
+        if final_v != target_version { 
+            sys_log(&format!("[DEBUG] Playback cancelled before append: current={}, target={}", final_v, target_version));
+            return Ok(()); 
+        }
+        
         let controller = handler.controller.lock();
         controller.append(mixed);
         controller.play();
+        sys_log("[DEBUG] Step 4: Source appended to controller (Separated)");
     } else {
         // Mono source (or streaming)
         let is_yt = path.starts_with("http");
         let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e: std::io::Error| format!("Failed to open stream: {}", e))?;
-        let decoder = rodio::Decoder::new(std::io::BufReader::new(reader)).map_err(|e: rodio::decoder::DecoderError| e.to_string())?;
+        sys_log("[DEBUG] Step 1.5: Stream reader created");
+        let mut decoder = rodio::Decoder::new(std::io::BufReader::new(reader)).map_err(|e: rodio::decoder::DecoderError| e.to_string())?;
+        
+        handler.track_sample_rate.store(decoder.sample_rate().into(), Ordering::Relaxed);
+        
+        // Apply start position if provided
+        if let Some(ms) = start_pos_ms {
+            sys_log(&format!("[DEBUG] Step 2: Attempting seek to {}ms", ms));
+            match decoder.try_seek(Duration::from_millis(ms)) {
+                Ok(_) => sys_log("[DEBUG] Step 3: Seek success"),
+                Err(e) => sys_log(&format!("[DEBUG] Step 3: Seek failed (Decoder Error): {:?}", e)),
+            }
+        }
         
         let opt_d: Option<Duration> = decoder.total_duration();
         if let Some(d) = opt_d {
@@ -168,9 +245,17 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         let dyn_vol = DynamicVolumeSource { input: stretched, volume: handler.vocal_volume.clone() };
         let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
         
+        // Final check before appending to controller
+        let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
+        if final_v != target_version { 
+            sys_log(&format!("[DEBUG] Playback cancelled before append: current={}, target={}", final_v, target_version));
+            return Ok(()); 
+        }
+        
         let controller = handler.controller.lock();
         controller.append(resampled);
         controller.play(); // Ensure it starts
+        sys_log("[DEBUG] Step 4: Source appended to controller (Mono/Streaming)");
         println!("[AUDIO] Track appended to controller and play() called");
     }
 
@@ -245,21 +330,38 @@ async fn set_tempo(ratio: f64) -> Result<(), String> {
 #[tauri::command]
 async fn seek_to(position_ms: u64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
-    let controller = handler.controller.lock();
     
-    // 1. Seek the controller (Rodio internal)
-    let _ = controller.try_seek(Duration::from_millis(position_ms));
+    // Get current track path and duration hint to recreate the pipeline
+    let (path, duration_ms) = {
+        let state = handler.state.lock();
+        let path = state.current_track.clone();
+        let duration = handler.total_duration_ms.load(Ordering::Relaxed);
+        (path, duration)
+    };
+
+    if let Some(p) = path {
+        let window_opt = { MAIN_WINDOW.lock().clone() };
+        
+        if let Some(window) = window_opt {
+            sys_log(&format!("[AUDIO] Seek request received: {}ms for {}", position_ms, p));
+            // Re-run play_track_internal from the new start position
+            let p_clone = p.clone();
+            
+            // Execute directly and await to ensure completion
+            // The lock is already dropped here, so it's safe to await
+            let res = play_track_internal(window, p_clone, Some(duration_ms), Some(position_ms)).await;
+            if let Err(e) = res {
+                sys_log(&format!("[DEBUG] play_track_internal failed during seek: {}", e));
+            }
+            
+            sys_log(&format!("[AUDIO] Seek completed: {}ms", position_ms));
+        } else {
+             sys_log("[DEBUG] Seek failed: MAIN_WINDOW is None");
+        }
+    } else {
+        sys_log("[DEBUG] Seek failed: No current track path available");
+    }
     
-    // 2. Sync our progress counter to the new time position
-    // pos_samples = (ms * sample_rate) / 1000
-    let rate = handler.active_sample_rate as f64;
-    let target_samples = (position_ms as f64 * rate / 1000.0) as u64;
-    handler.current_pos_samples.store(target_samples, Ordering::Relaxed);
-    
-    // 3. Force play since seek can sometimes pause state or clear internal state
-    controller.play();
-    
-    // println!("[AUDIO] Seek to {}ms (Target Samples: {})", position_ms, target_samples);
     Ok(())
 }
 
@@ -709,21 +811,36 @@ pub fn run() {
                     loop {
                         std::thread::sleep(Duration::from_millis(200));
                         if let Ok(handler) = &*AUDIO_HANDLER {
-                            let (samples, duration_ms, rate, is_empty) = {
+                            let (samples, duration_ms, rate, track_rate, is_empty) = {
                                 let controller = handler.controller.lock();
                                 (
                                     handler.current_pos_samples.load(Ordering::Relaxed),
                                     handler.total_duration_ms.load(Ordering::Relaxed),
                                     handler.active_sample_rate,
+                                    handler.track_sample_rate.load(Ordering::Relaxed),
                                     controller.empty()
                                 )
                             };
 
-                            if is_empty && duration_ms > 0 {
+                            let pos_ms = if track_rate > 0 { (samples as f64 / track_rate as f64 * 1000.0) as u64 } else { 0 };
 
+                            // Detection of finished playback: sink is empty OR time exceeded duration (safety fallback for FLAC/VBR)
+                            let is_finished_fallback = duration_ms > 0 && pos_ms >= duration_ms + 1000;
+                            
+                            // CRITICAL: Verify if we are currently in the middle of a seek/re-init
+                            let is_locked_for_init = crate::audio_player::IS_PREPARING_PLAYBACK.load(Ordering::SeqCst);
+
+                            if (is_empty || is_finished_fallback) && duration_ms > 0 && !is_locked_for_init {
                                 let mut state = handler.state.lock();
                                 if state.is_playing {
                                     state.is_playing = false;
+                                    
+                                    // Ensure sink is cleared to stop trailing audio
+                                    handler.controller.lock().clear();
+                                    
+                                    // Reset position samples when finished
+                                    handler.current_pos_samples.store(0, Ordering::Relaxed);
+                                    
                                     let _ = w_clone.emit("playback-status", PlaybackStatus { 
                                         status: Status::Finished, 
                                         message: "Finished".into() 
@@ -732,9 +849,12 @@ pub fn run() {
                             }
 
                             if rate > 0 {
-                                let pos_ms = (samples as f64 / rate as f64 * 1000.0) as u64;
+                                // If already finished, emit 0ms to reset UI time
+                                let is_really_finished = is_empty || is_finished_fallback;
+                                let pos_to_emit_ms = if is_really_finished { 0 } else { pos_ms };
+                                
                                 let _ = w_clone.emit("playback-progress", PlaybackProgress {
-                                    position_ms: pos_ms,
+                                    position_ms: pos_to_emit_ms,
                                     duration_ms,
                                 });
                             }

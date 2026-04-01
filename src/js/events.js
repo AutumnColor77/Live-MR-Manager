@@ -209,6 +209,13 @@ export function initGlobalListeners() {
     };
   }
 
+  // Library Search
+  if (elements.libSearchInput) {
+    elements.libSearchInput.addEventListener("input", () => {
+      renderLibrary();
+    });
+  }
+
   // Global Audio Reset Button
   const btnReset = document.getElementById("btn-reset-audio");
   if (btnReset) {

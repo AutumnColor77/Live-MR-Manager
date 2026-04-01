@@ -2,7 +2,7 @@
  * ui.js - DOM Rendering and UI Logic
  */
 
-import { state, DEFAULT_CATEGORIES } from './state.js';
+import { state, DEFAULT_CATEGORIES, SORT_OPTIONS } from './state.js';
 import { getThumbnailUrl, showNotification } from './utils.js';
 import { checkMrSeparated, saveLibrary } from './audio.js';
 
@@ -331,6 +331,16 @@ export function updateCategoryDropdowns() {
     const editCatCustom = document.getElementById("edit-category-custom");
     if (editCatSelect) editCatSelect.value = val;
     if (editCatCustom) editCatCustom.style.display = (val === "etc") ? "block" : "none";
+  });
+}
+
+/**
+ * Initializes and updates the library Sort dropdown
+ */
+export function updateSortDropdown() {
+  renderDropdownOptions("lib-sort-dropdown", SORT_OPTIONS, (val) => {
+    if (elements.libSortSelect) elements.libSortSelect.value = val;
+    renderLibrary();
   });
 }
 
