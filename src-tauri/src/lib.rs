@@ -5,7 +5,7 @@ use rodio::source::UniformSourceIterator;
 use serde::{Deserialize, Serialize};
 use cpal::traits::{HostTrait, DeviceTrait};
 use std::fs::File;
-use std::io::{BufReader, Read, Seek};
+use std::io::BufReader;
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -23,9 +23,9 @@ use crate::model_manager::ModelManager;
 use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use urlencoding;
 use crate::audio_player::{
-    AUDIO_HANDLER, AudioHandler, Status, PlaybackStatus, PlaybackProgress,
+    AUDIO_HANDLER, Status, PlaybackStatus, PlaybackProgress,
     AppState, StreamingReader, StretchedSource, DynamicVolumeSource,
-    CANCEL_REQUESTS, sys_log, MAIN_WINDOW, ACTIVE_DOWNLOADS
+    CANCEL_REQUESTS, sys_log, MAIN_WINDOW
 };
 use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider};
 use symphonia::core::formats::FormatOptions;
@@ -36,6 +36,8 @@ use symphonia::core::probe::Hint;
 
 // --- AI Engine ---
 static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
+static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+
 
 // --- Streaming Support ---
 // Audio processing types and handlers have been moved to audio_player.rs
@@ -86,9 +88,6 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     handler.current_pos_samples.store(0, Ordering::Relaxed);
     
     // Set initial duration from hint immediately to avoid zero-flicker
-    let initial_duration = duration_ms_hint.unwrap_or(0);
-    handler.total_duration_ms.store(initial_duration, Ordering::Relaxed);
-
     // 2. Metadata and path setup
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
     let cache_key = urlencoding::encode(&path).to_string();
@@ -97,19 +96,29 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     let inst_path = cache_dir.join("inst.wav");
     
     let play_path = if path.starts_with("http") {
-        window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "Downloading...".into() }).unwrap();
+        window.emit("playback-status", PlaybackStatus { 
+            status: Status::Downloading, 
+            message: "유튜브 오디오 다운로드 중...".to_string() 
+        }).ok();
+        
+        // Restore actual YouTube download logic
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
         let temp_dir = std::env::temp_dir();
         let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
+        
         if !final_path.exists() {
             YoutubeManager::download_audio(&window, &path, final_path.clone()).await?;
         }
         final_path
     } else {
+        window.emit("playback-status", PlaybackStatus { 
+            status: Status::Decoding, 
+            message: "파일 읽기 및 디코딩 중...".to_string() 
+        }).ok();
         std::path::PathBuf::from(&path)
     };
 
-    if !play_path.exists() {
+    if !play_path.exists() && !path.starts_with("http") {
         return Err("File not found".into());
     }
 
@@ -278,6 +287,17 @@ async fn check_mr_separated(window: WebviewWindow, path: String) -> Result<bool,
     let vocal_path = cache_dir.join("vocal.wav");
     let inst_path = cache_dir.join("inst.wav");
     Ok(vocal_path.exists() && inst_path.exists())
+}
+
+#[tauri::command]
+async fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
+    let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
+    let cache_key = urlencoding::encode(&path).to_string();
+    let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
+    if cache_dir.exists() {
+        std::fs::remove_dir_all(cache_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -512,32 +532,56 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
     let cache_key = urlencoding::encode(&path).to_string();
     let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
     
+    // 1. YouTube Download (if needed, this can happen in parallel, but separation still sequential)
     let source_path = if path.starts_with("http") {
-        let temp_dir = std::env::temp_dir();
+        window.emit("separation-progress", SeparationProgress {
+            path: path.clone(),
+            percentage: 0.0,
+            status: "Downloading YouTube Audio...".into(),
+        }).unwrap();
+        
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
-        temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())))
+        let temp_dir = std::env::temp_dir();
+        let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
+        
+        if !final_path.exists() {
+            YoutubeManager::download_audio(&window, &path, final_path.clone()).await?;
+        }
+        final_path
     } else {
         std::path::PathBuf::from(&path)
     };
 
     if !source_path.exists() {
-        return Err("Source file not found.".into());
+        return Err("Source file not found (Download failed or invalid path).".into());
     }
 
-    // Task Start Emission
+    // 2. Queue the task and wait for lock (Sequential Processing)
+    window.emit("separation-progress", SeparationProgress {
+        path: path.clone(),
+        percentage: 0.0,
+        status: "Queued".into(),
+    }).unwrap();
+
+    let _permit = AI_QUEUE_LOCK.lock().await;
+
+    // Task Start Emission (Now that we have the lock)
     window.emit("separation-progress", SeparationProgress {
         path: path.clone(),
         percentage: 0.0,
         status: "Starting".into(),
     }).unwrap();
 
+
     let window_clone = window.clone();
     let path_clone = path.clone();
+    let cache_dir_for_move = cache_dir.clone();
 
     let result = async_runtime::spawn_blocking(move || -> Result<(), String> {
         let w = window_clone.clone();
         let p = path_clone.clone();
-        engine.separate(&source_path, &cache_dir, Box::new(move |percentage| {
+        engine.separate(&source_path, &cache_dir_for_move, Box::new(move |percentage| {
+
             // Check for cancellation
             if CANCEL_REQUESTS.lock().contains(&p) {
                 return; // Logic for "stop" is handled inside separate loop
@@ -553,6 +597,9 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
     
     // Check if what we got back is an error
     if let Ok(Err(ref e)) = result {
+        // Cleanup partial files on error or cancel
+        let _ = std::fs::remove_dir_all(&cache_dir);
+
         if e.contains("Cancelled by user") {
             let _ = window.emit("separation-progress", SeparationProgress {
                 path: path.clone(),
@@ -568,6 +615,7 @@ async fn run_separation(window: WebviewWindow, path: String) -> Result<(), Strin
             });
         }
     }
+
 
     result??;
     
@@ -672,6 +720,7 @@ pub fn run() {
                             };
 
                             if is_empty && duration_ms > 0 {
+
                                 let mut state = handler.state.lock();
                                 if state.is_playing {
                                     state.is_playing = false;
@@ -708,6 +757,7 @@ pub fn run() {
             set_vocal_balance,
             toggle_ai_feature,
             check_mr_separated,
+            delete_mr,
             start_mr_separation,
             get_youtube_metadata,
             get_audio_metadata,

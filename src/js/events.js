@@ -3,9 +3,9 @@
  */
 
 import { state } from './state.js';
-import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton } from './ui.js';
+import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus } from './ui.js';
 import { formatTime, showNotification } from './utils.js';
-import { selectTrack, handlePlaybackToggle, updateProgressBar, playNext, playPrevious } from './player.js';
+import { selectTrack, highlightTrack, handlePlaybackToggle, updateProgressBar, handleNextTrack, handlePrevTrack } from './player.js';
 import { 
   setVolume, setPitch, setTempo, seekTo, saveLibrary, 
   loadLibrary as apiLoadLibrary, getAudioMetadata, getYoutubeMetadata, setVocalBalance 
@@ -260,16 +260,20 @@ export function initGlobalListeners() {
   }
 
   if (elements.btnNext) {
-    elements.btnNext.onclick = playNext;
+    elements.btnNext.onclick = handleNextTrack;
   }
 
   if (elements.btnPrev) {
-    elements.btnPrev.onclick = playPrevious;
+    elements.btnPrev.onclick = handlePrevTrack;
   }
 
   // Custom Event for Song Selection
   window.addEventListener('song-select', (e) => {
     selectTrack(e.detail.index);
+  });
+
+  window.addEventListener('highlight-song', (e) => {
+    highlightTrack(e.detail.index);
   });
 
   // Modal Save
@@ -293,12 +297,100 @@ export function initGlobalListeners() {
     };
   }
 
-  // Click outside close
-  document.addEventListener("click", () => {
+  // Modal Actions
+  const modalClose = document.getElementById("modal-close");
+  const modalCancel = document.getElementById("modal-cancel");
+  if (modalClose) modalClose.onclick = () => elements.metadataModal.classList.remove("active");
+  if (modalCancel) modalCancel.onclick = () => elements.metadataModal.classList.remove("active");
+
+  const confirmClose = document.getElementById("confirm-close-icon");
+  const confirmCancel = document.getElementById("confirm-cancel");
+  if (confirmClose) confirmClose.onclick = () => elements.confirmModal.classList.remove("active");
+  if (confirmCancel) confirmCancel.onclick = () => elements.confirmModal.classList.remove("active");
+
+  // Event Delegation for Custom Selects and Outside Clicks
+  document.addEventListener("click", (e) => {
+    // 1. Context Menu Close
     if (elements.contextMenu) elements.contextMenu.classList.remove("active");
-    // Close custom dropdowns
-    document.querySelectorAll(".custom-select").forEach(el => el.classList.remove("active"));
+    
+    // 2. Modal Overlay Close (Outside click)
+    if (e.target.classList.contains("modal-overlay")) {
+      e.target.classList.remove("active");
+    }
+
+    // 3. Custom Select Toggle Logic
+    const customSelect = e.target.closest(".custom-select");
+    if (customSelect) {
+      const isCurrentlyActive = customSelect.classList.contains("active");
+      
+      // 모든 드롭다운 일단 닫기 (상호 배타적 열기)
+      document.querySelectorAll(".custom-select").forEach(el => el.classList.remove("active"));
+      
+      // 방금 클릭한 것이 닫혀있었다면 열기 (토글)
+      if (!isCurrentlyActive) {
+        customSelect.classList.add("active");
+      }
+    } else {
+      // 드롭다운 외부 클릭 시 모든 드롭다운 닫기
+      document.querySelectorAll(".custom-select").forEach(el => el.classList.remove("active"));
+    }
+
+    // Global click to deselect when clicking outside
+    const card = e.target.closest(".song-card");
+    const dock = e.target.closest(".control-dock");
+    const modal = e.target.closest(".modal");
+    const context = e.target.closest("#context-menu");
+    
+    if (!card && !dock && !modal && !context) {
+      if (state.selectedTrackIndex !== -1) {
+        state.selectedTrackIndex = -1;
+        updateThumbnailOverlay();
+        // Reset VOCAL/LYRIC UI (Disable) but KEEP persistence
+        import('./ui.js').then(m => m.updateAiTogglesState(null));
+      }
+    }
   });
+
+  // VOCAL Toggle persistence
+  elements.toggleVocal?.addEventListener("change", (e) => {
+    state.vocalEnabled = e.target.checked;
+    localStorage.setItem("vocalEnabled", state.vocalEnabled);
+    console.log(`[STATE] Vocal Enabled: ${state.vocalEnabled}`);
+  });
+
+  // LYRIC Toggle persistence
+  elements.toggleLyric?.addEventListener("change", (e) => {
+    state.lyricsEnabled = e.target.checked;
+    localStorage.setItem("lyricsEnabled", state.lyricsEnabled);
+    console.log(`[STATE] Lyrics Enabled: ${state.lyricsEnabled}`);
+  });
+
+  // Settings Events
+  const btnDownloadModel = document.getElementById("btn-download-model");
+  const btnOpenCache = document.getElementById("btn-open-cache");
+
+  if (btnDownloadModel) {
+    btnDownloadModel.onclick = async () => {
+      try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke("download_ai_model");
+        showNotification("AI 모델 다운로드를 시작합니다.", "info");
+      } catch (err) {
+        showNotification("모델 다운로드 시작 실패: " + err, "error");
+      }
+    };
+  }
+
+  if (btnOpenCache) {
+    btnOpenCache.onclick = async () => {
+      try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke("open_cache_folder");
+      } catch (err) {
+        showNotification("폴더 열기 실패: " + err, "error");
+      }
+    };
+  }
 }
 
 export function setupBackendListeners() {
@@ -319,22 +411,55 @@ export function setupBackendListeners() {
 
   listen("playback-status", (event) => {
     const { status, message } = event.payload;
-    if (status === "Finished") {
-      state.isPlaying = false;
-      state.currentProgressMs = 0;
-      state.targetProgressMs = 0;
-      updateThumbnailOverlay();
-      updatePlayButton();
-      
-      // Immediate UI Reset
-      if (elements.playbackBar) elements.playbackBar.value = 0;
-      if (elements.progressFill) elements.progressFill.style.width = "0%";
-      if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
-    } else if (status === "Error") {
-      showNotification(message, "error");
+    console.log(`[AUDIO STATUS] ${status}: ${message}`);
+    
+    // 1. Loading/Activity status
+    if (status === "Loading" || status === "Downloading" || status === "Decoding" || status === "Pending") {
+      state.isLoading = true;
+    } else {
       state.isLoading = false;
-      updateThumbnailOverlay();
     }
+
+    // 2. Playback state updates
+    if (status === "Playing") {
+      state.isPlaying = true;
+    } else if (status === "Finished" || status === "Error") {
+      state.isPlaying = false;
+      if (status === "Finished") {
+        state.currentProgressMs = 0;
+        state.targetProgressMs = 0;
+        // Progress UI reset
+        if (elements.playbackBar) elements.playbackBar.value = 0;
+        if (elements.progressFill) elements.progressFill.style.width = "0%";
+        if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+      }
+    }
+
+    // 3. Visual Status Message in Dock
+    if (elements.statusMsg) {
+      elements.statusMsg.textContent = message || (status === "Playing" ? "Ready" : "");
+      elements.statusMsg.classList.toggle("active", !!elements.statusMsg.textContent);
+      
+      // Auto-hide status text after 3s on successful start
+      if (status === "Playing") {
+        setTimeout(() => {
+          if (elements.statusMsg.textContent === "Ready" || elements.statusMsg.textContent === message) {
+            elements.statusMsg.textContent = "";
+            elements.statusMsg.classList.remove("active");
+          }
+        }, 3000);
+      }
+    }
+
+    if (status === "Error") {
+      showNotification(message || "재생 중 오류가 발생했습니다.", "error");
+    }
+
+    // Always sync UI
+    import('./ui.js').then(m => {
+      m.updateThumbnailOverlay();
+      m.updatePlayButton();
+    });
   });
 
   listen("separation-progress", (event) => {
@@ -344,15 +469,19 @@ export function setupBackendListeners() {
     if (status === "Finished") {
       renderLibrary();
       showNotification("곡 분리 작업이 완료되었습니다.", "success");
+    } else if (status === "Cancelled" || status === "Error") {
+      // Refresh library to remove MR badge if it was partially shown or update state
+      renderLibrary();
     }
   });
+
 
   listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
     if (paths) {
       for (const path of paths) {
         const ext = path.split('.').pop().toLowerCase();
-        if (["mp3", "wav", "flac"].includes(ext)) {
+        if (["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(ext)) {
           try {
             const metadata = await getAudioMetadata(path);
             metadata.source = "local";
@@ -374,7 +503,7 @@ function updateTaskUI() {
   const list = document.getElementById("active-tasks-list");
   if (!list) return;
 
-  const runningTasks = Object.entries(state.activeTasks).filter(([_, t]) => t.status !== "Finished");
+  const runningTasks = Object.entries(state.activeTasks).filter(([_, t]) => t.status !== "Finished" && t.status !== "Cancelled" && t.status !== "Error");
   const activeCount = runningTasks.length;
   
   if (badge) {
@@ -382,23 +511,41 @@ function updateTaskUI() {
     badge.style.display = activeCount > 0 ? "flex" : "none";
   }
 
+
+
   if (activeCount === 0) {
-    list.innerHTML = '<div class="no-tasks">진행 중인 작업이 없습니다.</div>';
+    list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
   } else {
-    list.innerHTML = runningTasks.map(([path, t]) => `
-      <div class="task-card">
-        <div class="task-info">
-          <span class="task-title">${path.split(/[\\/]/).pop()}</span>
-          <span class="task-status">${t.status} (${Math.round(t.percentage)}%)</span>
+    list.innerHTML = runningTasks.map(([path, t]) => {
+      const fileName = path.split(/[\\/]/).pop();
+      const pct = Math.round(t.percentage);
+      
+      const statusText = t.status === "Queued" ? "대기 중..." : t.status === "Starting" ? "준비 중..." : t.status;
+      const isQueued = t.status === "Queued";
+      
+      return `
+        <div class="task-card ${isQueued ? 'task-queued' : ''}">
+          <div class="task-header-info">
+            <div class="task-icon" style="font-weight: 800; font-size: 0.7rem; letter-spacing: -0.5px; ${isQueued ? 'background: #4b5563; color: #d1d5db;' : ''}">MR</div>
+            <span class="task-title" title="${path}">${fileName}</span>
+            <button class="btn-task-cancel secondary-btn" style="padding: 4px 12px; height: 32px;" onclick="window.cancelTask('${path.replace(/'/g, "\\'")}')">취소</button>
+          </div>
+          
+          <div class="task-progress-container">
+            <div class="task-progress-bar" style="width: ${pct}%; ${isQueued ? 'background: #4b5563;' : ''}"></div>
+          </div>
+          
+          <div class="task-status-row">
+            <span class="task-status-text">${statusText}</span>
+            <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
+          </div>
         </div>
-        <div class="task-progress">
-          <div class="task-progress-fill" style="width: ${t.percentage}%"></div>
-        </div>
-        <button class="task-cancel" onclick="window.cancelTask('${path}')">취소</button>
-      </div>
-    `).join("");
+      `;
+
+    }).join("");
   }
 }
+
 
 window.cancelTask = async (path) => {
   const { invoke } = window.__TAURI__.core;

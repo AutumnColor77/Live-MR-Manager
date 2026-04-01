@@ -44,6 +44,9 @@ export const elements = {
   ytUrlInput: null,
   btnPrev: null,
   btnNext: null,
+  aiModelStatus: null,
+  btnStartTrack: null,
+  statusMsg: null,
 };
 
 export function initDomReferences() {
@@ -58,7 +61,7 @@ export function initDomReferences() {
   
   elements.dockTitle = document.getElementById("dock-title");
   elements.dockArtist = document.getElementById("dock-artist");
-  elements.dockThumbImg = document.querySelector(".dock-thumb img");
+  elements.dockThumbImg = document.querySelector("#dock-thumb img");
   elements.thumbOverlay = document.getElementById("thumb-overlay");
   elements.togglePlayBtn = document.getElementById("btn-toggle-play");
   
@@ -84,10 +87,19 @@ export function initDomReferences() {
   elements.ytUrlInput = document.getElementById("yt-url-input");
   elements.btnPrev = document.getElementById("btn-prev");
   elements.btnNext = document.getElementById("btn-next");
+  elements.aiModelStatus = document.getElementById("ai-model-status");
+  elements.btnStartTrack = document.getElementById("btn-start-track");
+  elements.statusMsg = document.getElementById("system-status-msg");
+  elements.toggleVocal = document.getElementById("toggle-vocal");
+  elements.toggleLyric = document.getElementById("toggle-lyric");
 }
 
 export function renderLibrary() {
   if (!elements.songGrid) return;
+  
+  // Ensure every song in the master library has an original index for tracking
+  state.songLibrary.forEach((s, i) => { s.originalIndex = i; });
+
   elements.songGrid.innerHTML = "";
 
   const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
@@ -145,6 +157,7 @@ function addSongCard(song, index) {
   const card = document.createElement("article");
   card.className = `song-card ${state.viewMode === "list" ? "list-view-item" : ""}`;
   card.dataset.path = song.path;
+  card.dataset.index = index; // Store original index correctly
   
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
   const isList = state.viewMode === "list";
@@ -216,11 +229,17 @@ function addSongCard(song, index) {
     }
   });
 
-  // Entry Point handles selection via global events or directly if needed
-  // For modularity, we'll dispatch a custom event or let the entry point bind it
-  card.addEventListener("click", () => {
-     window.dispatchEvent(new CustomEvent('song-select', { detail: { index } }));
-  });
+  // Integrated click handler: Play immediately on card or thumbnail click
+  const handlePlayClick = async (e) => {
+    // e.stopPropagation(); // Allow propagation for unified selection tracking
+    e.preventDefault();
+    const { selectTrack } = await import('./player.js');
+    selectTrack(index);
+  };
+
+  const thumb = card.querySelector(".thumbnail");
+  if (thumb) thumb.addEventListener("click", handlePlayClick);
+  card.addEventListener("click", handlePlayClick);
 
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -231,17 +250,31 @@ function addSongCard(song, index) {
 }
 
 export function updateThumbnailOverlay() {
-  document.querySelectorAll(".song-card").forEach(card => {
+  document.querySelectorAll(".song-card").forEach((card) => {
+    const cardIndex = parseInt(card.dataset.index);
     const isActive = state.currentTrack && state.currentTrack.path === card.dataset.path;
+    const isSelected = state.selectedTrackIndex === cardIndex;
+    
     card.classList.toggle("active", isActive);
+    card.classList.toggle("selected", isSelected);
+    
+    // Visual feedback: dim non-selected items
+    card.style.opacity = (state.selectedTrackIndex === -1 || isSelected) ? "1" : "0.6";
+    
     const overlay = card.querySelector(".thumb-overlay");
     if (overlay) {
-      overlay.classList.toggle("active", isActive);
+      overlay.classList.toggle("active", isActive || isSelected);
       overlay.classList.toggle("playing", isActive && state.isPlaying);
       overlay.classList.toggle("loading", isActive && state.isLoading);
       overlay.classList.toggle("paused", isActive && !state.isPlaying && !state.isLoading);
+      
+      // Visual feedback for 2-step selection: 
+      // If selected but NOT playing, show a distinct "ready" highlight
+      overlay.classList.toggle("selected-ready", isSelected && !isActive);
     }
   });
+
+  // btnStartTrack logic removed
   
   if (elements.thumbOverlay) {
     const hasTrack = !!state.currentTrack;
@@ -253,8 +286,22 @@ export function updateThumbnailOverlay() {
 }
 
 export function updatePlayButton() {
+  if (elements.btnNext) {
+    elements.btnNext.onclick = async () => {
+      const { handleNextTrack } = await import('./player.js');
+      handleNextTrack();
+    };
+  }
+
+  if (elements.btnPrev) {
+    elements.btnPrev.onclick = async () => {
+      const { handlePrevTrack } = await import('./player.js');
+      handlePrevTrack();
+    };
+  }
+
   if (elements.togglePlayBtn) {
-    elements.togglePlayBtn.textContent = state.isPlaying ? "⏸" : "▶";
+    elements.togglePlayBtn.classList.toggle("is-playing", state.isPlaying);
   }
 }
 
@@ -313,6 +360,43 @@ function showSongContextMenu(e, song, originalIndex) {
   elements.contextMenu.style.left = `${e.clientX}px`;
   elements.contextMenu.classList.add("active");
   
+  const menuSeparate = document.getElementById("menu-separate");
+  const menuDeleteMr = document.getElementById("menu-delete-mr");
+
+  // Initial state: hide until checked
+  if (menuDeleteMr) menuDeleteMr.style.display = "none";
+  if (menuSeparate) menuSeparate.style.display = "none";
+
+  checkMrSeparated(song.path).then(isSeparated => {
+    if (menuDeleteMr) {
+      menuDeleteMr.style.display = isSeparated ? "block" : "none";
+      menuDeleteMr.onclick = async () => {
+        elements.contextMenu.classList.remove("active");
+        try {
+          const { invoke } = window.__TAURI__.core;
+          await invoke("delete_mr", { path: song.path });
+          renderLibrary();
+          showNotification("MR 파일이 삭제되었습니다.", "success");
+        } catch (err) {
+          console.error("MR Delete failed:", err);
+        }
+      };
+    }
+    
+    if (menuSeparate) {
+      menuSeparate.style.display = isSeparated ? "none" : "block";
+      menuSeparate.onclick = async () => {
+        elements.contextMenu.classList.remove("active");
+        try {
+          const { startMrSeparation } = await import('./audio.js');
+          await startMrSeparation(song.path);
+        } catch (err) {
+          console.error("Separation trigger failed:", err);
+        }
+      };
+    }
+  });
+
   // Internal bind to global select logic
   document.getElementById("menu-play").onclick = () => {
     window.dispatchEvent(new CustomEvent('song-select', { detail: { index: originalIndex } }));
@@ -329,6 +413,7 @@ function showSongContextMenu(e, song, originalIndex) {
     elements.contextMenu.classList.remove("active");
   };
 }
+
 
 function openEditModal(song, index) {
   state.editingSongIndex = index;
@@ -389,4 +474,51 @@ function deleteSong(index) {
     };
   }
   elements.confirmModal.classList.add("active");
+}
+
+/**
+ * Updates the AI Model status badge in Settings
+ */
+export function updateAiModelStatus(isReady) {
+  if (!elements.aiModelStatus) return;
+  
+  if (isReady) {
+    elements.aiModelStatus.textContent = "Online (Ready)";
+    elements.aiModelStatus.className = "status-badge status-online";
+  } else {
+    elements.aiModelStatus.textContent = "Offline (Need Download)";
+    elements.aiModelStatus.className = "status-badge status-offline";
+  }
+}
+
+/**
+ * Updates VOCAL/LYRIC toggle states based on track requirements and global state
+ */
+export async function updateAiTogglesState(song = null) {
+  if (!elements.toggleVocal || !elements.toggleLyric) return;
+  
+  // Use current playing track if no specific song is highlighted
+  const effectiveSong = song || state.currentTrack;
+  
+  // 1. Restore Checked State from Global State (Persistence)
+  elements.toggleVocal.checked = state.vocalEnabled;
+  elements.toggleLyric.checked = state.lyricsEnabled;
+
+  if (!effectiveSong) {
+    // Keep enabled so user can set preferences for the next track
+    elements.toggleVocal.disabled = false;
+    elements.toggleLyric.disabled = false;
+    elements.toggleVocal.closest(".ai-item")?.classList.remove("disabled");
+    elements.toggleLyric.closest(".ai-item")?.classList.remove("disabled");
+    return;
+  }
+
+  // 2. Control Disabled state ONLY if a track is present but has no MR
+  const isSeparated = await checkMrSeparated(effectiveSong.path);
+  elements.toggleVocal.disabled = !isSeparated;
+  elements.toggleVocal.closest(".ai-item")?.classList.toggle("disabled", !isSeparated);
+
+  // Lyrics toggle logic (Always active if track present)
+  elements.toggleLyric.disabled = false;
+  elements.toggleLyric.closest(".ai-item")?.classList.remove("disabled");
 }

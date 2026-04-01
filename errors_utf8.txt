@@ -1,0 +1,114 @@
+cargo :     Checking tauri-
+app v0.1.0 (D:\CBH\_CBH\REP
+O\Live-MR-Manager\src-tauri
+)
+위치 줄:1 문자:1
++ cargo check -p tauri-app 
+2>&1 > errors.txt ; [System
+.IO.File]::WriteA ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (     
+   Checking ta...ager\sr   
+ c-tauri):String) [], R    
+emoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+warning: unused imports: `R
+ead` and `Seek`
+ --> src\lib.rs:8:26
+  |
+8 | use std::io::{BufReader
+, Read, Seek};
+  |                        
+  ^^^^  ^^^^
+  |
+  = note: `#[warn(unused_im
+ports)]` (part of `#[warn(u
+nused)]`) on by default
+
+warning: unused imports: `A
+CTIVE_DOWNLOADS` and `Audio
+Handler`
+  --> src\lib.rs:26:20
+   |
+26 |     AUDIO_HANDLER, Aud
+ioHandler, Status, Playback
+Status, PlaybackProgress,
+   |                    ^^^
+^^^^^^^^^
+27 |     AppState, Streamin
+gReader, StretchedSource, D
+ynamicVolumeSource,
+28 |     CANCEL_REQUESTS, s
+ys_log, MAIN_WINDOW, ACTIVE
+_DOWNLOADS
+   |                       
+                     ^^^^^^
+^^^^^^^^^^
+
+warning: use of deprecated 
+method `rodio::DeviceTrait:
+:name`: Use `description()`
+ for comprehensive device i
+nformation including name, 
+manufacturer, and device ty
+pe. Use `id()` for a unique
+, stable device identifier 
+that persists across reboot
+s and reconnections.
+   --> src\lib.rs:443:29
+    |
+443 |         if let Ok(nam
+e) = d.name() {
+    |                      
+       ^^^^
+    |
+    = note: `#[warn(depreca
+ted)]` on by default
+
+error[E0599]: no method nam
+ed `as_i32` found for refer
+ence `&i24` in the current 
+scope
+   --> src\vocal_remover.rs
+:249:47
+    |
+249 | ...                  
+ samples[c].push(s.as_i32()
+ as f32 / 8388608.0);
+    |                      
+                   ^^^^^^ m
+ethod not found in `&i24`
+
+warning: use of deprecated 
+method `rodio::DeviceTrait:
+:name`: Use `description()`
+ for comprehensive device i
+nformation including name, 
+manufacturer, and device ty
+pe. Use `id()` for a unique
+, stable device identifier 
+that persists across reboot
+s and reconnections.
+   --> src\audio_player.rs:
+310:22
+    |
+310 |         Some(d) => d.
+name().unwrap_or_else(|_| "
+Unknown Device".to_string()
+),
+    |                      
+^^^^
+
+For more information about 
+this error, try `rustc --ex
+plain E0599`.
+warning: `tauri-app` (lib) 
+generated 4 warnings
+error: could not compile `t
+auri-app` (lib) due to 1 pr
+evious error; 4 warnings em
+itted

@@ -10,6 +10,7 @@ export const state = {
   isAiModelReady: false,
   isSeparating: false,
   editingSongIndex: -1,
+  selectedTrackIndex: -1, // Currently highlighted but not playing
   viewMode: localStorage.getItem("viewMode") || "grid",
   isMuted: false,
   prevVolume: 80,
@@ -23,6 +24,10 @@ export const state = {
   lastRafTime: 0,
   isSeeking: false,
   filteredTracks: [], // Current view's tracks { ...song, originalIndex }
+  
+  // Persistent AI Settings
+  vocalEnabled: localStorage.getItem("vocalEnabled") !== "false", // Default to true
+  lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
 };
 
 export const DEFAULT_CATEGORIES = [

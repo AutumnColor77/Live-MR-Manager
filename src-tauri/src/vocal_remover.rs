@@ -7,6 +7,12 @@ use parking_lot::Mutex;
 use crate::audio_player::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider};
 use rustfft::{FftPlanner, num_complex::Complex};
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::probe::Hint;
+use symphonia::core::audio::{AudioBufferRef, Signal};
+use rubato::{Resampler, SincFixedIn, SincInterpolationType, SincInterpolationParameters, WindowFunction};
 
 pub trait InferenceEngine: Send + Sync {
     fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf), String>;
@@ -49,8 +55,8 @@ impl InferenceEngine for WaveformRemover {
             std::fs::create_dir_all(output_dir).map_err(|e| e.to_string())?;
         }
 
-        // 1. Load and Resample to 44.1kHz
-        let (samples, _spec) = self.load_and_resample(audio_path, 44100)?;
+        // 1. Load any audio format and resample to 44.1kHz
+        let samples = self.load_any_audio(audio_path, 44100)?;
         let n_channels = samples.len();
         let n_samples = samples[0].len();
         
@@ -165,57 +171,128 @@ impl InferenceEngine for WaveformRemover {
 }
 
 impl WaveformRemover {
-    fn load_and_resample(&self, path: &Path, _target_rate: u32) -> Result<(Vec<Vec<f32>>, hound::WavSpec), String> {
-        let mut reader = hound::WavReader::open(path).map_err(|e| format!("Failed to open WAV: {}", e))?;
-        let spec = reader.spec();
+    fn load_any_audio(&self, path: &Path, target_rate: u32) -> Result<Vec<Vec<f32>>, String> {
+        let file = std::fs::File::open(path).map_err(|e| format!("파일 열기 실패: {}", e))?;
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
         
-        let mut channels = vec![vec![]; 2];
-        let original_channels = spec.channels as usize;
+        let mut hint = Hint::new();
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            hint.with_extension(ext);
+        }
 
-        let raw_samples: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
-            (hound::SampleFormat::Int, 16) => {
-                reader.samples::<i16>()
-                    .map(|s| s.map(|v| v as f32 / 32768.0))
-                    .collect::<Result<Vec<f32>, _>>()
-                    .map_err(|e| format!("16비트 오디오 읽기 실패: {}", e))?
-            },
-            (hound::SampleFormat::Int, 24) => {
-                reader.samples::<i32>()
-                    .map(|s| s.map(|v| v as f32 / 8388608.0))
-                    .collect::<Result<Vec<f32>, _>>()
-                    .map_err(|e| format!("24비트 오디오 읽기 실패: {}", e))?
-            },
-            (hound::SampleFormat::Int, 32) => {
-                reader.samples::<i32>()
-                    .map(|s| s.map(|v| v as f32 / 2147483648.0))
-                    .collect::<Result<Vec<f32>, _>>()
-                    .map_err(|e| format!("32비트 오디오 읽기 실패: {}", e))?
-            },
-            (hound::SampleFormat::Float, 32) => {
-                reader.samples::<f32>()
-                    .map(|s| s.map(|v| v))
-                    .collect::<Result<Vec<f32>, _>>()
-                    .map_err(|e| format!("Float 오디오 읽기 실패: {}", e))?
-            },
-            _ => {
-                return Err(format!("지원되지 않는 비트 심도: {} bits ({:?})", spec.bits_per_sample, spec.sample_format));
-            }
-        };
+        let format_opts = FormatOptions { enable_gapless: true, ..Default::default() };
+        let meta_opts = MetadataOptions::default();
 
-        for (i, &s) in raw_samples.iter().enumerate() {
-            let c = i % original_channels;
-            if c < 2 {
-                channels[c].push(s);
+        let mut probed = symphonia::default::get_probe()
+            .format(&hint, mss, &format_opts, &meta_opts)
+            .map_err(|e| format!("포맷 인식 실패: {}", e))?;
+
+        let track = probed.format.default_track().ok_or("트랙을 찾을 수 없습니다.")?;
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &Default::default())
+            .map_err(|e| format!("디코더 생성 실패: {}", e))?;
+
+        let track_id = track.id;
+        let original_rate = track.codec_params.sample_rate.unwrap_or(44100);
+        let n_channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+
+        let mut samples: Vec<Vec<f32>> = vec![vec![]; n_channels];
+
+        loop {
+            let packet = match probed.format.next_packet() {
+                Ok(packet) => packet,
+                Err(symphonia::core::errors::Error::IoError(_)) => break,
+                Err(e) => return Err(format!("패킷 읽기 오류: {}", e)),
+            };
+
+            if packet.track_id() != track_id { continue; }
+
+            let decoded = decoder.decode(&packet).map_err(|e| format!("디코딩 오류: {}", e))?;
+
+            match decoded {
+                AudioBufferRef::F32(buf) => {
+                    for c in 0..n_channels {
+                        samples[c].extend_from_slice(buf.chan(c));
+                    }
+                },
+                AudioBufferRef::U8(buf) => {
+                    for c in 0..n_channels {
+                        for &s in buf.chan(c) {
+                            samples[c].push((s as f32 - 128.0) / 128.0);
+                        }
+                    }
+                },
+                AudioBufferRef::U16(buf) => {
+                    for c in 0..n_channels {
+                        for &s in buf.chan(c) {
+                            samples[c].push((s as f32 - 32768.0) / 32768.0);
+                        }
+                    }
+                },
+                AudioBufferRef::S16(buf) => {
+                    for c in 0..n_channels {
+                        for &s in buf.chan(c) {
+                            samples[c].push(s as f32 / 32768.0);
+                        }
+                    }
+                },
+                AudioBufferRef::S32(buf) => {
+                    for c in 0..n_channels {
+                        for &s in buf.chan(c) {
+                            samples[c].push(s as f32 / 2147483648.0);
+                        }
+                    }
+                },
+                AudioBufferRef::S24(buf) => {
+                    for c in 0..n_channels {
+                        for &s in buf.chan(c) {
+                            // Symphonia 0.5.x i24 is often a tuple struct i24(i32)
+                            samples[c].push(s.0 as f32 / 8388608.0);
+                        }
+                    }
+                },
+
+
+                _ => return Err("알 수 없는 오디오 버퍼 형식입니다.".into()),
             }
         }
 
-        if original_channels == 1 {
-            channels[1] = channels[0].clone();
-        } else if channels[1].is_empty() && !channels[0].is_empty() {
-            channels[1] = channels[0].clone();
+        if samples[0].is_empty() {
+            return Err("디코딩된 샘플이 없습니다.".into());
         }
 
-        Ok((channels, spec))
+        // 2채널 보장 (모노 -> 스테레오)
+        if n_channels == 1 {
+            samples.push(samples[0].clone());
+        }
+
+        // Resample if needed
+        if original_rate != target_rate {
+            sys_log(&format!("리샘플링 수행: {}Hz -> {}Hz", original_rate, target_rate));
+            let params = SincInterpolationParameters {
+                sinc_len: 256,
+                f_cutoff: 0.95,
+                interpolation: SincInterpolationType::Linear,
+                oversampling_factor: 128,
+                window: WindowFunction::BlackmanHarris2,
+            };
+
+            
+            let mut resampler = SincFixedIn::<f32>::new(
+                target_rate as f64 / original_rate as f64,
+                2.0,
+                params,
+                samples[0].len(),
+                2,
+            ).map_err(|e| format!("리샘플러 초기화 실패: {}", e))?;
+
+            let resampled = resampler.process(&samples, None)
+                .map_err(|e| format!("리샘플링 오류: {}", e))?;
+            
+            return Ok(resampled);
+        }
+
+        Ok(samples)
     }
 
     fn tensor_to_vec_2d(&self, data: &[f32], shape: &[i64]) -> Vec<Vec<f32>> {

@@ -3,9 +3,29 @@
  */
 
 import { state } from './state.js';
-import { elements, updateThumbnailOverlay, updatePlayButton } from './ui.js';
+import { elements, updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui.js';
 import { formatTime, showNotification, getThumbnailUrl } from './utils.js';
 import { togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack, setVolume, setPitch, setTempo, saveLibrary, seekTo } from './audio.js';
+
+/**
+ * Highlights a track without playing it
+ */
+export function highlightTrack(index) {
+  if (index < 0 || index >= state.songLibrary.length) return;
+  
+  // Toggle Selection
+  if (state.selectedTrackIndex === index) {
+    state.selectedTrackIndex = -1;
+  } else {
+    state.selectedTrackIndex = index;
+  }
+  
+  updateThumbnailOverlay();
+  
+  // Update AI toggles state for highlight
+  const song = state.selectedTrackIndex !== -1 ? state.songLibrary[state.selectedTrackIndex] : null;
+  updateAiTogglesState(song);
+}
 
 export async function handlePlaybackToggle() {
   if (!state.currentTrack) {
@@ -31,8 +51,26 @@ export async function handlePlaybackToggle() {
 }
 
 export async function selectTrack(index) {
+  // Prevent duplicate requests while already loading
+  if (state.isLoading) {
+    console.warn("Playback request ignored: already loading.");
+    return;
+  }
+
+  // Guard against invalid index or empty library
+  if (typeof index !== 'number' || index < 0 || index >= state.songLibrary.length) {
+    console.error(`Invalid track index: ${index}`);
+    state.isLoading = false;
+    updateThumbnailOverlay();
+    return;
+  }
+
   const song = state.songLibrary[index];
-  if (!song) return;
+  if (!song) {
+    state.isLoading = false;
+    updateThumbnailOverlay();
+    return;
+  }
 
   if (state.currentTrack && state.currentTrack.path === song.path) {
     if (state.isLoading) state.isLoading = false;
@@ -41,6 +79,9 @@ export async function selectTrack(index) {
   }
 
   console.log(`[UI] Selecting track: ${song.title}`);
+  
+  // Sync Selection Highlight immediately (Remove 2-step barrier)
+  state.selectedTrackIndex = index;
   
   // Update State
   song.playCount = (song.playCount || 0) + 1;
@@ -51,10 +92,14 @@ export async function selectTrack(index) {
   // Sync UI immediately
   if (elements.dockTitle) elements.dockTitle.textContent = song.title;
   if (elements.dockArtist) elements.dockArtist.textContent = song.artist || "Unknown Artist";
-  if (elements.dockThumbImg) elements.dockThumbImg.src = getThumbnailUrl(song.thumbnail, song);
+  if (elements.dockThumbImg) {
+    elements.dockThumbImg.src = getThumbnailUrl(song.thumbnail, song);
+    elements.dockThumbImg.style.display = "block";
+  }
   
   updateThumbnailOverlay();
   updatePlayButton();
+  updateAiTogglesState(song);
   
   // Progress Reset
   state.targetProgressMs = 0;
@@ -90,6 +135,11 @@ export async function selectTrack(index) {
   if (volSliderInput) volSliderInput.value = v;
 
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  
+  // Safety timeout: If it takes more than 30s (for slow YT downloads), force loading off
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error("Playback timed out after 30s")), 30000)
+  );
 
   try {
     // Initial Sync
@@ -100,13 +150,8 @@ export async function selectTrack(index) {
     await apiPlayTrack(song.path);
     
     state.isPlaying = true;
-    state.isLoading = false;
-    updateThumbnailOverlay();
-    updatePlayButton();
+    console.log("[UI] Playback started successfully.");
     
-    // Final volume sync for new sink
-    setTimeout(() => setVolume(v), 100);
-
     state.lastRafTime = performance.now();
     if (!state.rafId) {
       state.rafId = requestAnimationFrame(updateProgressBar);
@@ -115,11 +160,13 @@ export async function selectTrack(index) {
     saveLibrary(state.songLibrary);
   } catch (err) {
     console.error("Playback failed:", err);
-    state.isLoading = false;
     state.isPlaying = false;
+    showNotification("재생에 실패했습니다.", "error");
+  } finally {
+    clearTimeout(loadingTimeout);
+    state.isLoading = false;
     updateThumbnailOverlay();
     updatePlayButton();
-    showNotification("재생에 실패했습니다.", "error");
   }
 }
 
@@ -157,7 +204,7 @@ export function updateProgressBar(timestamp) {
   state.rafId = requestAnimationFrame(updateProgressBar);
 }
 
-export function playNext() {
+export function handleNextTrack() {
   if (state.filteredTracks.length === 0) return;
   
   let currentIndex = state.filteredTracks.findIndex(s => s.path === (state.currentTrack?.path));
@@ -169,9 +216,7 @@ export function playNext() {
   }
 }
 
-export function playPrevious() {
-  if (state.filteredTracks.length === 0) return;
-  
+export async function handlePrevTrack() {
   let currentIndex = state.filteredTracks.findIndex(s => s.path === (state.currentTrack?.path));
   let prevIndex = (currentIndex - 1 + state.filteredTracks.length) % state.filteredTracks.length;
   

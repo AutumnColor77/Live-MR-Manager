@@ -40,8 +40,9 @@
         <label class="nav-label">System</label>
         <div class="nav-item" id="nav-tasks">
           <span>Active Tasks</span>
-          <span class="task-count" id="task-badge">0</span>
+          <span class="task-count" id="task-badge" style="display: none;">0</span>
         </div>
+
         <div class="nav-item" id="nav-settings">
           <span>Settings</span>
         </div>
@@ -141,11 +142,7 @@
 
         <!-- 설정 페이지 -->
         <div class="tab-content" id="settings-page" style="display: none;">
-          <div class="settings-container">
-            <header class="settings-header">
-              <h2>시스템 설정</h2>
-              <p>AI 엔진 및 라이브러리 환경을 관리합니다.</p>
-            </header>
+          <div class="settings-container" style="padding-top: 20px;">
 
             <section class="settings-group">
               <div class="group-header">
@@ -153,16 +150,16 @@
                 <h3>AI Separation Engine</h3>
               </div>
               <div class="ai-model-card">
-                <div class="ai-status-info">
-                  <div class="status-left">
-                    <span class="ai-label">BS-Roformer Model</span>
-                    <span id="ai-model-status" class="status-badge status-offline">상태 확인 중...</span>
+                <div class="ai-info-left">
+                  <div id="ai-model-status" class="status-badge status-offline">상태 확인 중...</div>
+                  <h2 class="ai-title-large">BS-Roformer Model</h2>
+                  <div class="ai-model-desc">
+                    고품질 보컬/반주 분리를 위해 약 300MB의 AI 모델 파일이 필요합니다.
                   </div>
-                  <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
-                  <button id="btn-open-cache" class="btn-ai-action secondary">저장 폴더 열기</button>
                 </div>
-                <div class="ai-model-desc">
-                  고품질 보컬/반주 분리를 위해 약 300MB의 AI 모델 파일이 필요합니다.
+                <div class="ai-actions-right">
+                  <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
+                  <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
                 </div>
               </div>
             </section>
@@ -172,11 +169,8 @@
         <!-- 액티브 태스크 섹션 -->
         <div class="tab-content" id="tasks-page" style="display: none;">
           <div class="tasks-container">
-            <header class="tasks-header">
-              <h2>Active Processing Tasks</h2>
-              <p>AI 음원 분리 및 필터링 작업 현황입니다.</p>
-            </header>
             <div id="active-tasks-list" class="tasks-list">
+
               <!-- 태스크 아이템이 동적으로 추가됨 -->
               <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
             </div>
@@ -191,6 +185,7 @@
         <!-- 현재 재생 중인 곡 정보 -->
         <div class="now-playing">
           <div class="mini-thumb" id="dock-thumb">
+            <img src="" alt="thumbnail" style="width: 100%; height: 100%; object-fit: cover; display: none;">
             <div class="thumb-overlay" id="thumb-overlay">
               <svg class="icon-loading" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3">
                 <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
@@ -209,22 +204,24 @@
             <button class="control-btn" id="btn-prev" title="Previous Track">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
             </button>
+            <button class="control-btn play-main-btn" id="btn-toggle-play" title="Play/Pause">
+              <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
             <button class="control-btn" id="btn-next" title="Next Track">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 18l8.5-6L6 6zm9-12h2v12h-2z"/></svg>
             </button>
           </div>
 
           <div class="song-info">
-            <div class="song-name" id="dock-title">재생 중인 곡 없음</div>
-            <div class="song-artist" id="dock-artist"></div>
-            <div class="playback-container">
-              <span class="time-label" id="time-current">0:00</span>
-              <div class="progress-bar-wrapper">
-                <input type="range" id="playback-bar" min="0" max="100" value="0">
-                <div class="progress-fill" id="progress-fill"></div>
+            <div class="song-header-row">
+              <div class="song-name" id="dock-title">재생 중인 곡 없음</div>
+              <div id="system-status-msg" class="status-msg"></div>
+              <div class="time-info">
+                <span id="time-current">0:00</span> / <span id="time-total">0:00</span>
               </div>
-              <span class="time-label" id="time-total">0:00</span>
             </div>
+            <div class="song-artist" id="dock-artist"></div>
           </div>
         </div>
 
@@ -287,11 +284,19 @@
           </button>
         </div>
       </div>
+      <!-- 하단 풀-위드 재생바 -->
+      <div class="playback-container full-width-bar-bottom">
+        <div class="progress-bar-wrapper">
+          <input type="range" id="playback-bar" min="0" max="100" value="0">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
     </footer>
 
     <div id="context-menu" class="context-menu">
       <div class="context-menu-item" id="menu-play">재생</div>
       <div class="context-menu-item" id="menu-separate">MR 분리</div>
+      <div class="context-menu-item" id="menu-delete-mr">MR 삭제</div>
       <div class="context-menu-item" id="menu-edit">정보 수정</div>
       <div class="context-menu-item" id="menu-delete">삭제</div>
     </div>

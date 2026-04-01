@@ -90,3 +90,20 @@ export async function setVocalBalance(balance) {
     console.error("Failed to set balance:", err);
   }
 }
+export async function startMrSeparation(path) {
+  try {
+    return await invoke("start_mr_separation", { path });
+  } catch (err) {
+    console.error("Separation failed:", err);
+    showNotification("MR 분리 실패: " + err, "error");
+    throw err;
+  }
+}
+
+export async function cancelSeparation(path) {
+  try {
+    return await invoke("cancel_separation", { path });
+  } catch (err) {
+    console.error("Cancel separation failed:", err);
+  }
+}
