@@ -47,8 +47,10 @@ export const elements = {
   btnNext: null,
   aiModelStatus: null,
   btnDownloadModel: null,
+  btnDeleteModel: null,
   btnStartTrack: null,
   statusMsg: null,
+  cudaRecommendBanner: null,
 };
 
 export function initDomReferences() {
@@ -97,6 +99,7 @@ export function initDomReferences() {
   elements.statusMsg = document.getElementById("system-status-msg");
   elements.toggleVocal = document.getElementById("toggle-vocal");
   elements.toggleLyric = document.getElementById("toggle-lyric");
+  elements.cudaRecommendBanner = document.getElementById("cuda-recommend-banner");
 }
 
 export function renderLibrary() {
@@ -525,6 +528,20 @@ export function updateAiModelStatus(isReady) {
   } else {
     elements.aiModelStatus.textContent = "Offline (Need Download)";
     elements.aiModelStatus.className = "status-badge status-offline";
+  }
+}
+
+/**
+ * Updates the GPU Recommendation banner based on hardware detection
+ */
+export function updateGpuStatus(gpuStatus) {
+  if (!elements.cudaRecommendBanner) return;
+  
+  if (gpuStatus && gpuStatus.recommendCuda) {
+    elements.cudaRecommendBanner.style.display = "flex";
+    console.log("[UI] NVIDIA GPU detected but CUDA is missing. Showing recommendation banner.");
+  } else {
+    elements.cudaRecommendBanner.style.display = "none";
   }
 }
 

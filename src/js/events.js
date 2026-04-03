@@ -585,10 +585,12 @@ function updateTaskUI(targetPath = null) {
     badge.style.display = activeCount > 0 ? "flex" : "none";
   }
 
-  // 1. Partial Update: Only update the progress of a specific task if it's already in the DOM
+  // 1. Partial Update: Only update the progress and status if task already in DOM
   if (targetPath) {
-    const escapedPath = targetPath.replace(/'/g, "\\'");
-    const existingCard = list.querySelector(`.task-card[data-task-path="${escapedPath}"]`);
+    // Find numerically to avoid any CSS selector escaping issues
+    const cards = list.querySelectorAll('.task-card');
+    const existingCard = Array.from(cards).find(el => el.dataset.taskPath === targetPath);
+    
     if (existingCard) {
       const task = state.activeTasks[targetPath];
       const bar = existingCard.querySelector(".task-progress-bar");
@@ -596,7 +598,7 @@ function updateTaskUI(targetPath = null) {
       const statusTextEl = existingCard.querySelector(".task-status-text");
       
       const pct = Math.round(task.percentage);
-      if (bar) bar.style.width = `${pct}%`;
+      if (bar) bar.style.width = pct + '%';
       if (pctText) pctText.textContent = pct + '%';
       if (statusTextEl) {
         statusTextEl.textContent = task.status === "Queued" ? "대기 중..." : task.status === "Starting" ? "준비 중..." : task.status;
@@ -610,8 +612,13 @@ function updateTaskUI(targetPath = null) {
     list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
   } else {
     list.innerHTML = runningTasks.map(([path, t]) => {
-      const song = state.songLibrary.find(s => s.path === path);
-      let displayName = song ? song.title : path.split(/[\\/]/).pop().replace(/%20/g, ' ');
+      // Normalize paths for matching (handle slashes, casing, and encoding like %20)
+      const normalize = (p) => (p ? decodeURIComponent(p).replace(/\\/g, '/').toLowerCase() : '');
+      const targetNorm = normalize(path);
+      const song = state.songLibrary.find(s => normalize(s.path) === targetNorm);
+      
+      let displayName = song ? song.title : (path ? decodeURIComponent(path).split(/[\\/]/).pop() : 'Unknown');
+      const thumbnail = song ? song.thumbnail : null;
       
       if (!song && path.startsWith('http')) {
         displayName = "YouTube 오디오 추출 중...";
@@ -625,21 +632,25 @@ function updateTaskUI(targetPath = null) {
       const providerText = t.provider?.includes('GPU') ? 'GPU' : (t.provider === 'CPU' ? 'CPU' : 'NETWORK');
 
       return `
-        <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path.replace(/'/g, "\\'")}">
+        <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path}">
           <div class="task-header-info">
-            <div class="task-icon" style="font-weight: 800; font-size: 0.7rem; letter-spacing: -0.5px; ${isQueued ? 'background: #4b5563; color: #d1d5db;' : ''}">MR</div>
-            <span class="task-title" title="${path}">${displayName}</span>
+            ${thumbnail ? 
+              `<img src="${thumbnail}" class="task-thumb" onerror="this.style.display='none'">` :
+              `<div class="task-icon">MR</div>`
+            }
+            <div class="task-info-main">
+              <span class="task-title" title="${path}">${displayName}</span>
+              <div class="task-status-row-top">
+                <span class="task-status-text">${statusText}</span>
+                <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
+              </div>
+            </div>
             <div class="task-provider-badge ${providerClass}">${providerText}</div>
-            <button class="btn-task-cancel secondary-btn" style="padding: 4px 12px; height: 32px;" onclick="window.cancelTask(this)" data-task-path="${path.replace(/"/g, '&quot;')}">취소</button>
+            <button class="btn-task-cancel secondary-btn" onclick="window.cancelTask(this)" data-task-path="${path.replace(/"/g, '&quot;')}">취소</button>
           </div>
           
           <div class="task-progress-container">
             <div class="task-progress-bar" style="width: ${pct}%; ${isQueued ? 'background: #4b5563;' : ''}"></div>
-          </div>
-          
-          <div class="task-status-row">
-            <span class="task-status-text">${statusText}</span>
-            <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
           </div>
         </div>
       `;

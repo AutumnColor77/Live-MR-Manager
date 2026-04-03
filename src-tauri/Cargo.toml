@@ -47,5 +47,12 @@ thiserror = "1.0"
 num_cpus = "1.16"
 log = "0.4"
 env_logger = "0.10"
+rayon = "1.10"
 
 
+# Enable optimizations in dev mode for AI/DSP performance
+[profile.dev]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 3

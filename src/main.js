@@ -3,7 +3,7 @@
  */
 
 import { state } from './js/state.js';
-import { elements, initDomReferences, renderLibrary, updateCategoryDropdowns, updateSortDropdown, updateAiModelStatus } from './js/ui.js';
+import { elements, initDomReferences, renderLibrary, updateCategoryDropdowns, updateSortDropdown, updateAiModelStatus, updateGpuStatus } from './js/ui.js';
 import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab } from './js/events.js';
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
@@ -58,6 +58,14 @@ async function initApp() {
     console.log(`[App] AI Model Ready: ${state.isAiModelReady}`);
   } catch (err) {
     console.error("AI Model check failed", err);
+  }
+
+  // 6. Check GPU Recommendation (NVIDIA/CUDA)
+  try {
+    const gpuStatus = await invoke("get_gpu_recommendation");
+    updateGpuStatus(gpuStatus);
+  } catch (err) {
+    console.error("GPU Status check failed", err);
   }
 
   // Initial volume sync

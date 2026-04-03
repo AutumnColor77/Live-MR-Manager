@@ -154,12 +154,28 @@
       <!-- 설정 페이지 -->
       <div class="tab-content" id="settings-page" style="display: none;">
         <div class="settings-container" style="padding-top: 20px;">
-
           <section class="settings-group">
             <div class="group-header">
               <i class="icon-ai"></i>
               <h3>AI Separation Engine</h3>
             </div>
+
+            <!-- CUDA 설치 권장 알림 (기본 숨김) -->
+            <div id="cuda-recommend-banner" class="ai-recommend-card" style="display: none;">
+              <div class="ai-recommend-icon">⚠️</div>
+              <div class="ai-recommend-content">
+                <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
+                <div class="ai-recommend-text">
+                  시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다. 
+                  CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
+                </div>
+                <div class="ai-recommend-actions">
+                  <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA 다운로드</a>
+                  <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN 다운로드</a>
+                </div>
+              </div>
+            </div>
+
             <div class="ai-model-card">
               <div class="ai-info-left">
                 <div id="ai-model-status" class="status-badge status-offline">상태 확인 중...</div>

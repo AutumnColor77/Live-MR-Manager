@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use ort::session::Session;
 use ort::value::{Value, ValueType};
-use ndarray::{self, Array3, Array4};
+use ndarray::{self, Array4};
 use std::sync::Arc;
 use parking_lot::Mutex;
 use crate::audio_player::sys_log;
-use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider, ExecutionProvider};
+use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider};
 use rustfft::{FftPlanner, num_complex::Complex};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
@@ -15,12 +16,14 @@ use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::DecoderOptions;
 use rubato::{Resampler, SincFixedIn, SincInterpolationType, SincInterpolationParameters, WindowFunction};
 use anyhow::{anyhow, Result};
+// use rayon::prelude::*; // rayon::join used directly
 
 pub trait InferenceEngine: Send + Sync {
     fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)>;
     fn get_provider(&self) -> String;
 }
 
+#[derive(Clone)]
 pub struct StftEngine {
     n_fft: usize,
     hop_length: usize,
@@ -42,24 +45,112 @@ impl StftEngine {
         Self { n_fft, hop_length, window, fft, ifft }
     }
 
-    pub fn stft(&self, samples: &[f32], target_bins: usize) -> Vec<Vec<[f32; 2]>> {
-        let mut stft_result = Vec::new();
+    pub fn stft_ndarray(&self, samples: &[f32], target_bins: usize) -> ndarray::Array2<Complex<f32>> {
         let num_samples = samples.len();
         let n_fft = self.n_fft;
+        let num_frames = if num_samples < n_fft { 0 } else { (num_samples - n_fft) / self.hop_length + 1 };
+        
+        let mut stft_result = ndarray::Array2::from_elem((num_frames, target_bins), Complex::new(0.0f32, 0.0f32));
+        let mut input = vec![Complex::new(0.0f32, 0.0f32); n_fft];
+
+        for (f_idx, start) in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length).enumerate() {
+            if f_idx >= num_frames { break; }
+            for i in 0..n_fft {
+                input[i] = Complex::new(samples[start + i] * self.window[i], 0.0);
+            }
+            self.fft.process(&mut input);
+            
+            let n_bins = (n_fft / 2 + 1).min(target_bins);
+            for b_idx in 0..n_bins {
+                stft_result[[f_idx, b_idx]] = input[b_idx];
+            }
+        }
+        stft_result
+    }
+
+    pub fn istft_ndarray(&self, frames: &ndarray::Array2<Complex<f32>>, target_len: usize) -> Vec<f32> {
+        let n_fft = self.n_fft;
+        let num_frames = frames.shape()[0];
+        let max_len = num_frames * self.hop_length + n_fft;
+        let mut output = vec![0.0; max_len];
+        let mut window_sum = vec![0.0; max_len];
+        
+        let mut complex_buffer = vec![Complex::new(0.0f32, 0.0f32); n_fft];
+        let n_bins_limit = n_fft / 2 + 1;
+        let bins_in_frame = frames.shape()[1];
+
+        for f_idx in 0..num_frames {
+            let start = f_idx * self.hop_length;
+            
+            // Reset buffer
+            for i in 0..n_fft { complex_buffer[i] = Complex::new(0.0, 0.0); }
+            
+            for b_idx in 0..bins_in_frame {
+                if b_idx < n_bins_limit {
+                    let bin = frames[[f_idx, b_idx]];
+                    complex_buffer[b_idx] = bin;
+                    if b_idx > 0 && b_idx < n_fft / 2 {
+                        complex_buffer[n_fft - b_idx] = Complex::new(bin.re, -bin.im);
+                    }
+                }
+            }
+            self.ifft.process(&mut complex_buffer);
+            
+            for i in 0..n_fft {
+                if start + i < output.len() {
+                    let sample = complex_buffer[i].re / (n_fft as f32);
+                    output[start + i] += sample * self.window[i];
+                    window_sum[start + i] += self.window[i] * self.window[i];
+                }
+            }
+        }
+        
+        let mut final_samples = Vec::with_capacity(target_len);
+        for i in 0..target_len {
+            if i < output.len() {
+                if window_sum[i] > 1e-6 {
+                    final_samples.push(output[i] / window_sum[i]);
+                } else {
+                    final_samples.push(output[i]);
+                }
+            } else {
+                final_samples.push(0.0);
+            }
+        }
+
+        // Spike prevention
+        let fade_len = 100.min(target_len / 4);
+        for i in 0..fade_len {
+            let w = (i as f32 / fade_len as f32 * std::f32::consts::PI / 2.0).sin().powi(2);
+            final_samples[i] *= w;
+            final_samples[target_len - 1 - i] *= w;
+        }
+
+        final_samples
+    }
+
+    pub fn stft(&self, samples: &[f32], target_bins: usize) -> Vec<Vec<[f32; 2]>> {
+        let num_samples = samples.len();
+        let n_fft = self.n_fft;
+        let num_frames = if num_samples < n_fft { 0 } else { (num_samples - n_fft) / self.hop_length + 1 };
+        let mut stft_result = Vec::with_capacity(num_frames);
+        
+        let mut input = vec![Complex::new(0.0f32, 0.0f32); n_fft];
 
         for start in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length) {
-            let mut input: Vec<Complex<f32>> = (0..n_fft)
-                .map(|i| Complex::new(samples[start + i] * self.window[i], 0.0))
-                .collect();
+            for i in 0..n_fft {
+                input[i] = Complex::new(samples[start + i] * self.window[i], 0.0);
+            }
             self.fft.process(&mut input);
             
             let mut frame = Vec::with_capacity(target_bins);
-            for i in 0..target_bins {
-                if i < input.len() / 2 + 1 {
-                    frame.push([input[i].re, input[i].im]);
-                } else {
-                    frame.push([0.0, 0.0]);
-                }
+            let n_bins = (n_fft / 2 + 1).min(target_bins);
+            for i in 0..n_bins {
+                frame.push([input[i].re, input[i].im]);
+            }
+            // Fill remaining bins if target_bins > n_bins
+            for _ in n_bins..target_bins {
+                frame.push([0.0, 0.0]);
             }
             stft_result.push(frame);
         }
@@ -73,11 +164,17 @@ impl StftEngine {
         let mut output = vec![0.0; max_len];
         let mut window_sum = vec![0.0; max_len];
         
+        let mut complex_buffer = vec![Complex::new(0.0f32, 0.0f32); n_fft];
+        let n_bins_limit = n_fft / 2 + 1;
+
         for (f_idx, frame) in frames.iter().enumerate() {
             let start = f_idx * self.hop_length;
-            let mut complex_buffer = vec![Complex::new(0.0, 0.0); n_fft];
+            
+            // Reset buffer
+            for i in 0..n_fft { complex_buffer[i] = Complex::new(0.0, 0.0); }
+            
             for (i, &bin) in frame.iter().enumerate() {
-                if i < n_fft / 2 + 1 {
+                if i < n_bins_limit {
                     complex_buffer[i] = Complex::new(bin[0], bin[1]);
                     if i > 0 && i < n_fft / 2 {
                         complex_buffer[n_fft - i] = Complex::new(bin[0], -bin[1]);
@@ -107,6 +204,15 @@ impl StftEngine {
                 final_samples.push(0.0);
             }
         }
+
+        // Spike prevention (mirco-fade at boundaries)
+        let fade_len = 100.min(target_len / 4);
+        for i in 0..fade_len {
+            let w = (i as f32 / fade_len as f32 * std::f32::consts::PI / 2.0).sin().powi(2);
+            final_samples[i] *= w;
+            final_samples[target_len - 1 - i] *= w;
+        }
+
         final_samples
     }
 }
@@ -120,31 +226,43 @@ pub struct WaveformRemover {
 
 impl WaveformRemover {
     pub fn new(model_path: &Path) -> Result<Self> {
-        let threads = (num_cpus::get() - 1).max(1);
+        let threads = (num_cpus::get() - 1).max(1).min(8);
         sys_log(&format!("[AI-ENGINE] Initializing with {} intra-op threads", threads));
 
-        let session = Session::builder()
-            .map_err(|e| anyhow!("[AI-ENGINE] Session builder error: {}", e))?
-            .with_intra_threads(threads)
-            .map_err(|e| anyhow!("[AI-ENGINE] Thread config error: {}", e))?
-            .with_execution_providers([
-                CUDAExecutionProvider::default().build(),
-                DirectMLExecutionProvider::default().build(),
-                CPUExecutionProvider::default().build(),
-            ])
-            .map_err(|e| anyhow!("[AI-ENGINE] Execution provider error: {}", e))?
-            .commit_from_file(model_path)
-            .map_err(|e| anyhow!("[AI-ENGINE] Model load error: {}", e))?;
-        
+        // Advanced CUDA options for maximum performance
+        let providers_to_try = [
+            ("GPU (CUDA)", CUDAExecutionProvider::default()
+                .with_device_id(0)
+                .build()),
+            ("GPU (DirectML)", DirectMLExecutionProvider::default().build()),
+            ("CPU", CPUExecutionProvider::default().build()),
+        ];
+
+        let mut session_opt = None;
+        let mut active_provider = "Unknown".to_string();
+
+        for (name, ep) in providers_to_try {
+            let session_res: Result<Session, ort::Error> = (|| {
+                Session::builder()?
+                    .with_intra_threads(threads)?
+                    .with_execution_providers([ep])?
+                    .commit_from_file(model_path)
+            })();
+
+            match session_res {
+                Ok(session) => {
+                    session_opt = Some(session);
+                    active_provider = name.to_string();
+                    break;
+                }
+                Err(e) => {
+                    sys_log(&format!("[AI-ENGINE] Provider {} failed or unavailable: {}", name, e));
+                }
+            }
+        }
+
+        let session = session_opt.ok_or_else(|| anyhow!("[AI-ENGINE] Failed to initialize any execution provider"))?;
         let model_name = model_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
-        
-        let active_provider = if CUDAExecutionProvider::default().is_available().unwrap_or(false) {
-            "GPU (CUDA)".to_string()
-        } else if DirectMLExecutionProvider::default().is_available().unwrap_or(false) {
-            "GPU (DirectML)".to_string()
-        } else {
-            "CPU".to_string()
-        };
         
         sys_log(&format!("[AI-ENGINE] Model loaded: {}, Provider: {}", model_name, active_provider));
         Ok(Self { session: Arc::new(Mutex::new(session)), model_name, active_provider })
@@ -156,6 +274,7 @@ impl InferenceEngine for WaveformRemover {
         self.active_provider.clone()
     }
     fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)> {
+        let start_time = Instant::now();
         sys_log(&format!("DEBUG: [WaveformRemover] Starting advanced separation for: {:?}. Using: {}", audio_path, self.active_provider));
         
         if !output_dir.exists() {
@@ -163,6 +282,7 @@ impl InferenceEngine for WaveformRemover {
         }
 
         // 1. Load and Resample (always to 44.1kHz for these models)
+        let load_start = Instant::now();
         let (raw_samples, sample_rate, channels) = self.load_any_audio(audio_path)?;
         
         // Normalize path for reliable cancellation check (ignore slash direction and case)
@@ -182,6 +302,7 @@ impl InferenceEngine for WaveformRemover {
         } else {
             raw_samples
         };
+        sys_log(&format!("DEBUG: [WaveformRemover] Audio load & resample took: {:?}", load_start.elapsed()));
 
         if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
             return Err(anyhow!("Cancelled before model parameter detection"));
@@ -206,17 +327,18 @@ impl InferenceEngine for WaveformRemover {
         let is_mdx = self.model_name.contains("MDX") || self.model_name.contains("Kim");
         sys_log(&format!("DEBUG: [WaveformRemover] Model identification: is_mdx={}, model={}", is_mdx, self.model_name));
         
+        // Kim_Vocal_2 models (MDX-Net) expect 7680 FFT bins
         let mut n_fft = 2048;
         let mut hop_length = 441;
         let mut target_bins = 1025;
         let mut required_samples = 354848;
 
         if is_mdx {
-            n_fft = 6144;
+            n_fft = 7680;
             hop_length = 1024;
-            target_bins = 3072;
+            target_bins = 3072; // Most MDX models including Kim_Vocal_2 use 3072 bins
             if input_rank >= 4 {
-                let frames = input_shape[3] as usize;
+                let frames = input_shape[3] as usize; // MDX Shape: [1, 4, bins, frames]
                 if frames > 0 { required_samples = (frames - 1) * hop_length + n_fft; }
             }
         } else {
@@ -234,26 +356,25 @@ impl InferenceEngine for WaveformRemover {
 
         let stft_engine = StftEngine::new(n_fft, hop_length);
 
-        // 3. Prepare Channels
-        let mut channels_data = vec![vec![0.0f32; total_samples]; ch_count];
-        for (i, sample) in processed_samples.iter().enumerate() {
-            channels_data[i % ch_count][i / ch_count] = *sample;
+        // 3. Prepare Channels (Wrap in Arc to avoid cloning)
+        let mut channels_raw = vec![vec![0.0f32; total_samples]; ch_count];
+        for (f_idx, chunk) in processed_samples.chunks_exact(ch_count).enumerate() {
+            for (c_idx, &sample) in chunk.iter().enumerate() {
+                channels_raw[c_idx][f_idx] = sample;
+            }
         }
-
-        if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
-            return Err(anyhow!("Cancelled after preparing channels"));
-        }
+        let channels_data = Arc::new(channels_raw);
 
         // 4. Overlap-Add Setup
-        let overlap_size = 4096.min(required_samples / 4);
+        let overlap_size = if is_mdx { 88200.min(required_samples / 4) } else { 4096.min(required_samples / 4) };
         let step_size = required_samples - overlap_size;
         
-        let mut final_vocal = vec![vec![0.0f32; total_samples]; ch_count];
-        let mut final_inst = vec![vec![0.0f32; total_samples]; ch_count];
-        let mut weight_sum = vec![0.0f32; total_samples];
+        let final_vocal = Arc::new(Mutex::new(vec![vec![0.0f32; total_samples]; ch_count]));
+        let final_inst = Arc::new(Mutex::new(vec![vec![0.0f32; total_samples]; ch_count]));
+        let weight_sum = Arc::new(Mutex::new(vec![0.0f32; total_samples]));
 
         // Sin-squared windows for smooth OLA
-        let chunk_window: Vec<f32> = (0..required_samples)
+        let chunk_window = Arc::new((0..required_samples)
             .map(|i| {
                 if i < overlap_size {
                     let ratio = i as f32 / overlap_size as f32;
@@ -265,188 +386,226 @@ impl InferenceEngine for WaveformRemover {
                     1.0
                 }
             })
-            .collect();
+            .collect::<Vec<f32>>());
 
         let num_chunks = (total_samples + step_size - 1) / step_size;
-        let path_str = audio_path.to_string_lossy().to_string();
 
-        // 5. Processing Loop
-        for chunk_idx in 0..num_chunks {
-            // Check cancellation
+        // --- 3-STAGE PIPELINE SETUP ---
+        // Tuple types: (chunk_idx, input_value, current_chunks, chunk_start, is_last)
+        let (pre_tx, pre_rx) = std::sync::mpsc::sync_channel::<(usize, Value, Vec<Vec<f32>>, usize, bool)>(4);
+        // Tuple types: (chunk_idx, outputs, current_chunks, chunk_start, is_last)
+        let (post_tx, post_rx) = std::sync::mpsc::sync_channel::<(usize, Vec<Value>, Vec<Vec<f32>>, usize, bool)>(4);
+
+        let path_str_prep = path_str.clone();
+        let channels_data_clone = Arc::clone(&channels_data);
+        let stft_engine_clone = stft_engine.clone();
+        
+        // STAGE 1: Preprocessing (STFT) Thread
+        std::thread::spawn(move || {
+            for chunk_idx in 0..num_chunks {
+                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_prep) { break; }
+                
+                let mut chunk_start = chunk_idx * step_size;
+                let mut is_last_chunk_at_end = false;
+                if chunk_start + required_samples > total_samples {
+                    chunk_start = total_samples.saturating_sub(required_samples);
+                    is_last_chunk_at_end = true;
+                }
+                
+                let mut current_chunks = vec![vec![0.0f32; required_samples]; ch_count];
+                for ch in 0..ch_count {
+                    let end_idx = (chunk_start + required_samples).min(total_samples);
+                    let len = end_idx - chunk_start;
+                    current_chunks[ch][..len].copy_from_slice(&channels_data_clone[ch][chunk_start..end_idx]);
+                }
+
+                let (left_stft, right_stft) = if ch_count > 1 {
+                    rayon::join(
+                        || stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins),
+                        || stft_engine_clone.stft_ndarray(&current_chunks[1], target_bins)
+                    )
+                } else {
+                    let l = stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins);
+                    (l.clone(), l)
+                };
+
+                let num_frames = left_stft.shape()[0];
+                let input_value_res = if is_mdx {
+                    let mut stereo_tensor = Array4::<f32>::zeros((1, 4, target_bins, num_frames));
+                    for f in 0..num_frames {
+                        for b in 0..target_bins {
+                            let l = left_stft[[f, b]];
+                            let r = right_stft[[f, b]];
+                            stereo_tensor[[0, 0, b, f]] = l.re;
+                            stereo_tensor[[0, 1, b, f]] = l.im;
+                            stereo_tensor[[0, 2, b, f]] = r.re;
+                            stereo_tensor[[0, 3, b, f]] = r.im;
+                        }
+                    }
+                    Value::from_array(stereo_tensor)
+                } else {
+                    let mut stereo_tensor = Array4::<f32>::zeros((2, num_frames, target_bins, 2));
+                    for f in 0..num_frames {
+                        for b in 0..target_bins {
+                            let l = left_stft[[f, b]];
+                            let r = right_stft[[f, b]];
+                            stereo_tensor[[0, f, b, 0]] = l.re;
+                            stereo_tensor[[0, f, b, 1]] = l.im;
+                            stereo_tensor[[1, f, b, 0]] = r.re;
+                            stereo_tensor[[1, f, b, 1]] = r.im;
+                        }
+                    }
+                    Value::from_array(stereo_tensor)
+                };
+
+                if let Ok(input_value) = input_value_res {
+                    if pre_tx.send((chunk_idx, input_value.into_dyn(), current_chunks, chunk_start, is_last_chunk_at_end)).is_err() {
+                        break; 
+                    }
+                } else {
+                    sys_log(&format!("ERROR: [AI-ENGINE] Failed to create input value for chunk {}", chunk_idx));
+                    break;
+                }
+            }
+            sys_log("DEBUG: [AI-ENGINE] Stage 1 (Preprocessing) thread finished.");
+        });
+
+        // STAGE 3: Post-processing (iSTFT & OLA) Thread
+        let path_str_post_thread = path_str.clone();
+        let stft_engine_clone_2 = stft_engine.clone();
+        let chunk_window_clone = Arc::clone(&chunk_window);
+        let final_vocal_clone = Arc::clone(&final_vocal);
+        let final_inst_clone = Arc::clone(&final_inst);
+        let weight_sum_clone = Arc::clone(&weight_sum);
+        let compensation = if is_mdx { 1.15f32 } else { 1.0f32 };
+
+        let post_handle = std::thread::spawn(move || {
+            while let Ok((chunk_idx, outputs, current_chunks, chunk_start, is_last_chunk_at_end)) = post_rx.recv() {
+                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_post_thread) { break; }
+                
+                // Extract Result from Tensor
+                let owned_data: Vec<f32> = if let Ok((shape, slice)) = outputs[0].try_extract_tensor::<f32>() {
+                    let peak = slice.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+                    if chunk_idx == 0 {
+                        sys_log(&format!("DEBUG: [AI-ENGINE] Output shape: {:?}, slice len: {}, peak: {:.4}", shape, slice.len(), peak));
+                    }
+                    slice.to_vec()
+                } else {
+                    sys_log(&format!("ERROR: [AI-ENGINE] Failed to extract output tensor for chunk {}", chunk_idx));
+                    break;
+                };
+
+                let total_elements = owned_data.len();
+                let frames = total_elements / (4 * target_bins);
+
+                let mut res_l = ndarray::Array2::from_elem((frames, target_bins), Complex::new(0.0f32, 0.0f32));
+                let mut res_r = ndarray::Array2::from_elem((frames, target_bins), Complex::new(0.0f32, 0.0f32));
+                
+                if is_mdx {
+                    for f in 0..frames {
+                        for b in 0..target_bins {
+                            let base = b * frames + f;
+                            res_l[[f, b]] = Complex::new(owned_data[0 * target_bins * frames + base], owned_data[1 * target_bins * frames + base]);
+                            res_r[[f, b]] = Complex::new(owned_data[2 * target_bins * frames + base], owned_data[3 * target_bins * frames + base]);
+                        }
+                    }
+                } else {
+                    for f in 0..frames {
+                        for b in 0..target_bins {
+                            let base = f * target_bins * 2 + b * 2;
+                            res_l[[f, b]] = Complex::new(owned_data[base + 0], owned_data[base + 1]);
+                            res_r[[f, b]] = Complex::new(owned_data[frames * target_bins * 2 + base + 0], owned_data[frames * target_bins * 2 + base + 1]);
+                        }
+                    }
+                }
+
+                let req_samples_inner = current_chunks[0].len();
+                let voc_l = stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner);
+                let voc_r = stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner);
+                let vocal_res = vec![voc_l, voc_r];
+
+                // Overlap-Add
+                {
+                    let mut vocal_guard = final_vocal_clone.lock();
+                    let mut inst_guard = final_inst_clone.lock();
+                    let mut weight_guard = weight_sum_clone.lock();
+                    
+                    for ch in 0..ch_count {
+                        for i in 0..req_samples_inner {
+                            let out_idx = chunk_start + i;
+                            if out_idx < total_samples {
+                                let mut w = chunk_window_clone[i];
+                                if chunk_idx == 0 && i < overlap_size { w = 1.0; }
+                                if chunk_idx == num_chunks - 1 && !is_last_chunk_at_end && i >= req_samples_inner - overlap_size { w = 1.0; }
+                                if is_last_chunk_at_end && i >= req_samples_inner - overlap_size { w = 1.0; }
+                                
+                                let vocal_sample = vocal_res[ch][i] * compensation;
+                                let orig_sample = current_chunks[ch][i];
+                                
+                                vocal_guard[ch][out_idx] += vocal_sample * w;
+                                inst_guard[ch][out_idx] += (orig_sample - vocal_sample) * w;
+                                if ch == 0 { weight_guard[out_idx] += w; }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // STAGE 2: Inference Loop (Main Thread - GPU IoBinding Inference)
+        let session_guard = self.session.lock();
+        let input_name = session_guard.inputs()[0].name().to_string();
+        let output_name = session_guard.outputs()[0].name().to_string();
+        drop(session_guard);
+
+        while let Ok((chunk_idx, input_value, current_chunks, chunk_start, is_last_chunk_at_end)) = pre_rx.recv() {
             if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
                 return Err(anyhow!("Cancelled by user"));
             }
 
-            let mut chunk_start = chunk_idx * step_size;
-            let mut is_last_chunk_at_end = false;
-            if chunk_start + required_samples > total_samples {
-                chunk_start = total_samples.saturating_sub(required_samples);
-                is_last_chunk_at_end = true;
-            }
-            let chunk_end = chunk_start + required_samples;
-
-            let mut current_chunks = vec![vec![0.0f32; required_samples]; ch_count];
-            for ch in 0..ch_count {
-                let end_idx = chunk_end.min(total_samples);
-                let len = end_idx - chunk_start;
-                current_chunks[ch][..len].copy_from_slice(&channels_data[ch][chunk_start..end_idx]);
-            }
-
-            // Inference
-            let vocal_samples = if input_rank == 3 {
-                // Waveform model
-                let mut audio_tensor = Array3::<f32>::zeros((1, ch_count, required_samples));
-                for ch in 0..ch_count {
-                    // Check cancellation more frequently in copy loops if needed, 
-                    // but for waveform, simple check before session is enough
-                    for s in 0..required_samples {
-                        audio_tensor[[0, ch, s]] = current_chunks[ch][s];
-                    }
-                }
-                
-                let owned_data: Vec<f32> = {
-                    let mut session_guard = self.session.lock();
-                    let input_value = Value::from_array(audio_tensor.into_dyn())
-                        .map_err(|e| anyhow!("[AI-ENGINE] Input value error: {}", e))?;
-                    let outputs = session_guard.run([input_value.into()])
-                        .map_err(|e| anyhow!("[AI-ENGINE] Session run error: {}", e))?;
-                    let (_, owned_tensor) = outputs[0].try_extract_tensor::<f32>()
-                        .map_err(|e| anyhow!("[AI-ENGINE] Extraction error: {}", e))?;
-                    owned_tensor.iter().cloned().collect()
-                };
-                
-                // Immediate check after session run
-                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
-                    return Err(anyhow!("Cancelled during waveform inference"));
-                }
-
-                let mut res = vec![vec![0.0f32; required_samples]; ch_count];
-                for ch in 0..ch_count {
-                    for s in 0..required_samples {
-                        res[ch][s] = owned_data[ch * required_samples + s];
-                    }
-                }
-                res
-            } else {
-                // Spectral model (STFT)
-                let left_stft = stft_engine.stft(&current_chunks[0], target_bins);
-                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) { return Err(anyhow!("Cancelled after L-STFT")); }
-
-                let right_stft = if ch_count > 1 {
-                    let r = stft_engine.stft(&current_chunks[1], target_bins);
-                    if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) { return Err(anyhow!("Cancelled after R-STFT")); }
-                    r
-                } else {
-                    left_stft.clone()
-                };
-                let num_frames = left_stft.len();
-
-                let owned_data: Vec<f32> = {
-                    let mut session_guard = self.session.lock();
-                    let input_value = if is_mdx {
-                        let mut stereo_tensor = Array4::<f32>::zeros((1, 4, target_bins, num_frames));
-                        for f in 0..num_frames {
-                            // Frequent sub-check (every 100 frames) to keep performance but improve stop speed
-                            if f % 100 == 0 && crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
-                                return Err(anyhow!("Cancelled during MDX tensor preparation"));
-                            }
-                            for b in 0..target_bins {
-                                stereo_tensor[[0, 0, b, f]] = left_stft[f][b][0];
-                                stereo_tensor[[0, 1, b, f]] = left_stft[f][b][1];
-                                stereo_tensor[[0, 2, b, f]] = right_stft[f][b][0];
-                                stereo_tensor[[0, 3, b, f]] = right_stft[f][b][1];
-                            }
-                        }
-                        Value::from_array(stereo_tensor.into_dyn())
-                    } else {
-                        let mut stereo_tensor = Array4::<f32>::zeros((2, num_frames, target_bins, 2));
-                        for f in 0..num_frames {
-                            if f % 100 == 0 && crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
-                                return Err(anyhow!("Cancelled during RoFormer tensor preparation"));
-                            }
-                            for b in 0..target_bins {
-                                stereo_tensor[[0, f, b, 0]] = left_stft[f][b][0];
-                                stereo_tensor[[0, f, b, 1]] = left_stft[f][b][1];
-                                stereo_tensor[[1, f, b, 0]] = right_stft[f][b][0];
-                                stereo_tensor[[1, f, b, 1]] = right_stft[f][b][1];
-                            }
-                        }
-                        Value::from_array(stereo_tensor.into_dyn())
-                    }.map_err(|e| anyhow!("[AI-ENGINE] Input value error: {}", e))?;
-
-                    let outputs = session_guard.run([input_value.into()])
-                        .map_err(|e| anyhow!("[AI-ENGINE] Session run error: {}", e))?;
-                    let (_, owned_tensor) = outputs[0].try_extract_tensor::<f32>()
-                        .map_err(|e| anyhow!("[AI-ENGINE] Extraction error: {}", e))?;
-                    owned_tensor.iter().cloned().collect()
-                };
-                
-                // Immediate check after session run
-                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) { 
-                    return Err(anyhow!("Cancelled after session run")); 
-                }
-
-                let mut vocal_stft = vec![vec![vec![[0.0f32, 0.0f32]; target_bins]; num_frames]; 2];
-                
-                if is_mdx {
-                    // MDX Shape: [1, 4, bins, frames] -> (L_re, L_im, R_re, R_im)
-                    for f in 0..num_frames {
-                        for b in 0..target_bins {
-                            vocal_stft[0][f][b][0] = owned_data[0 * target_bins * num_frames + b * num_frames + f];
-                            vocal_stft[0][f][b][1] = owned_data[1 * target_bins * num_frames + b * num_frames + f];
-                            vocal_stft[1][f][b][0] = owned_data[2 * target_bins * num_frames + b * num_frames + f];
-                            vocal_stft[1][f][b][1] = owned_data[3 * target_bins * num_frames + b * num_frames + f];
-                        }
-                    }
-                } else {
-                    // RoFormer Shape: [2, frames, bins, 2]
-                    for f in 0..num_frames {
-                        for b in 0..target_bins {
-                            vocal_stft[0][f][b][0] = owned_data[0 * num_frames * target_bins * 2 + f * target_bins * 2 + b * 2 + 0];
-                            vocal_stft[0][f][b][1] = owned_data[0 * num_frames * target_bins * 2 + f * target_bins * 2 + b * 2 + 1];
-                            vocal_stft[1][f][b][0] = owned_data[1 * num_frames * target_bins * 2 + f * target_bins * 2 + b * 2 + 0];
-                            vocal_stft[1][f][b][1] = owned_data[1 * num_frames * target_bins * 2 + f * target_bins * 2 + b * 2 + 1];
-                        }
-                    }
-                }
-
-                let mut res = vec![vec![0.0f32; required_samples]; ch_count];
-                for ch in 0..ch_count {
-                    res[ch] = stft_engine.istft(&vocal_stft[ch], required_samples);
-                }
-                res
+            let output_values_res = {
+                let mut session_guard = self.session.lock();
+                // Standard session.run() instead of IoBinding to ensure stability in rc.12
+                session_guard.run(ort::inputs![input_value])
+                    .map(|outputs: ort::session::SessionOutputs| {
+                        // Extract outputs from SessionOutputs (taking only values)
+                        outputs.into_iter().map(|(_, v)| v).collect::<Vec<Value>>()
+                    })
+                    .map_err(|e| anyhow!("[AI-ENGINE] Session run error: {}", e))
             };
 
-            // Overlap-Add to final buffers
-            for ch in 0..ch_count {
-                for i in 0..required_samples {
-                    let out_idx = chunk_start + i;
-                    if out_idx < total_samples {
-                        let mut w = chunk_window[i];
-                        // Handle boundaries
-                        if chunk_idx == 0 && i < overlap_size { w = 1.0; }
-                        if chunk_idx == num_chunks - 1 && !is_last_chunk_at_end && i >= required_samples - overlap_size { w = 1.0; }
-                        if is_last_chunk_at_end && i >= required_samples - overlap_size { w = 1.0; }
-                        
-                        let vocal_sample = vocal_samples[ch][i];
-                        let orig_sample = current_chunks[ch][i];
-                        
-                        final_vocal[ch][out_idx] += vocal_sample * w;
-                        final_inst[ch][out_idx] += (orig_sample - vocal_sample) * w;
-                        if ch == 0 { weight_sum[out_idx] += w; }
-                    }
+            if let Ok(output_values) = output_values_res {
+                if post_tx.send((chunk_idx, output_values, current_chunks, chunk_start, is_last_chunk_at_end)).is_err() {
+                    break;
                 }
+            } else {
+                sys_log(&format!("ERROR: [AI-ENGINE] Inference failed or timed out for chunk {}: {:?}", chunk_idx, output_values_res.err()));
+                return Err(anyhow!("Inference failed at chunk {}", chunk_idx));
             }
-
-            on_progress((chunk_idx + 1) as f32 / num_chunks as f32 * 100.0);
+            
+            if chunk_idx % 5 == 0 || chunk_idx == num_chunks - 1 {
+                on_progress((chunk_idx + 1) as f32 / num_chunks as f32 * 100.0);
+            }
         }
+        sys_log("DEBUG: [AI-ENGINE] Stage 2 (Inference) loop finished.");
+
+        drop(post_tx); // Signals post-processing to finish
+        let _ = post_handle.join(); 
+
+        sys_log("DEBUG: [WaveformRemover] Pipelined processing complete.");
 
         // Finalize OLA Normalization
+        let post_start = Instant::now();
+        // Extract inner vectors from Arc<Mutex<...>>
+        let mut final_vocal_inner = Arc::try_unwrap(final_vocal).map_err(|_| anyhow!("Arc unwrap failed"))?.into_inner();
+        let mut final_inst_inner = Arc::try_unwrap(final_inst).map_err(|_| anyhow!("Arc unwrap failed"))?.into_inner();
+        let weight_sum_inner = Arc::try_unwrap(weight_sum).map_err(|_| anyhow!("Arc unwrap failed"))?.into_inner();
+
         for i in 0..total_samples {
-            if weight_sum[i] > 1e-10 {
+            if weight_sum_inner[i] > 1e-10 {
                 for ch in 0..ch_count {
-                    final_vocal[ch][i] /= weight_sum[i];
-                    final_inst[ch][i] /= weight_sum[i];
+                    final_vocal_inner[ch][i] /= weight_sum_inner[i];
+                    final_inst_inner[ch][i] /= weight_sum_inner[i];
                 }
             }
         }
@@ -455,10 +614,13 @@ impl InferenceEngine for WaveformRemover {
         let vocal_path = output_dir.join("vocal.wav");
         let inst_path = output_dir.join("inst.wav");
         
-        self.save_wav(&final_vocal, &vocal_path, target_sample_rate)?;
-        self.save_wav(&final_inst, &inst_path, target_sample_rate)?;
+        self.save_wav(&final_vocal_inner, &vocal_path, target_sample_rate)?;
+        self.save_wav(&final_inst_inner, &inst_path, target_sample_rate)?;
 
-        sys_log("DEBUG: [WaveformRemover] Advanced Separation complete.");
+        sys_log(&format!("DEBUG: [WaveformRemover] Post-processing & Save took: {:?}", post_start.elapsed()));
+        sys_log(&format!("DEBUG: [WaveformRemover] Total separation time for track: {:?}", start_time.elapsed()));
+        
+        sys_log("DEBUG: [WaveformRemover] Advanced Separation complete with 3-stage pipeline.");
         Ok((vocal_path, inst_path))
     }
 }
@@ -576,15 +738,17 @@ impl WaveformRemover {
         )?;
 
         let mut interleaved = vec![vec![0.0f32; samples.len() / channels]; channels];
-        for (i, sample) in samples.iter().enumerate() {
-            interleaved[i % channels][i / channels] = *sample;
+        for (f_idx, chunk) in samples.chunks_exact(channels).enumerate() {
+            for (c_idx, &sample) in chunk.iter().enumerate() {
+                interleaved[c_idx][f_idx] = sample;
+            }
         }
 
         let resampled = resampler.process(&interleaved, None)?;
         let mut result = Vec::with_capacity(resampled[0].len() * channels);
-        for f in 0..resampled[0].len() {
-            for c in 0..channels {
-                result.push(resampled[c][f]);
+        for f_idx in 0..resampled[0].len() {
+            for c_idx in 0..channels {
+                result.push(resampled[c_idx][f_idx]);
             }
         }
         Ok(result)
@@ -600,17 +764,39 @@ impl WaveformRemover {
         let mut writer = hound::WavWriter::create(path, spec)?;
         let len = samples[0].len();
         
-        // Normalize peak to 0.95
+        // 1. Find the 99.99th percentile peak or just a robust peak
         let mut max_abs = 0.0f32;
         for ch in samples {
             for s in ch { max_abs = max_abs.max(s.abs()); }
         }
-        let scale = if max_abs > 1e-6 { 0.95 / max_abs } else { 1.0 };
+
+        // 2. Simple Soft Limiter / Clipper Logic
+        // If we pushed too hard (>1.1), we use a soft knee to prevent hard clipping
+        let threshold = 0.85f32;
+        let target_peak = 0.99f32;
+        
+        // Dynamic normalization scale
+        let scale = if max_abs > 1e-6 { 
+            // If the max peak is already huge, we normalize it to 1.1 first to allow 
+            // the soft clipper to do its work consistently
+            if max_abs > 1.1 { 1.1 / max_abs } else { 1.0 }
+        } else { 1.0 };
 
         for i in 0..len {
             for ch in 0..samples.len() {
-                let s = samples[ch][i] * scale;
-                writer.write_sample(s.clamp(-1.0, 1.0))?;
+                let mut s = samples[ch][i] * scale;
+                let abs_s = s.abs();
+                
+                // Soft Knee Compression for peaks above threshold
+                if abs_s > threshold {
+                    let sign = s.signum();
+                    // Soft clipping curve: threshold + (limit - threshold) * tanh((input - threshold)/(limit - threshold))
+                    let limit = 1.05f32; // Allow slight overshoot for the curve
+                    s = sign * (threshold + (limit - threshold) * ((abs_s - threshold) / (limit - threshold)).tanh());
+                }
+                
+                // Final hard limit & scale to target peak
+                writer.write_sample((s * (target_peak / 1.0f32)).clamp(-1.0, 1.0))?;
             }
         }
         writer.finalize()?;

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::{async_runtime, Emitter, Manager, WebviewWindow, AppHandle};
 use tauri::path::BaseDirectory;
+use std::process::Command;
 
 mod youtube;
 mod model_manager;
@@ -27,7 +28,7 @@ use crate::audio_player::{
     AppState, StreamingReader, StretchedSource, DynamicVolumeSource,
     CANCEL_REQUESTS, sys_log, MAIN_WINDOW
 };
-use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider};
+use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -522,6 +523,57 @@ async fn check_ai_runtime() -> Result<Vec<String>, String> {
     Ok(providers)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuStatus {
+    pub has_nvidia: bool,
+    pub is_cuda_available: bool,
+    pub is_directml_available: bool,
+    pub recommend_cuda: bool,
+}
+
+#[tauri::command]
+async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
+    let mut has_nvidia = false;
+    
+    // 1. Detect Hardware (NVIDIA) - Windows implementation
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = Command::new("wmic")
+            .args(["path", "win32_VideoController", "get", "name"])
+            .output() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_uppercase();
+            if stdout.contains("NVIDIA") {
+                has_nvidia = true;
+            }
+            sys_log(&format!("[GPU-CHECK] Detected Hardware Output: {}", stdout.trim()));
+        }
+    }
+
+    // 2. Check Execution Providers
+    let is_cuda_available = CUDAExecutionProvider::default().is_available().unwrap_or(false);
+    let is_directml_available = DirectMLExecutionProvider::default().is_available().unwrap_or(false);
+
+    sys_log(&format!("[GPU-CHECK] has_nvidia: {}, cuda_available: {}, directml_available: {}", 
+        has_nvidia, is_cuda_available, is_directml_available));
+
+    // 3. Recommendation logic
+    let recommend_cuda = has_nvidia && !is_cuda_available;
+    
+    if recommend_cuda {
+        sys_log("[GPU-CHECK] RESULT: RECOMMENDATION BANNER SHOULD BE VISIBLE.");
+    } else {
+        sys_log("[GPU-CHECK] RESULT: BANNER HIDDEN (Either no NVIDIA or CUDA is already OK).");
+    }
+
+    Ok(GpuStatus {
+        has_nvidia,
+        is_cuda_available,
+        is_directml_available,
+        recommend_cuda,
+    })
+}
+
 #[tauri::command]
 async fn check_model_ready(handle: AppHandle) -> bool {
     let manager = ModelManager::new(&handle);
@@ -966,7 +1018,8 @@ pub fn run() {
             cancel_separation,
             get_audio_devices,
             open_cache_folder,
-            delete_ai_model
+            delete_ai_model,
+            get_gpu_recommendation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
