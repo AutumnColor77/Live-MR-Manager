@@ -182,12 +182,12 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
 
         let frames_read = input_interleaved.len() / self.input_channels;
         if frames_read == 0 { 
-            println!("[AUDIO_DEBUG] EOF reached in StretchedSource");
+            // println!("[AUDIO_DEBUG] EOF reached in StretchedSource");
             return None; 
         }
 
         if pitch_semitones != 0.0 || (tempo_scale - 1.0).abs() > 0.001 {
-            println!("[AUDIO_DEBUG] Processing frames: {}, Pitch: {:.2}, Tempo: {:.2}", frames_read, pitch_semitones, tempo_scale);
+            // println!("[AUDIO_DEBUG] Processing frames: {}, Pitch: {:.2}, Tempo: {:.2}", frames_read, pitch_semitones, tempo_scale);
         }
 
         // 4. Processing logic
@@ -309,7 +309,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
     let host = cpal::default_host();
     let device: Option<cpal::Device> = host.default_output_device();
     let device_name = match device.as_ref() {
-        Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".to_string()),
+        Some(d) => d.description().map(|desc| desc.name().to_string()).unwrap_or_else(|_| "Unknown Device".to_string()),
         None => "Unknown Device".to_string(),
     };
     

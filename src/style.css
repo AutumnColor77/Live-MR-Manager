@@ -551,6 +551,8 @@ h1 {
   margin-bottom: 0;
   border-radius: 8px;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .song-info-content.list-layout {
@@ -930,6 +932,38 @@ h1 {
   }
 }
 
+.task-provider-badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  letter-spacing: 0.05em;
+  font-family: 'Inter', sans-serif;
+}
+
+.provider-gpu {
+  background: rgba(0, 255, 136, 0.1);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.05);
+}
+
+.provider-cpu {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.provider-network {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .task-info {
   width: 100%;
 }
@@ -1070,8 +1104,23 @@ h1 {
 .ai-model-card {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 12px;
-  padding: 20px;
+  padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.ai-info-left {
+  flex: 1;
+}
+
+.ai-actions-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 160px;
 }
 
 .ai-status-info {
@@ -1132,6 +1181,7 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
 }
 
 .btn-ai-action:hover:not(:disabled) {
@@ -1139,6 +1189,19 @@ h1 {
   border-color: transparent;
   box-shadow: 0 0 20px var(--accent-glow);
   transform: translateY(-2px);
+}
+
+.btn-ai-action.danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+.btn-ai-action.secondary {
+  opacity: 0.7;
+}
+
+.btn-ai-action.secondary:hover {
+  opacity: 1;
 }
 
 /* Disabled States */
@@ -2292,7 +2355,6 @@ input:checked+.slider:before {
 /* 1. Now Playing Sections (Flattered) */
 .mini-thumb {
   width: 72px;
-  /* Slightly increase for consistency */
   height: 72px;
   border-radius: 12px;
   overflow: hidden;
@@ -2301,6 +2363,14 @@ input:checked+.slider:before {
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mini-thumb:hover {
+  transform: scale(1.05);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 
 .playing-details {

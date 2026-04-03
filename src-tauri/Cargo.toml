@@ -36,10 +36,16 @@ cpal = "0.17.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
 structopt = "0.3.26"
-ort = { version = "2.0.0-rc.9", features = ["copy-dylibs", "cuda", "directml", "ndarray"] }
+ort = { version = "2.0.0-rc.12", features = ["copy-dylibs", "cuda", "directml", "ndarray"] }
 ndarray = "0.17"
 rubato = "0.16.0"
 rustfft = "6.2.0"
+num-complex = "0.4"
 hound = "3.5.1"
+anyhow = "1.0"
+thiserror = "1.0"
+num_cpus = "1.16"
+log = "0.4"
+env_logger = "0.10"
 
 

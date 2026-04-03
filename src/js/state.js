@@ -15,6 +15,7 @@ export const state = {
   isMuted: false,
   prevVolume: 80,
   activeTasks: {}, // path -> { title, percentage, status }
+  cancelledPaths: new Set(), // path blacklist for UI updates
   
   // Interpolation / Progress State
   targetProgressMs: 0,

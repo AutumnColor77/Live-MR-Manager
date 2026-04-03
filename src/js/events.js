@@ -220,6 +220,7 @@ export function initGlobalListeners() {
   const btnReset = document.getElementById("btn-reset-audio");
   if (btnReset) {
     btnReset.onclick = () => {
+      // 1. Reset Sliders only
       if (elements.pitchSlider) {
         elements.pitchSlider.value = 0;
         elements.pitchSlider.dispatchEvent(new Event("input"));
@@ -232,7 +233,9 @@ export function initGlobalListeners() {
         elements.volSlider.value = 80;
         elements.volSlider.dispatchEvent(new Event("input"));
       }
+
       saveLibrary(state.songLibrary);
+      showNotification("오디오 설정이 초기화되었습니다.", "info");
     };
   }
 
@@ -262,8 +265,8 @@ export function initGlobalListeners() {
     elements.togglePlayBtn.onclick = handlePlaybackToggle;
   }
   
-  if (elements.thumbOverlay) {
-    elements.thumbOverlay.onclick = handlePlaybackToggle;
+  if (elements.dockThumb) {
+    elements.dockThumb.onclick = handlePlaybackToggle;
   }
 
   if (elements.btnNext) {
@@ -359,17 +362,21 @@ export function initGlobalListeners() {
   });
 
   // VOCAL Toggle persistence
-  elements.toggleVocal?.addEventListener("change", (e) => {
+  elements.toggleVocal?.addEventListener("change", async (e) => {
     state.vocalEnabled = e.target.checked;
     localStorage.setItem("vocalEnabled", state.vocalEnabled);
     console.log(`[STATE] Vocal Enabled: ${state.vocalEnabled}`);
+    const { toggleAiFeature } = await import('./audio.js');
+    await toggleAiFeature("vocal", state.vocalEnabled);
   });
 
   // LYRIC Toggle persistence
-  elements.toggleLyric?.addEventListener("change", (e) => {
+  elements.toggleLyric?.addEventListener("change", async (e) => {
     state.lyricsEnabled = e.target.checked;
     localStorage.setItem("lyricsEnabled", state.lyricsEnabled);
     console.log(`[STATE] Lyrics Enabled: ${state.lyricsEnabled}`);
+    const { toggleAiFeature } = await import('./audio.js');
+    await toggleAiFeature("lyric", state.lyricsEnabled);
   });
 
   // Settings Events
@@ -396,6 +403,37 @@ export function initGlobalListeners() {
       } catch (err) {
         showNotification("폴더 열기 실패: " + err, "error");
       }
+    };
+  }
+
+  const btnDeleteModel = document.getElementById("btn-delete-model");
+  if (btnDeleteModel) {
+    btnDeleteModel.onclick = () => {
+      const confirmTitle = document.getElementById("confirm-title");
+      const confirmMsg = document.getElementById("confirm-message");
+      const confirmOk = document.getElementById("confirm-ok");
+      
+      if (confirmTitle) confirmTitle.textContent = "AI 모델 삭제";
+      if (confirmMsg) confirmMsg.textContent = "AI 모델 파일(Kim Vocal 2)을 삭제하시겠습니까?\n삭제 후에는 다시 다운로드해야 분리 기능을 사용할 수 있습니다.";
+      
+      if (confirmOk) {
+        confirmOk.onclick = async () => {
+          try {
+            const { invoke } = window.__TAURI__.core;
+            await invoke("delete_ai_model");
+            showNotification("AI 모델이 삭제되었습니다.", "success");
+            
+            elements.confirmModal.classList.remove("active");
+            
+            // Sync status
+            updateAiModelStatus(false);
+          } catch (err) {
+            showNotification("모델 삭제 실패: " + err, "error");
+            elements.confirmModal.classList.remove("active");
+          }
+        };
+      }
+      elements.confirmModal.classList.add("active");
     };
   }
 }
@@ -470,18 +508,47 @@ export function setupBackendListeners() {
   });
 
   listen("separation-progress", (event) => {
-    const { path, percentage, status } = event.payload;
-    state.activeTasks[path] = { percentage, status };
-    updateTaskUI();
+    const { path, percentage, status, provider } = event.payload;
+    
+    // 1. Ignore events for paths that were recently cancelled
+    if (state.cancelledPaths.has(path)) {
+      if (status === "Finished" || status === "Cancelled" || status === "Error") {
+        state.cancelledPaths.delete(path);
+      }
+      return;
+    }
+
+    state.activeTasks[path] = { percentage, status, provider };
+    updateTaskUI(path);
+
     if (status === "Finished") {
       renderLibrary();
       showNotification("곡 분리 작업이 완료되었습니다.", "success");
     } else if (status === "Cancelled" || status === "Error") {
-      // Refresh library to remove MR badge if it was partially shown or update state
       renderLibrary();
     }
   });
 
+  listen("model-download-progress", (event) => {
+    const percentage = Math.round(event.payload);
+    if (elements.btnDownloadModel) {
+      elements.btnDownloadModel.disabled = true;
+      elements.btnDownloadModel.textContent = `다운로드 중 (${percentage}%)`;
+      
+      if (percentage >= 100) {
+        setTimeout(() => {
+          elements.btnDownloadModel.disabled = false;
+          elements.btnDownloadModel.textContent = "모델 다운로드";
+        }, 1500);
+      }
+    }
+    
+    // Also update overlay if visible
+    const progressBar = document.getElementById("model-download-bar");
+    const percentText = document.getElementById("model-download-percent");
+    if (progressBar) progressBar.style.width = `${percentage}%`;
+    if (percentText) percentText.textContent = `${percentage}%`;
+  });
 
   listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
@@ -505,7 +572,7 @@ export function setupBackendListeners() {
   });
 }
 
-function updateTaskUI() {
+function updateTaskUI(targetPath = null) {
   const badge = document.getElementById("task-badge");
   const list = document.getElementById("active-tasks-list");
   if (!list) return;
@@ -518,24 +585,52 @@ function updateTaskUI() {
     badge.style.display = activeCount > 0 ? "flex" : "none";
   }
 
+  // 1. Partial Update: Only update the progress of a specific task if it's already in the DOM
+  if (targetPath) {
+    const escapedPath = targetPath.replace(/'/g, "\\'");
+    const existingCard = list.querySelector(`.task-card[data-task-path="${escapedPath}"]`);
+    if (existingCard) {
+      const task = state.activeTasks[targetPath];
+      const bar = existingCard.querySelector(".task-progress-bar");
+      const pctText = existingCard.querySelector(".task-percentage");
+      const statusTextEl = existingCard.querySelector(".task-status-text");
+      
+      const pct = Math.round(task.percentage);
+      if (bar) bar.style.width = `${pct}%`;
+      if (pctText) pctText.textContent = pct + '%';
+      if (statusTextEl) {
+        statusTextEl.textContent = task.status === "Queued" ? "대기 중..." : task.status === "Starting" ? "준비 중..." : task.status;
+      }
+      return; // Skip full render
+    }
+  }
 
-
+  // 2. Full Render: If new task, removed task, or no targetPath provided
   if (activeCount === 0) {
     list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
   } else {
     list.innerHTML = runningTasks.map(([path, t]) => {
-      const fileName = path.split(/[\\/]/).pop();
-      const pct = Math.round(t.percentage);
+      const song = state.songLibrary.find(s => s.path === path);
+      let displayName = song ? song.title : path.split(/[\\/]/).pop().replace(/%20/g, ' ');
       
+      if (!song && path.startsWith('http')) {
+        displayName = "YouTube 오디오 추출 중...";
+      }
+
+      const pct = Math.round(t.percentage);
       const statusText = t.status === "Queued" ? "대기 중..." : t.status === "Starting" ? "준비 중..." : t.status;
       const isQueued = t.status === "Queued";
       
+      const providerClass = t.provider?.includes('GPU') ? 'provider-gpu' : (t.provider === 'CPU' ? 'provider-cpu' : 'provider-network');
+      const providerText = t.provider?.includes('GPU') ? 'GPU' : (t.provider === 'CPU' ? 'CPU' : 'NETWORK');
+
       return `
-        <div class="task-card ${isQueued ? 'task-queued' : ''}">
+        <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path.replace(/'/g, "\\'")}">
           <div class="task-header-info">
             <div class="task-icon" style="font-weight: 800; font-size: 0.7rem; letter-spacing: -0.5px; ${isQueued ? 'background: #4b5563; color: #d1d5db;' : ''}">MR</div>
-            <span class="task-title" title="${path}">${fileName}</span>
-            <button class="btn-task-cancel secondary-btn" style="padding: 4px 12px; height: 32px;" onclick="window.cancelTask('${path.replace(/'/g, "\\'")}')">취소</button>
+            <span class="task-title" title="${path}">${displayName}</span>
+            <div class="task-provider-badge ${providerClass}">${providerText}</div>
+            <button class="btn-task-cancel secondary-btn" style="padding: 4px 12px; height: 32px;" onclick="window.cancelTask(this)" data-task-path="${path.replace(/"/g, '&quot;')}">취소</button>
           </div>
           
           <div class="task-progress-container">
@@ -548,17 +643,34 @@ function updateTaskUI() {
           </div>
         </div>
       `;
-
     }).join("");
   }
 }
 
 
-window.cancelTask = async (path) => {
+window.cancelTask = (el) => {
   const { invoke } = window.__TAURI__.core;
-  await invoke("cancel_separation", { path });
-  delete state.activeTasks[path];
-  updateTaskUI();
+  // Get path from data attribute (prevents backslash mangling in HTML)
+  const path = typeof el === 'string' ? el : el.dataset.taskPath;
+  
+  if (!path) return;
+
+  // 1. Immediate UI Feedback & Blacklist
+  state.cancelledPaths.add(path); // Block any residual events
+  if (state.activeTasks[path]) {
+    delete state.activeTasks[path];
+  }
+  updateTaskUI(); 
+  
+  // 2. Non-blocking backend call
+  invoke("cancel_separation", { path }).catch(err => {
+    console.error("Cancellation notice failed:", err);
+  });
+  
+  // 3. Safety: Remove from blacklist after a delay to allow re-trying
+  setTimeout(() => {
+    state.cancelledPaths.delete(path);
+  }, 3000);
 };
 
 /**

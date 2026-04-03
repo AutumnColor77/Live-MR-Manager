@@ -107,3 +107,11 @@ export async function cancelSeparation(path) {
     console.error("Cancel separation failed:", err);
   }
 }
+
+export async function toggleAiFeature(feature, enabled) {
+  try {
+    return await invoke("toggle_ai_feature", { feature, enabled });
+  } catch (err) {
+    console.error("Toggle AI feature failed:", err);
+  }
+}

@@ -20,6 +20,7 @@ export const elements = {
   libraryControls: null,
   dockTitle: null,
   dockArtist: null,
+  dockThumb: null,
   dockThumbImg: null,
   thumbOverlay: null,
   togglePlayBtn: null,
@@ -45,6 +46,7 @@ export const elements = {
   btnPrev: null,
   btnNext: null,
   aiModelStatus: null,
+  btnDownloadModel: null,
   btnStartTrack: null,
   statusMsg: null,
 };
@@ -61,6 +63,7 @@ export function initDomReferences() {
   
   elements.dockTitle = document.getElementById("dock-title");
   elements.dockArtist = document.getElementById("dock-artist");
+  elements.dockThumb = document.getElementById("dock-thumb");
   elements.dockThumbImg = document.querySelector("#dock-thumb img");
   elements.thumbOverlay = document.getElementById("thumb-overlay");
   elements.togglePlayBtn = document.getElementById("btn-toggle-play");
@@ -88,6 +91,8 @@ export function initDomReferences() {
   elements.btnPrev = document.getElementById("btn-prev");
   elements.btnNext = document.getElementById("btn-next");
   elements.aiModelStatus = document.getElementById("ai-model-status");
+  elements.btnDownloadModel = document.getElementById("btn-download-model");
+  elements.btnDeleteModel = document.getElementById("btn-delete-model");
   elements.btnStartTrack = document.getElementById("btn-start-track");
   elements.statusMsg = document.getElementById("system-status-msg");
   elements.toggleVocal = document.getElementById("toggle-vocal");
@@ -237,8 +242,6 @@ function addSongCard(song, index) {
     selectTrack(index);
   };
 
-  const thumb = card.querySelector(".thumbnail");
-  if (thumb) thumb.addEventListener("click", handlePlayClick);
   card.addEventListener("click", handlePlayClick);
 
   card.addEventListener("contextmenu", (e) => {
@@ -384,9 +387,33 @@ function showSongContextMenu(e, song, originalIndex) {
         elements.contextMenu.classList.remove("active");
         try {
           const { invoke } = window.__TAURI__.core;
+          // 1. Stop playback immediately
+          await invoke("stop_playback");
+          
+          // 2. Delete physical files
           await invoke("delete_mr", { path: song.path });
+          
+          // 3. Update song state in library
+          song.isMr = false;
+          await saveLibrary(state.songLibrary);
+          
+          // 4. If current track in dock, reset UI to 0:00 and stop
+          if (state.currentTrack && state.currentTrack.path === song.path) {
+             state.isPlaying = false;
+             state.currentProgressMs = 0;
+             state.targetProgressMs = 0;
+             if (elements.playbackBar) elements.playbackBar.value = 0;
+             if (elements.progressFill) elements.progressFill.style.width = "0%";
+             if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+             
+             import('./ui.js').then(m => {
+                m.updateThumbnailOverlay();
+                m.updatePlayButton();
+             });
+          }
+          
           renderLibrary();
-          showNotification("MR 파일이 삭제되었습니다.", "success");
+          showNotification("MR 파일이 삭제되었으며 원본 곡으로 연결되었습니다.", "success");
         } catch (err) {
           console.error("MR Delete failed:", err);
         }

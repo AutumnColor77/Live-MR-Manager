@@ -137,17 +137,23 @@ export async function selectTrack(index) {
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   
   // Safety timeout: If it takes more than 30s (for slow YT downloads), force loading off
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error("Playback timed out after 30s")), 30000)
-  );
+  let loadingTimeout;
+  const timeoutPromise = new Promise((_, reject) => {
+    loadingTimeout = setTimeout(() => reject(new Error("Playback timed out after 30s")), 30000);
+  });
 
   try {
-    // Initial Sync
+    // Initial Sync: 피치, 템포 및 보컬 활성화 상태 강제 동기화
     await setPitch(p);
     await setTempo(t);
+    const { toggleAiFeature } = await import('./audio.js');
+    await toggleAiFeature("vocal", state.vocalEnabled); 
     await setVolume(v);
 
-    await apiPlayTrack(song.path, state.trackDurationMs);
+    await Promise.race([
+      apiPlayTrack(song.path, state.trackDurationMs),
+      timeoutPromise
+    ]);
     
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");

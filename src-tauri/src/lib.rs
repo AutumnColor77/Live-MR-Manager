@@ -124,6 +124,63 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     let vocal_path = cache_dir.join("vocal.wav");
     let inst_path = cache_dir.join("inst.wav");
     
+    // Setup pipeline basic info for skip-path and fallback-path
+    let target_rate = handler.active_sample_rate;
+    let target_channels = handler.active_channels;
+    let target_rate_nz = NonZeroU32::new(target_rate).expect("Invalid sample rate");
+    let target_channels_nz = NonZeroU16::new(target_channels).expect("Invalid channels");
+
+    // NEW LOGIC: Check for separated MR files first to avoid unnecessary network/file checks
+    if vocal_path.exists() && inst_path.exists() {
+        sys_log(&format!("Playing (Cached): {} (Device: {}Hz, {}ch)", path, target_rate, target_channels));
+        
+        // Separated paths - PLAY IMMEDIATELY
+        let v_file = File::open(vocal_path).map_err(|e| e.to_string())?;
+        let i_file = File::open(inst_path).map_err(|e| e.to_string())?;
+        
+        let mut v_decoder = Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
+        let mut i_decoder = Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
+        
+        handler.track_sample_rate.store(v_decoder.sample_rate().into(), Ordering::Relaxed);
+
+        if let Some(ms) = start_pos_ms {
+            let _ = v_decoder.try_seek(Duration::from_millis(ms));
+            let _ = i_decoder.try_seek(Duration::from_millis(ms));
+        }
+        
+        if let Some(d) = i_decoder.total_duration() {
+            handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
+        }
+
+        let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
+        let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
+        
+        let resampled_v = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_v, volume: handler.vocal_volume.clone() }, target_channels_nz, target_rate_nz);
+        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_i, volume: handler.instrumental_volume.clone() }, target_channels_nz, target_rate_nz);
+
+        let mixed = resampled_i.mix(resampled_v);
+        
+        let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
+        if final_v != target_version { return Ok(()); }
+        
+        {
+            let controller = handler.controller.lock();
+            controller.append(mixed);
+            controller.play();
+        }
+
+        {
+            let mut state = handler.state.lock();
+            state.current_track = Some(path.clone());
+            state.is_playing = true;
+        }
+        
+        window.emit("playback-status", PlaybackStatus { status: Status::Playing, message: "Playing".into() }).unwrap();
+        sys_log("[DEBUG] Starting instantaneous playback from local MR cache.");
+        return Ok(());
+    }
+
+    // [FALLBACK] If MR doesn't exist, resolve the play_path (YouTube or Local)
     let play_path = if path.starts_with("http") {
         if start_pos_ms.is_none() {
             window.emit("playback-status", PlaybackStatus { 
@@ -132,7 +189,6 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
             }).ok();
         }
         
-        // Restore actual YouTube download logic
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
         let temp_dir = std::env::temp_dir();
         let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
@@ -148,7 +204,6 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
                 message: "파일 읽기 및 디코딩 중...".to_string() 
             }).ok();
         }
-        sys_log(&format!("[DEBUG] Step 1: Local file path confirmed: {:?}", path));
         std::path::PathBuf::from(&path)
     };
 
@@ -156,109 +211,35 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         return Err("File not found".into());
     }
 
-    // 3. Setup pipeline
-    let target_rate = handler.active_sample_rate;
-    let target_channels = handler.active_channels;
-    let target_rate_nz = NonZeroU32::new(target_rate).expect("Invalid sample rate");
-    let target_channels_nz = NonZeroU16::new(target_channels).expect("Invalid channels");
+    sys_log(&format!("Playing original/mono: {} (Device: {}Hz, {}ch)", path, target_rate, target_channels));
 
-    sys_log(&format!("Playing: {} (Device: {}Hz, {}ch)", path, target_rate, target_channels));
-
-    if vocal_path.exists() && inst_path.exists() {
-        // Separated paths
-        let v_file = File::open(vocal_path).map_err(|e| e.to_string())?;
-        let i_file = File::open(inst_path).map_err(|e| e.to_string())?;
-        
-        let mut v_decoder = Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
-        let mut i_decoder = Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
-        
-        handler.track_sample_rate.store(v_decoder.sample_rate().into(), Ordering::Relaxed);
-
-        // Before pipeline creation, check if we are still relevant
-        let current_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
-        if current_v != target_version { 
-            sys_log(&format!("[DEBUG] Playback cancelled (Version Mismatch): current={}, target={}", current_v, target_version));
-            return Ok(()); 
-        }
-
-        // Apply start position if provided
-        if let Some(ms) = start_pos_ms {
-            sys_log(&format!("[DEBUG] Step 2: Attempting seek to {}ms", ms));
-            match v_decoder.try_seek(Duration::from_millis(ms)) {
-                Ok(_) => sys_log("[DEBUG] Step 3: Vocal seek success"),
-                Err(e) => sys_log(&format!("[DEBUG] Step 3: Vocal seek failed: {:?}", e)),
-            }
-            match i_decoder.try_seek(Duration::from_millis(ms)) {
-                Ok(_) => sys_log("[DEBUG] Step 3: Instrumental seek success"),
-                Err(e) => sys_log(&format!("[DEBUG] Step 3: Instrumental seek failed: {:?}", e)),
-            }
-        }
-        
-        // Capture duration from one of them
-        if let Some(d) = i_decoder.total_duration() {
-            handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
-        }
-
-        let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
-        let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
-        
-        let resampled_v = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_v, volume: handler.vocal_volume.clone() }, target_channels_nz, target_rate_nz);
-        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_i, volume: handler.instrumental_volume.clone() }, target_channels_nz, target_rate_nz);
-
-        let mixed = resampled_i.mix(resampled_v);
-        
-        // Final check before appending to controller
-        let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
-        if final_v != target_version { 
-            sys_log(&format!("[DEBUG] Playback cancelled before append: current={}, target={}", final_v, target_version));
-            return Ok(()); 
-        }
-        
-        let controller = handler.controller.lock();
-        controller.append(mixed);
-        controller.play();
-        sys_log("[DEBUG] Step 4: Source appended to controller (Separated)");
-    } else {
-        // Mono source (or streaming)
-        let is_yt = path.starts_with("http");
-        let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e: std::io::Error| format!("Failed to open stream: {}", e))?;
-        sys_log("[DEBUG] Step 1.5: Stream reader created");
-        let mut decoder = rodio::Decoder::new(std::io::BufReader::new(reader)).map_err(|e: rodio::decoder::DecoderError| e.to_string())?;
-        
-        handler.track_sample_rate.store(decoder.sample_rate().into(), Ordering::Relaxed);
-        
-        // Apply start position if provided
-        if let Some(ms) = start_pos_ms {
-            sys_log(&format!("[DEBUG] Step 2: Attempting seek to {}ms", ms));
-            match decoder.try_seek(Duration::from_millis(ms)) {
-                Ok(_) => sys_log("[DEBUG] Step 3: Seek success"),
-                Err(e) => sys_log(&format!("[DEBUG] Step 3: Seek failed (Decoder Error): {:?}", e)),
-            }
-        }
-        
-        let opt_d: Option<Duration> = decoder.total_duration();
-        if let Some(d) = opt_d {
-            handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
-        }
-
-        let stretched = StretchedSource::new(decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
-        let dyn_vol = DynamicVolumeSource { input: stretched, volume: handler.vocal_volume.clone() };
-        let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
-        
-        // Final check before appending to controller
-        let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
-        if final_v != target_version { 
-            sys_log(&format!("[DEBUG] Playback cancelled before append: current={}, target={}", final_v, target_version));
-            return Ok(()); 
-        }
-        
-        let controller = handler.controller.lock();
-        controller.append(resampled);
-        controller.play(); // Ensure it starts
-        sys_log("[DEBUG] Step 4: Source appended to controller (Mono/Streaming)");
-        println!("[AUDIO] Track appended to controller and play() called");
+    let is_yt = path.starts_with("http");
+    let reader = StreamingReader::new(play_path.clone(), is_yt).map_err(|e: std::io::Error| format!("Failed to open stream: {}", e))?;
+    let mut decoder = rodio::Decoder::new(std::io::BufReader::new(reader)).map_err(|e: rodio::decoder::DecoderError| e.to_string())?;
+    
+    handler.track_sample_rate.store(decoder.sample_rate().into(), Ordering::Relaxed);
+    
+    if let Some(ms) = start_pos_ms {
+        let _ = decoder.try_seek(Duration::from_millis(ms));
+    }
+    
+    if let Some(d) = decoder.total_duration() {
+        handler.total_duration_ms.store(d.as_millis() as u64, Ordering::Relaxed);
     }
 
+    let stretched = StretchedSource::new(decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
+    let dyn_vol = DynamicVolumeSource { input: stretched, volume: handler.instrumental_volume.clone() };
+    let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
+    
+    let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
+    if final_v != target_version { return Ok(()); }
+    
+    {
+        let controller = handler.controller.lock();
+        controller.append(resampled);
+        controller.play();
+    }
+    
     {
         let mut state = handler.state.lock();
         state.current_track = Some(path.clone());
@@ -266,6 +247,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     }
     
     window.emit("playback-status", PlaybackStatus { status: Status::Playing, message: "Playing".into() }).unwrap();
+    sys_log("[DEBUG] Starting playback (Original/Mono)");
     Ok(())
 }
 
@@ -297,7 +279,14 @@ async fn toggle_playback() -> Result<bool, String> {
 #[tauri::command]
 async fn set_volume(volume: f64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
-    handler.vocal_volume.store((volume as f32).to_bits(), Ordering::Relaxed);
+    let v_enabled = {
+        let state = handler.state.lock();
+        state.vocal_enabled
+    };
+    
+    let v_vol = if v_enabled { volume as f32 } else { 0.0 };
+    handler.vocal_volume.store(v_vol.to_bits(), Ordering::Relaxed);
+    handler.instrumental_volume.store((volume as f32).to_bits(), Ordering::Relaxed);
     Ok(())
 }
 
@@ -372,7 +361,9 @@ async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String>
         match feature.as_str() {
             "vocal" => {
                 state.vocal_enabled = enabled;
-                handler.vocal_volume.store((if enabled { 100.0f32 } else { 0.0f32 }).to_bits(), Ordering::Relaxed);
+                let current_vol = f32::from_bits(handler.instrumental_volume.load(Ordering::Relaxed));
+                let target_v_vol = if enabled { current_vol } else { 0.0 };
+                handler.vocal_volume.store(target_v_vol.to_bits(), Ordering::Relaxed);
             },
             "lyric" => state.lyric_enabled = enabled,
             _ => {}
@@ -497,10 +488,6 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
     })
 }
 
-#[tauri::command]
-async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
-    run_separation(window, path).await
-}
 
 #[tauri::command]
 async fn stop_playback() -> Result<(), String> {
@@ -538,10 +525,10 @@ async fn check_ai_runtime() -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn check_model_ready(handle: AppHandle) -> bool {
     let manager = ModelManager::new(&handle);
-    if let Ok(res_path) = handle.path().resolve("resources/bs_roformer.onnx", BaseDirectory::Resource) {
+    if let Ok(res_path) = handle.path().resolve("resources/Kim_Vocal_2.onnx", BaseDirectory::Resource) {
         if res_path.exists() { return true; }
     }
-    manager.get_model_path("bs_roformer.onnx").exists()
+    manager.get_model_path("Kim_Vocal_2.onnx").exists()
 }
 
 #[tauri::command]
@@ -549,9 +536,28 @@ async fn download_ai_model(window: WebviewWindow) -> Result<(), String> {
     let app_handle = window.app_handle();
     let manager = ModelManager::new(app_handle);
     window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 다운로드 시작...".into() }).unwrap();
-    let model_url = "https://huggingface.co/safescribeai/bs-roformer-onnx-fp16/resolve/main/bs_roformer_fp16.onnx";
-    let _model_path = manager.ensure_model(app_handle, "bs_roformer.onnx", model_url).await?;
+    let model_url = "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx";
+    let _model_path = manager.ensure_model(app_handle, "Kim_Vocal_2.onnx", model_url).await?;
     window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "AI 모델 다운로드 완료".into() }).unwrap();
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_ai_model(window: WebviewWindow) -> Result<(), String> {
+    let app_handle = window.app_handle();
+    let manager = ModelManager::new(app_handle);
+    let path = manager.get_model_path("Kim_Vocal_2.onnx");
+    
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| format!("모델 파일 삭제 실패: {}", e))?;
+        
+        // Reset loaded engine
+        let mut engine_guard = ROFORMER_ENGINE.lock();
+        *engine_guard = None;
+        
+        sys_log("[AI-ENGINE] Model deleted and engine reset.");
+    }
+    
     Ok(())
 }
 
@@ -561,10 +567,11 @@ async fn get_audio_devices() -> Result<Vec<String>, String> {
     let devices = host.output_devices().map_err(|e| e.to_string())?;
     let mut names = Vec::new();
     for d in devices {
-        let d: cpal::Device = d;
-        if let Ok(name) = d.name() {
-            let config = d.default_output_config().map(|c| format!("{}Hz, {}ch", u32::from(c.sample_rate()), c.channels())).unwrap_or_else(|_| "Unknown Config".into());
-            names.push(format!("{} ({})", name, config));
+        if let Ok(desc) = d.description() {
+            let config = d.default_output_config()
+                .map(|c| format!("{}Hz, {}ch", u32::from(c.sample_rate()), c.channels()))
+                .unwrap_or_else(|_| "Unknown Config".into());
+            names.push(format!("{} ({})", desc.name(), config));
         }
     }
     Ok(names)
@@ -594,148 +601,217 @@ struct SeparationProgress {
     path: String,
     percentage: f32,
     status: String,
+    provider: String,
 }
 
 #[tauri::command]
-async fn run_separation(window: WebviewWindow, path: String) -> Result<(), String> {
+async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
     // 0. Ensure cancel state is clean for this path
-    CANCEL_REQUESTS.lock().remove(&path);
-
-    let engine = {
-        let mut engine_guard = ROFORMER_ENGINE.lock();
-        if engine_guard.is_none() {
-            let app_handle = window.app_handle();
-            let manager = ModelManager::new(app_handle);
-            
-            // Check if model exists somewhere
-            let mut model_path = None;
-            if let Ok(res_path) = app_handle.path().resolve("resources/bs_roformer.onnx", BaseDirectory::Resource) {
-                if res_path.exists() { model_path = Some(res_path); }
-            }
-            if model_path.is_none() {
-                let app_path = manager.get_model_path("bs_roformer.onnx");
-                if app_path.exists() { model_path = Some(app_path); }
-            }
-
-            match model_path {
-                Some(path) => {
-                    window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 로드 중...".into() }).unwrap();
-                    *engine_guard = Some(Arc::new(WaveformRemover::new(&path)?));
-                },
-                None => {
-                    return Err("AI 모델이 설치되지 않았습니다. 설정에서 다운로드해주세요.".into());
-                }
-            }
-        }
-        engine_guard.as_ref().unwrap().clone()
-    };
+    let normalized_path = path.replace("\\", "/").to_lowercase();
+    CANCEL_REQUESTS.lock().remove(&normalized_path);
 
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
     let cache_key = urlencoding::encode(&path).to_string();
     let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
-    
-    // 1. YouTube Download (if needed, this can happen in parallel, but separation still sequential)
-    let source_path = if path.starts_with("http") {
-        window.emit("separation-progress", SeparationProgress {
-            path: path.clone(),
-            percentage: 0.0,
-            status: "Downloading YouTube Audio...".into(),
-        }).unwrap();
-        
-        let metadata = YoutubeManager::get_video_metadata(&path).await?;
-        let temp_dir = std::env::temp_dir();
-        let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
-        
-        if !final_path.exists() {
-            YoutubeManager::download_audio(&window, &path, final_path.clone()).await?;
-        }
-        final_path
-    } else {
-        std::path::PathBuf::from(&path)
-    };
 
-    if !source_path.exists() {
-        return Err("Source file not found (Download failed or invalid path).".into());
-    }
+    let window_for_task = window.clone();
+    let path_for_task = path.clone();
 
-    // 2. Queue the task and wait for lock (Sequential Processing)
-    window.emit("separation-progress", SeparationProgress {
-        path: path.clone(),
-        percentage: 0.0,
-        status: "Queued".into(),
-    }).unwrap();
+    // Return early and handle everything in a background task
+    tauri::async_runtime::spawn(async move {
+        // Step A: Load/Initialize Engine
+        let engine = {
+            let mut engine_guard = ROFORMER_ENGINE.lock();
+            if engine_guard.is_none() {
+                let model_path = {
+                    let app_handle = window_for_task.app_handle();
+                    let app_dir = app_handle.path().app_local_data_dir().expect("Failed app dir");
+                    let p1 = app_dir.join("models").join("Kim_Vocal_2.onnx");
+                    if p1.exists() { Some(p1) } else { None }
+                };
 
-    let _permit = AI_QUEUE_LOCK.lock().await;
-
-    // Task Start Emission (Now that we have the lock)
-    window.emit("separation-progress", SeparationProgress {
-        path: path.clone(),
-        percentage: 0.0,
-        status: "Starting".into(),
-    }).unwrap();
-
-
-    let window_clone = window.clone();
-    let path_clone = path.clone();
-    let cache_dir_for_move = cache_dir.clone();
-
-    let result = async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let w = window_clone.clone();
-        let p = path_clone.clone();
-        engine.separate(&source_path, &cache_dir_for_move, Box::new(move |percentage| {
-
-            // Check for cancellation
-            if CANCEL_REQUESTS.lock().contains(&p) {
-                return; // Logic for "stop" is handled inside separate loop
+                match model_path {
+                    Some(p) => {
+                        window_for_task.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 로딩 중...".into() }).ok();
+                        match WaveformRemover::new(&p) {
+                            Ok(remover) => {
+                                *engine_guard = Some(Arc::new(remover));
+                            }
+                            Err(e) => {
+                                sys_log(&format!("Model init error: {}", e));
+                                window_for_task.emit("separation-progress", SeparationProgress {
+                                    path: path_for_task.clone(),
+                                    percentage: 0.0,
+                                    status: "Error: 모델 초기화 실패".into(),
+                                    provider: "SYSTEM".into(),
+                                }).ok();
+                                return;
+                            }
+                        }
+                    },
+                    None => {
+                        window_for_task.emit("separation-progress", SeparationProgress {
+                            path: path_for_task.clone(),
+                            percentage: 0.0,
+                            status: "Error: 모델 파일 없음".into(),
+                            provider: "SYSTEM".into(),
+                        }).ok();
+                        return;
+                    }
+                }
             }
-            let _ = w.emit("separation-progress", SeparationProgress {
-                path: p.clone(),
-                percentage,
-                status: "Processing".into(),
-            });
-        }))?;
-        Ok(())
-    }).await.map_err(|e| format!("처리 중 오류(Panic)가 발생했습니다: {}", e));
-    
-    // Check if what we got back is an error
-    if let Ok(Err(ref e)) = result {
-        // Cleanup partial files on error or cancel
-        let _ = std::fs::remove_dir_all(&cache_dir);
+            engine_guard.as_ref().unwrap().clone()
+        };
 
-        if e.contains("Cancelled by user") {
-            let _ = window.emit("separation-progress", SeparationProgress {
-                path: path.clone(),
+        // Step B: YouTube Download (if needed)
+        let source_path_res = if path_for_task.starts_with("http") {
+            window_for_task.emit("separation-progress", SeparationProgress {
+                path: path_for_task.clone(),
                 percentage: 0.0,
-                status: "Cancelled".into(),
-            });
+                status: "Downloading YouTube Audio...".into(),
+                provider: "NETWORK".into(),
+            }).ok();
+            
+            match YoutubeManager::get_video_metadata(&path_for_task).await {
+                Ok(metadata) => {
+                    let temp_dir = std::env::temp_dir();
+                    let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
+                    
+                    if !final_path.exists() {
+                        match YoutubeManager::download_audio(&window_for_task, &path_for_task, final_path.clone()).await {
+                            Ok(_) => Ok(final_path),
+                            Err(e) => Err(e.to_string()),
+                        }
+                    } else {
+                        Ok(final_path)
+                    }
+                },
+                Err(e) => Err(e.to_string()),
+            }
         } else {
-            // General Error Emission
-            let _ = window.emit("separation-progress", SeparationProgress {
-                path: path.clone(),
-                percentage: 0.0,
-                status: "Error".into(),
-            });
+            Ok(std::path::PathBuf::from(&path_for_task))
+        };
+
+        let source_path = match source_path_res {
+            Ok(p) => {
+                if !p.exists() {
+                    window_for_task.emit("separation-progress", SeparationProgress {
+                        path: path_for_task.clone(),
+                        percentage: 0.0,
+                        status: "Error: 소스 없음".into(),
+                        provider: "SYSTEM".into(),
+                    }).ok();
+                    return;
+                }
+                p
+            },
+            Err(e) => {
+                window_for_task.emit("separation-progress", SeparationProgress {
+                    path: path_for_task.clone(),
+                    percentage: 0.0,
+                    status: format!("Error: {}", e).into(),
+                    provider: "SYSTEM".into(),
+                }).ok();
+                return;
+            }
+        };
+
+        // Step C: Queue the task and wait for lock (Sequential Processing)
+        window_for_task.emit("separation-progress", SeparationProgress {
+            path: path_for_task.clone(),
+            percentage: 0.0,
+            status: "Queued".into(),
+            provider: engine.get_provider(),
+        }).ok();
+
+        // 3. Wait for Queue Lock (Only one separation at a time)
+        let _permit = AI_QUEUE_LOCK.lock().await;
+
+        // Task Start Emission (Now that we have the lock)
+        window_for_task.emit("separation-progress", SeparationProgress {
+            path: path_for_task.clone(),
+            percentage: 0.0,
+            status: "Starting".into(),
+            provider: engine.get_provider(),
+        }).ok();
+
+        let window_clone = window_for_task.clone();
+        let path_clone = path_for_task.clone();
+        let cache_dir_for_move = cache_dir.clone();
+        let engine_info = engine.get_provider();
+        let engine_for_spawn = engine.clone();
+
+        let result = async_runtime::spawn_blocking(move || -> Result<(), String> {
+            let w = window_clone.clone();
+            let p = path_clone.clone();
+            let info = engine_info.clone();
+            engine_for_spawn.separate(&source_path, &cache_dir_for_move, Box::new(move |percentage| {
+                // Check for cancellation
+                let normalized_p = p.replace("\\", "/").to_lowercase();
+                if CANCEL_REQUESTS.lock().contains(&normalized_p) {
+                    CANCEL_REQUESTS.lock().remove(&normalized_p);
+                    return; 
+                }
+                let _ = w.emit("separation-progress", SeparationProgress {
+                    path: p.clone(),
+                    percentage,
+                    status: "Processing".into(),
+                    provider: info.clone(),
+                });
+            })).map_err(|e| e.to_string())?;
+            Ok(())
+        }).await;
+        
+        // Handle result
+        match result {
+            Ok(Ok(_)) => {
+                window_for_task.emit("separation-progress", SeparationProgress {
+                    path: path_for_task.clone(),
+                    percentage: 100.0,
+                    status: "Finished".into(),
+                    provider: engine.get_provider(),
+                }).ok();
+                window_for_task.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "Separation complete".into() }).ok();
+            }
+            Ok(Err(e)) => {
+                let _ = std::fs::remove_dir_all(&cache_dir);
+                if e.contains("Cancelled") {
+                    window_for_task.emit("separation-progress", SeparationProgress {
+                        path: path_for_task.clone(),
+                        percentage: 0.0,
+                        status: "Cancelled".into(),
+                        provider: engine.get_provider(),
+                    }).ok();
+                } else {
+                    window_for_task.emit("separation-progress", SeparationProgress {
+                        path: path_for_task.clone(),
+                        percentage: 0.0,
+                        status: "Error".into(),
+                        provider: engine.get_provider(),
+                    }).ok();
+                }
+            }
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&cache_dir);
+                window_for_task.emit("separation-progress", SeparationProgress {
+                    path: path_for_task.clone(),
+                    percentage: 0.0,
+                    status: "Error".into(),
+                    provider: engine.get_provider(),
+                }).ok();
+                sys_log(&format!("Task panic: {}", e));
+            }
         }
-    }
+    });
 
-
-    result??;
-    
-    // Task Final Emission (Finished)
-    window.emit("separation-progress", SeparationProgress {
-        path: path.clone(),
-        percentage: 100.0,
-        status: "Finished".into(),
-    }).unwrap();
-
-    window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "Separation complete".into() }).unwrap();
     Ok(())
 }
 
 #[tauri::command]
 fn cancel_separation(path: String) {
-    sys_log(&format!("AI 분리 작업 취소 요청: {}", path));
-    CANCEL_REQUESTS.lock().insert(path);
+    let normalized = path.replace("\\", "/").to_lowercase();
+    sys_log(&format!("AI 분리 작업 취소 요청 (정규화): {}", normalized));
+    CANCEL_REQUESTS.lock().insert(normalized);
 }
 
 #[tauri::command]
@@ -883,14 +959,14 @@ pub fn run() {
             get_audio_metadata,
             get_playback_state,
             check_ai_runtime,
-            run_separation,
             check_model_ready,
             download_ai_model,
             save_library,
             load_library,
             cancel_separation,
             get_audio_devices,
-            open_cache_folder
+            open_cache_folder,
+            delete_ai_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
