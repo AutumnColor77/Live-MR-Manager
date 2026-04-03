@@ -14,8 +14,9 @@
 
 ## 🔉 2. 오디오 고성능 제어 (Advanced Audio)
 
-- [X] **AI 보컬 제거 (Vocal Remover)**: 기본 파이프라인 구축 및 엔진 분리 완료 (Roformer 모델 연동 준비 중)
+- [X] **AI 음원 분리 (AI Audio Separation)**: BS-RoFormer 및 MDX-Net 엔진 통합 완료. 비동기 백그라운드 워커 및 ORT 가속 적용.
 - [X] **오디오 엔진 리팩토링**: `audio_player.rs` 모듈화 및 재생 안정성 확보
+- [ ] **모델 관리자 UI**: AI 모델 선택, 다운로드 상태 표시 및 삭제 UI 고도화
 - [ ] **동기화 가사 (Synced Lyrics)**: `.lrc` 파일 지원 및 재생 시점에 맞춘 가사 표시
 - [ ] **재생 큐 (Playback Queue)**: '다음에 재생할 곡' 목록 관리 및 수동 전환 기능 지원
 - [ ] **반복/셔플 모드**: 한 곡 반복, 전체 반복, 무작위 재생 기능
