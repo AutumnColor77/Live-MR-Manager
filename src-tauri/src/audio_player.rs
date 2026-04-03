@@ -21,8 +21,10 @@ pub static IS_PREPARING_PLAYBACK: std::sync::atomic::AtomicBool = std::sync::ato
 
 pub fn sys_log(message: &str) {
     println!("{}", message);
-    if let Some(window) = MAIN_WINDOW.lock().as_ref() {
-        let _ = window.emit("sys-log", message.to_string());
+    if let Some(guard) = MAIN_WINDOW.try_lock() {
+        if let Some(window) = guard.as_ref() {
+            let _ = window.emit("sys-log", message.to_string());
+        }
     }
 }
 
@@ -99,20 +101,52 @@ impl Seek for StreamingReader {
 /// Dynamic volume control source using atomic bits for f32 volume.
 pub struct DynamicVolumeSource<S> where S: Source<Item = f32> {
     pub input: S,
-    pub volume: Arc<AtomicU32>, // bits of f32
+    pub volume: Arc<AtomicU32>, // Shared target volume (bits of f32)
+    pub current_vol: f32,       // Internal state for fading
+    pub is_first: bool,         // Initial state flag
+}
+
+impl<S> DynamicVolumeSource<S> where S: Source<Item = f32> {
+    pub fn new(input: S, volume: Arc<AtomicU32>) -> Self {
+        Self {
+            input,
+            volume,
+            current_vol: 0.0,
+            is_first: true,
+        }
+    }
 }
 
 impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         let s = self.input.next()?;
-        let vol_bits = self.volume.load(Ordering::Relaxed);
-        let vol = f32::from_bits(vol_bits) / 100.0;
+        let target_vol_bits = self.volume.load(Ordering::Relaxed);
+        let target_vol = f32::from_bits(target_vol_bits) / 100.0;
         
-        // Debug: 샘플이 흘러가는지 확인 (터미널에 너무 많으면 나중에 주석 처리)
-        // if s.abs() > 0.1 { println!("[AUDIO_DEBUG] Sample Flow: {:.3}, Vol: {:.2}", s, vol); }
+        // Initialize current_vol on first sample to avoid fading from 0 on start
+        if self.is_first {
+            self.current_vol = target_vol;
+            self.is_first = false;
+        }
+
+        // Smoothly interpolate current_vol towards target_vol
+        // Fade duration: 100ms
+        const FADE_DURATION: f32 = 0.1; 
+        let sample_rate = self.input.sample_rate().get() as f32;
+        let step = 1.0 / (sample_rate * FADE_DURATION);
+
+        if (self.current_vol - target_vol).abs() > step {
+            if self.current_vol < target_vol {
+                self.current_vol += step;
+            } else {
+                self.current_vol -= step;
+            }
+        } else {
+            self.current_vol = target_vol;
+        }
         
-        Some(s * vol)
+        Some(s * self.current_vol)
     }
 }
 

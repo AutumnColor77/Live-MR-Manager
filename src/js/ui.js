@@ -51,6 +51,7 @@ export const elements = {
   btnStartTrack: null,
   statusMsg: null,
   cudaRecommendBanner: null,
+  viewControls: null,
 };
 
 export function initDomReferences() {
@@ -100,6 +101,7 @@ export function initDomReferences() {
   elements.toggleVocal = document.getElementById("toggle-vocal");
   elements.toggleLyric = document.getElementById("toggle-lyric");
   elements.cudaRecommendBanner = document.getElementById("cuda-recommend-banner");
+  elements.viewControls = document.querySelector(".view-controls");
 }
 
 export function renderLibrary() {

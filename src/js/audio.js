@@ -94,6 +94,10 @@ export async function startMrSeparation(path) {
   try {
     return await invoke("start_mr_separation", { path });
   } catch (err) {
+    if (err === "ALREADY_PROCESSING") {
+      showNotification("이미 대기열에 있거나 처리 중인 곡입니다.", "warning");
+      return;
+    }
     console.error("Separation failed:", err);
     showNotification("MR 분리 실패: " + err, "error");
     throw err;

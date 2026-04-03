@@ -28,15 +28,18 @@
 ### 🤖 온디바이스 오디오 엔진 (DSP Engine)
 - **고성능 모듈화 아키텍처**: 오디오 처리 로직을 `audio_player.rs`로 분리하여 코드 가독성과 확장성 극대화. 전역 `AUDIO_HANDLER`를 통한 정밀한 상태 관리.
 - **실시간 Pitch/Tempo 독립 제어**: `signalsmith-stretch` 및 `Rodio 0.22.x` 기반의 고성능 오디오 파이프라인. 음질 손실 없이 `-12` ~ `+12` 반음 및 `0.5x` ~ `2.0x` 속도 조절 지원.
+- **보컬 토글 페이딩 (Audio Fading)**: 보컬 On/Off 시 클릭 노이즈(Pops)를 방지하기 위해 **100ms 실시간 선형 페이딩** 로직 적용.
 - **초저지연 Passthrough**: 피치와 속도가 기본값일 때 DSP 엔진을 우회하여 레이턴시를 최소화하고 원래 음원을 그대로 재생.
 - **다중 채널 완벽 지원**: 스테레오 채널 분리 및 위상 정합 처리(Planar processing)를 통해 위상 뒤틀림 없는 사운드 재생.
 
 ### 🧠 AI 고성능 음원 분리 (AI MR Separation)
 - **BS-RoFormer & MDX-Net 통합**: 최신 AI 모델을 활용한 전문가급 보컬/세션 분리 기능 제공.
+- **모듈화된 분리 엔진**: 분리 로직을 별도의 `separation` 모듈로 분리하여 코드의 유지보수성과 확장성 확보.
 - **완전 비동기 파이프라인**: `Tokio` 백엔드 워커를 통한 비동기 처리로 음원 분리 중에도 UI 및 오디오 재생이 전혀 끊기지 않는 논블로킹(Non-blocking) 환경 구현.
+- **성능 최적화 (Advanced Optimization)**: **병렬 STFT Preprocessing** 및 **Batch Inference**를 도입하여 GPU/CPU 자원 활용률 극대화.
 - **ONNX Runtime 가속**: CUDA, DirectML 및 CPU 가속을 자동 감지하여 하드웨어 성능을 최대로 활용하는 고속 추론 엔진 탑재.
 - **고정밀 오디오 프로세싱**: 24-bit/32-bit 정밀 디코딩, RMS 기반 자동 볼륨 정규화, 그리고 Overlap-Add(OLA) 기술을 적용하여 가청 노이즈 없는 깨끗한 MR 생성.
-- **지능형 작업 관리**: 작업 큐(Queue) 시스템과 실시간 진행률(Progress) 피드백, 그리고 사용자 요청 시 즉각적인 작업 취소(Cancellation) 기능 지원.
+- **지능형 작업 관리**: 작업 큐(Queue) 시스템과 실시간 진행률(Progress) 피드백, 중복 작업 요청 방지 경고 및 즉각적인 작업 취소(Cancellation) 기능 지원.
 
 ### 🎥 유튜브 및 로컬 스트리밍 (Streaming & Local)
 - **yt-dlp 고도화 통합**: 백엔드에서 실시간 유튜브 오디오 추출 및 재생. `yt-dlp` 출력 노이즈(WARNING 등) 자동 필터링 및 견고한 JSON 파싱 로직 적용.

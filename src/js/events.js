@@ -31,6 +31,7 @@ export function switchTab(tabId) {
   if (elements.youtubeSection) elements.youtubeSection.style.display = tabId === "youtube" ? "block" : "none";
   if (elements.localSection) elements.localSection.style.display = tabId === "local" ? "block" : "none";
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
+  if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
   
   const settingsPage = document.getElementById("settings-page");
   const tasksPage = document.getElementById("tasks-page");
@@ -519,13 +520,26 @@ export function setupBackendListeners() {
     }
 
     state.activeTasks[path] = { percentage, status, provider };
-    updateTaskUI(path);
-
-    if (status === "Finished") {
-      renderLibrary();
-      showNotification("곡 분리 작업이 완료되었습니다.", "success");
-    } else if (status === "Cancelled" || status === "Error") {
-      renderLibrary();
+    
+    if (status === "Finished" || status === "Cancelled" || status === "Error") {
+      // 1. Show final state immediately
+      updateTaskUI(path); 
+      
+      if (status === "Finished") {
+        renderLibrary();
+        showNotification("곡 분리 작업이 완료되었습니다.", "success");
+      }
+      
+      // 2. Wait 2 seconds then remove from list
+      setTimeout(() => {
+        // Ensure it's still the SAME task (not restarted)
+        if (state.activeTasks[path] && (state.activeTasks[path].status === "Finished" || state.activeTasks[path].status === "Cancelled" || state.activeTasks[path].status === "Error")) {
+          delete state.activeTasks[path];
+          updateTaskUI(); // Re-render to remove it
+        }
+      }, 2000);
+    } else {
+      updateTaskUI(path);
     }
   });
 
@@ -577,7 +591,8 @@ function updateTaskUI(targetPath = null) {
   const list = document.getElementById("active-tasks-list");
   if (!list) return;
 
-  const runningTasks = Object.entries(state.activeTasks).filter(([_, t]) => t.status !== "Finished" && t.status !== "Cancelled" && t.status !== "Error");
+  const allTasks = Object.entries(state.activeTasks);
+  const runningTasks = allTasks.filter(([_, t]) => t.status !== "Finished" && t.status !== "Cancelled" && t.status !== "Error");
   const activeCount = runningTasks.length;
   
   if (badge) {
@@ -587,7 +602,7 @@ function updateTaskUI(targetPath = null) {
 
   // 1. Partial Update: Only update the progress and status if task already in DOM
   if (targetPath) {
-    // Find numerically to avoid any CSS selector escaping issues
+    // Find numerically to remove some CSS selector escaping issues
     const cards = list.querySelectorAll('.task-card');
     const existingCard = Array.from(cards).find(el => el.dataset.taskPath === targetPath);
     
@@ -603,15 +618,20 @@ function updateTaskUI(targetPath = null) {
       if (statusTextEl) {
         statusTextEl.textContent = task.status === "Queued" ? "대기 중..." : task.status === "Starting" ? "준비 중..." : task.status;
       }
-      return; // Skip full render
+      
+      // Only skip full render if task is STILL RUNNING.
+      // If Finished/Cancelled/Error, we want it to fall through to full render eventually
+      // (though usually we handle that with updateTaskUI() call after delay)
+      const isRunning = task.status !== "Finished" && task.status !== "Cancelled" && task.status !== "Error";
+      if (isRunning) return; 
     }
   }
 
   // 2. Full Render: If new task, removed task, or no targetPath provided
-  if (activeCount === 0) {
+  if (allTasks.length === 0) {
     list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
   } else {
-    list.innerHTML = runningTasks.map(([path, t]) => {
+    list.innerHTML = allTasks.map(([path, t]) => {
       // Normalize paths for matching (handle slashes, casing, and encoding like %20)
       const normalize = (p) => (p ? decodeURIComponent(p).replace(/\\/g, '/').toLowerCase() : '');
       const targetNorm = normalize(path);

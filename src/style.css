@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
 
 :root {
   --bg-color: #08080a;
@@ -38,7 +38,7 @@ body {
   position: relative;
 }
 
-/* 배경 장식 */
+/* 諛곌꼍 ?μ떇 */
 .bg-glow {
   position: fixed;
   top: -20%;
@@ -361,7 +361,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(192px, 1fr));
   grid-auto-rows: 1fr;
-  /* 모든 행의 높이를 동일하게 유지 */
+  /* 紐⑤뱺 ?됱쓽 ?믪씠瑜??숈씪?섍쾶 ?좎? */
   gap: 24px;
   transition: all 0.3s ease;
 }
@@ -384,7 +384,7 @@ h1 {
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* 부모 그리드 행 높이에 맞게 확장 */
+  /* 遺紐?洹몃━?????믪씠??留욊쾶 ?뺤옣 */
 }
 
 .song-card:hover {
@@ -507,7 +507,7 @@ h1 {
   min-height: 24px;
 }
 
-/* 그리드 모드에서는 태그를 하단으로 밀어줌 */
+/* 洹몃━??紐⑤뱶?먯꽌???쒓렇瑜??섎떒?쇰줈 諛?댁쨲 */
 .grid-layout .tag-container {
   margin-top: auto;
 }
@@ -1280,7 +1280,7 @@ button:disabled,
   pointer-events: none;
   z-index: 1;
   width: 0%;
-  /* JS로 업데이트 */
+  /* JS濡??낅뜲?댄듃 */
 }
 
 .song-artist {
@@ -1532,7 +1532,8 @@ button:disabled,
   height: 12px;
   width: 12px;
   left: 3px;
-  bottom: 3px;
+  top: 50%;
+  transform: translateY(-50%);
   background-color: white;
   transition: .4s;
   border-radius: 50%;
@@ -1543,7 +1544,7 @@ input:checked+.slider {
 }
 
 input:checked+.slider:before {
-  transform: translateX(16px);
+  transform: translateY(-50%) translateX(16px);
 }
 
 .switch input:disabled+.slider {
@@ -1564,7 +1565,7 @@ input:checked+.slider:before {
 /* Local Drop Section (My Musics Tab) */
 .local-drop-section {
   display: none;
-  /* JS로 제어 */
+  /* JS濡??쒖뼱 */
   margin: 0 0 32px 0;
   animation: fadeIn 0.3s ease;
 }
@@ -1574,7 +1575,7 @@ input:checked+.slider:before {
   padding: 60px 40px;
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
-  /* 블러 효과 명시적 확인 */
+  /* 釉붾윭 ?④낵 紐낆떆???뺤씤 */
   border: 2px dashed var(--glass-border);
   border-radius: 16px;
   display: flex;
@@ -2617,7 +2618,7 @@ input:checked+.slider {
 }
 
 input:checked+.slider:before {
-  transform: translateX(16px);
+  transform: translateY(-50%) translateX(16px);
 }
 
 .switch input:disabled+.slider {
@@ -2625,7 +2626,7 @@ input:checked+.slider:before {
   cursor: not-allowed;
 }
 
-/* 인라인 재생바 스타일 (이전 full-width 스타일 최적화) */
+/* ?몃씪???ъ깮諛??ㅽ???(?댁쟾 full-width ?ㅽ???理쒖쟻?? */
 .playback-container .progress-bar-wrapper:hover .progress-fill::after {
   opacity: 1;
 }

@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-use parking_lot::Mutex;
 use rodio::{Decoder, Source};
 use rodio::source::UniformSourceIterator;
 use serde::{Deserialize, Serialize};
@@ -10,7 +8,7 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{async_runtime, Emitter, Manager, WebviewWindow, AppHandle};
+use tauri::{Emitter, Manager, WebviewWindow, AppHandle};
 use tauri::path::BaseDirectory;
 use std::process::Command;
 
@@ -18,6 +16,7 @@ mod youtube;
 mod model_manager;
 pub mod vocal_remover;
 pub mod audio_player;
+mod separation;
 
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
@@ -26,7 +25,7 @@ use urlencoding;
 use crate::audio_player::{
     AUDIO_HANDLER, Status, PlaybackStatus, PlaybackProgress,
     AppState, StreamingReader, StretchedSource, DynamicVolumeSource,
-    CANCEL_REQUESTS, sys_log, MAIN_WINDOW
+    sys_log, MAIN_WINDOW
 };
 use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
 use symphonia::core::formats::FormatOptions;
@@ -36,8 +35,6 @@ use symphonia::core::probe::Hint;
 
 
 // --- AI Engine ---
-static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
-static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
 
@@ -100,7 +97,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     {
         let controller = handler.controller.lock();
         controller.clear();
-        sys_log("[DEBUG] Step 0: Controller cleared");
+        sys_log("[AUDIO] Playback Step 1: Controller cleared");
     }
     
     let rate = handler.track_sample_rate.load(Ordering::Relaxed) as f64;
@@ -133,11 +130,11 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
 
     // NEW LOGIC: Check for separated MR files first to avoid unnecessary network/file checks
     if vocal_path.exists() && inst_path.exists() {
-        sys_log(&format!("Playing (Cached): {} (Device: {}Hz, {}ch)", path, target_rate, target_channels));
+        sys_log(&format!("[AUDIO] Playback Step 2: Found separated MR files at {:?}", cache_dir));
         
         // Separated paths - PLAY IMMEDIATELY
-        let v_file = File::open(vocal_path).map_err(|e| e.to_string())?;
-        let i_file = File::open(inst_path).map_err(|e| e.to_string())?;
+        let v_file = File::open(&vocal_path).map_err(|e| format!("Vocal file open failed: {}", e))?;
+        let i_file = File::open(&inst_path).map_err(|e| format!("Inst file open failed: {}", e))?;
         
         let mut v_decoder = Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
         let mut i_decoder = Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
@@ -156,8 +153,8 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
         let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
         
-        let resampled_v = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_v, volume: handler.vocal_volume.clone() }, target_channels_nz, target_rate_nz);
-        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource { input: stretched_i, volume: handler.instrumental_volume.clone() }, target_channels_nz, target_rate_nz);
+        let resampled_v = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_v, handler.vocal_volume.clone()), target_channels_nz, target_rate_nz);
+        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_i, handler.instrumental_volume.clone()), target_channels_nz, target_rate_nz);
 
         let mixed = resampled_i.mix(resampled_v);
         
@@ -229,7 +226,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     }
 
     let stretched = StretchedSource::new(decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
-    let dyn_vol = DynamicVolumeSource { input: stretched, volume: handler.instrumental_volume.clone() };
+    let dyn_vol = DynamicVolumeSource::new(stretched, handler.instrumental_volume.clone());
     let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
     
     let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
@@ -385,12 +382,42 @@ async fn check_mr_separated(window: WebviewWindow, path: String) -> Result<bool,
 
 #[tauri::command]
 async fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
+    // 1. Get audio handler and current playback state
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let (current_track_path, is_playing, current_pos_ms) = {
+        let state = handler.state.lock();
+        let track_rate = handler.track_sample_rate.load(Ordering::Relaxed);
+        let samples = handler.current_pos_samples.load(Ordering::Relaxed);
+        let pos_ms = if track_rate > 0 {
+            (samples as f64 / track_rate as f64 * 1000.0) as u64
+        } else {
+            0
+        };
+        (state.current_track.clone(), state.is_playing, pos_ms)
+    };
+
+    // 2. Delete the cached MR files
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
     let cache_key = urlencoding::encode(&path).to_string();
     let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
     if cache_dir.exists() {
         std::fs::remove_dir_all(cache_dir).map_err(|e| e.to_string())?;
     }
+
+    // 3. Check if the deleted track was the one currently playing
+    if is_playing {
+        if let Some(current_path) = current_track_path {
+            if current_path == path {
+                // The deleted track was active. Restart playback from the original source.
+                sys_log(&format!("[DEBUG] Deleted MR for active track. Restarting playback from original source at {}ms.", current_pos_ms));
+                let duration_hint = handler.total_duration_ms.load(Ordering::Relaxed);
+                
+                // Call play_track_internal to restart playback from the original source
+                play_track_internal(window, path, Some(duration_hint), Some(current_pos_ms)).await?;
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -604,7 +631,7 @@ async fn delete_ai_model(window: WebviewWindow) -> Result<(), String> {
         std::fs::remove_file(path).map_err(|e| format!("모델 파일 삭제 실패: {}", e))?;
         
         // Reset loaded engine
-        let mut engine_guard = ROFORMER_ENGINE.lock();
+        let mut engine_guard = crate::separation::ROFORMER_ENGINE.lock();
         *engine_guard = None;
         
         sys_log("[AI-ENGINE] Model deleted and engine reset.");
@@ -647,223 +674,39 @@ async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SeparationProgress {
-    path: String,
-    percentage: f32,
-    status: String,
-    provider: String,
-}
-
 #[tauri::command]
-async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
-    // 0. Ensure cancel state is clean for this path
-    let normalized_path = path.replace("\\", "/").to_lowercase();
-    CANCEL_REQUESTS.lock().remove(&normalized_path);
+async fn start_mr_separation(window: tauri::WebviewWindow, path: String) -> Result<(), String> {
+    // 1. Quick check for existing task to prevent duplicates before spawning
+    let norm_p = path.replace("\\", "/").to_lowercase();
+    {
+        let active = crate::separation::ACTIVE_SEPARATIONS.lock();
+        if active.contains_key(&norm_p) {
+            sys_log(&format!("[AI-QUEUE] Task already active or queued for: {}", path));
+            return Err("ALREADY_PROCESSING".into()); 
+        }
+    }
 
     let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
     let cache_key = urlencoding::encode(&path).to_string();
     let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
 
-    let window_for_task = window.clone();
-    let path_for_task = path.clone();
-
-    // Return early and handle everything in a background task
+    let task = crate::separation::task::SeparationTask::new(window, path, cache_dir);
     tauri::async_runtime::spawn(async move {
-        // Step A: Load/Initialize Engine
-        let engine = {
-            let mut engine_guard = ROFORMER_ENGINE.lock();
-            if engine_guard.is_none() {
-                let model_path = {
-                    let app_handle = window_for_task.app_handle();
-                    let app_dir = app_handle.path().app_local_data_dir().expect("Failed app dir");
-                    let p1 = app_dir.join("models").join("Kim_Vocal_2.onnx");
-                    if p1.exists() { Some(p1) } else { None }
-                };
-
-                match model_path {
-                    Some(p) => {
-                        window_for_task.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 로딩 중...".into() }).ok();
-                        match WaveformRemover::new(&p) {
-                            Ok(remover) => {
-                                *engine_guard = Some(Arc::new(remover));
-                            }
-                            Err(e) => {
-                                sys_log(&format!("Model init error: {}", e));
-                                window_for_task.emit("separation-progress", SeparationProgress {
-                                    path: path_for_task.clone(),
-                                    percentage: 0.0,
-                                    status: "Error: 모델 초기화 실패".into(),
-                                    provider: "SYSTEM".into(),
-                                }).ok();
-                                return;
-                            }
-                        }
-                    },
-                    None => {
-                        window_for_task.emit("separation-progress", SeparationProgress {
-                            path: path_for_task.clone(),
-                            percentage: 0.0,
-                            status: "Error: 모델 파일 없음".into(),
-                            provider: "SYSTEM".into(),
-                        }).ok();
-                        return;
-                    }
-                }
-            }
-            engine_guard.as_ref().unwrap().clone()
-        };
-
-        // Step B: YouTube Download (if needed)
-        let source_path_res = if path_for_task.starts_with("http") {
-            window_for_task.emit("separation-progress", SeparationProgress {
-                path: path_for_task.clone(),
-                percentage: 0.0,
-                status: "Downloading YouTube Audio...".into(),
-                provider: "NETWORK".into(),
-            }).ok();
-            
-            match YoutubeManager::get_video_metadata(&path_for_task).await {
-                Ok(metadata) => {
-                    let temp_dir = std::env::temp_dir();
-                    let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
-                    
-                    if !final_path.exists() {
-                        match YoutubeManager::download_audio(&window_for_task, &path_for_task, final_path.clone()).await {
-                            Ok(_) => Ok(final_path),
-                            Err(e) => Err(e.to_string()),
-                        }
-                    } else {
-                        Ok(final_path)
-                    }
-                },
-                Err(e) => Err(e.to_string()),
-            }
-        } else {
-            Ok(std::path::PathBuf::from(&path_for_task))
-        };
-
-        let source_path = match source_path_res {
-            Ok(p) => {
-                if !p.exists() {
-                    window_for_task.emit("separation-progress", SeparationProgress {
-                        path: path_for_task.clone(),
-                        percentage: 0.0,
-                        status: "Error: 소스 없음".into(),
-                        provider: "SYSTEM".into(),
-                    }).ok();
-                    return;
-                }
-                p
-            },
-            Err(e) => {
-                window_for_task.emit("separation-progress", SeparationProgress {
-                    path: path_for_task.clone(),
-                    percentage: 0.0,
-                    status: format!("Error: {}", e).into(),
-                    provider: "SYSTEM".into(),
-                }).ok();
-                return;
-            }
-        };
-
-        // Step C: Queue the task and wait for lock (Sequential Processing)
-        window_for_task.emit("separation-progress", SeparationProgress {
-            path: path_for_task.clone(),
-            percentage: 0.0,
-            status: "Queued".into(),
-            provider: engine.get_provider(),
-        }).ok();
-
-        // 3. Wait for Queue Lock (Only one separation at a time)
-        let _permit = AI_QUEUE_LOCK.lock().await;
-
-        // Task Start Emission (Now that we have the lock)
-        window_for_task.emit("separation-progress", SeparationProgress {
-            path: path_for_task.clone(),
-            percentage: 0.0,
-            status: "Starting".into(),
-            provider: engine.get_provider(),
-        }).ok();
-
-        let window_clone = window_for_task.clone();
-        let path_clone = path_for_task.clone();
-        let cache_dir_for_move = cache_dir.clone();
-        let engine_info = engine.get_provider();
-        let engine_for_spawn = engine.clone();
-
-        let result = async_runtime::spawn_blocking(move || -> Result<(), String> {
-            let w = window_clone.clone();
-            let p = path_clone.clone();
-            let info = engine_info.clone();
-            engine_for_spawn.separate(&source_path, &cache_dir_for_move, Box::new(move |percentage| {
-                // Check for cancellation
-                let normalized_p = p.replace("\\", "/").to_lowercase();
-                if CANCEL_REQUESTS.lock().contains(&normalized_p) {
-                    CANCEL_REQUESTS.lock().remove(&normalized_p);
-                    return; 
-                }
-                let _ = w.emit("separation-progress", SeparationProgress {
-                    path: p.clone(),
-                    percentage,
-                    status: "Processing".into(),
-                    provider: info.clone(),
-                });
-            })).map_err(|e| e.to_string())?;
-            Ok(())
-        }).await;
-        
-        // Handle result
-        match result {
-            Ok(Ok(_)) => {
-                window_for_task.emit("separation-progress", SeparationProgress {
-                    path: path_for_task.clone(),
-                    percentage: 100.0,
-                    status: "Finished".into(),
-                    provider: engine.get_provider(),
-                }).ok();
-                window_for_task.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "Separation complete".into() }).ok();
-            }
-            Ok(Err(e)) => {
-                let _ = std::fs::remove_dir_all(&cache_dir);
-                if e.contains("Cancelled") {
-                    window_for_task.emit("separation-progress", SeparationProgress {
-                        path: path_for_task.clone(),
-                        percentage: 0.0,
-                        status: "Cancelled".into(),
-                        provider: engine.get_provider(),
-                    }).ok();
-                } else {
-                    window_for_task.emit("separation-progress", SeparationProgress {
-                        path: path_for_task.clone(),
-                        percentage: 0.0,
-                        status: "Error".into(),
-                        provider: engine.get_provider(),
-                    }).ok();
-                }
-            }
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&cache_dir);
-                window_for_task.emit("separation-progress", SeparationProgress {
-                    path: path_for_task.clone(),
-                    percentage: 0.0,
-                    status: "Error".into(),
-                    provider: engine.get_provider(),
-                }).ok();
-                sys_log(&format!("Task panic: {}", e));
-            }
-        }
+        task.run().await;
     });
-
     Ok(())
 }
 
+
 #[tauri::command]
-fn cancel_separation(path: String) {
-    let normalized = path.replace("\\", "/").to_lowercase();
-    sys_log(&format!("AI 분리 작업 취소 요청 (정규화): {}", normalized));
-    CANCEL_REQUESTS.lock().insert(normalized);
+fn cancel_separation(path: String) -> Result<(), String> {
+    let mut active = crate::separation::ACTIVE_SEPARATIONS.lock();
+    let normalized_path = path.replace("\\", "/").to_lowercase();
+    if let Some(cancel_flag) = active.remove(&normalized_path) {
+        cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        sys_log(&format!("CANCEL: AI Separation for {} has been requested.", path));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -928,6 +771,14 @@ fn probe_audio_duration(path: &str) -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Limit Rayon global thread pool to half of logical cores (min 2, max 8)
+    // This prevents Rayon from starving the UI/Main thread during heavy STFT/Post-processing.
+    let num_threads = (num_cpus::get() / 2).max(2).min(8);
+    let _ = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global();
+    sys_log(&format!("[SYSTEM] Rayon global thread pool initialized with {} threads", num_threads));
+
     tauri::Builder::default()
         .setup(|app| {
             let window = app.get_webview_window("main");

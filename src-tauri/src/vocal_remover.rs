@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
 use ort::session::Session;
 use ort::value::{Value, ValueType};
 use ndarray::{self, Array4};
@@ -16,10 +17,11 @@ use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::DecoderOptions;
 use rubato::{Resampler, SincFixedIn, SincInterpolationType, SincInterpolationParameters, WindowFunction};
 use anyhow::{anyhow, Result};
-// use rayon::prelude::*; // rayon::join used directly
+use rayon::prelude::*;
+const BATCH_SIZE: usize = 8;
 
 pub trait InferenceEngine: Send + Sync {
-    fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)>;
+    fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)>;
     fn get_provider(&self) -> String;
 }
 
@@ -118,14 +120,8 @@ impl StftEngine {
             }
         }
 
-        // Spike prevention
-        let fade_len = 100.min(target_len / 4);
-        for i in 0..fade_len {
-            let w = (i as f32 / fade_len as f32 * std::f32::consts::PI / 2.0).sin().powi(2);
-            final_samples[i] *= w;
-            final_samples[target_len - 1 - i] *= w;
-        }
-
+        // Final samples normalization is no longer needed here as OLA handles it.
+        // Fading at the boundaries of each chunk is removed to ensure phase consistency for OLA.
         final_samples
     }
 
@@ -205,14 +201,7 @@ impl StftEngine {
             }
         }
 
-        // Spike prevention (mirco-fade at boundaries)
-        let fade_len = 100.min(target_len / 4);
-        for i in 0..fade_len {
-            let w = (i as f32 / fade_len as f32 * std::f32::consts::PI / 2.0).sin().powi(2);
-            final_samples[i] *= w;
-            final_samples[target_len - 1 - i] *= w;
-        }
-
+        // Fading at the boundaries of each chunk is removed to ensure phase consistency for OLA.
         final_samples
     }
 }
@@ -226,7 +215,7 @@ pub struct WaveformRemover {
 
 impl WaveformRemover {
     pub fn new(model_path: &Path) -> Result<Self> {
-        let threads = (num_cpus::get() - 1).max(1).min(8);
+        let threads = (num_cpus::get() / 2).max(1).min(4);
         sys_log(&format!("[AI-ENGINE] Initializing with {} intra-op threads", threads));
 
         // Advanced CUDA options for maximum performance
@@ -273,7 +262,7 @@ impl InferenceEngine for WaveformRemover {
     fn get_provider(&self) -> String {
         self.active_provider.clone()
     }
-    fn separate(&self, audio_path: &Path, output_dir: &Path, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)> {
+    fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)> {
         let start_time = Instant::now();
         sys_log(&format!("DEBUG: [WaveformRemover] Starting advanced separation for: {:?}. Using: {}", audio_path, self.active_provider));
         
@@ -282,7 +271,7 @@ impl InferenceEngine for WaveformRemover {
         }
 
         // 1. Load and Resample (always to 44.1kHz for these models)
-        let load_start = Instant::now();
+        let load_and_resample_start = Instant::now();
         let (raw_samples, sample_rate, channels) = self.load_any_audio(audio_path)?;
         
         // Normalize path for reliable cancellation check (ignore slash direction and case)
@@ -294,20 +283,50 @@ impl InferenceEngine for WaveformRemover {
 
         let target_sample_rate = 44100;
         let processed_samples = if sample_rate != target_sample_rate {
-            let res = self.resample(&raw_samples, sample_rate, target_sample_rate, channels as usize)?;
+            sys_log(&format!("DEBUG: [WaveformRemover] Resampling from {} to {}", sample_rate, target_sample_rate));
+            let padding_samples = (sample_rate as f32 * 0.1) as usize; // 100ms padding
+            let num_channels = channels as usize;
+
+            // 1. Pad audio to prevent resampler artifacts at boundaries
+            let mut padded_samples = vec![0.0f32; padding_samples * num_channels];
+            padded_samples.extend_from_slice(&raw_samples);
+            padded_samples.extend_from_slice(&vec![0.0f32; padding_samples * num_channels]);
+            
+            if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
+                return Err(anyhow!("Cancelled before resampling"));
+            }
+
+            // 2. Resample the padded audio
+            let resampled_padded = self.resample(&padded_samples, sample_rate, target_sample_rate, num_channels)?;
+            
             if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
                 return Err(anyhow!("Cancelled after resampling"));
             }
-            res
+
+            // 3. Calculate samples to trim from resampled output
+            let resample_ratio = target_sample_rate as f64 / sample_rate as f64;
+            let trim_samples = (padding_samples as f64 * resample_ratio) as usize;
+
+            // 4. Trim the resampled audio to remove padded silence
+            if resampled_padded.len() > 2 * trim_samples * num_channels {
+                let start_index = trim_samples * num_channels;
+                let end_index = resampled_padded.len() - (trim_samples * num_channels);
+                sys_log(&format!("DEBUG: [WaveformRemover] Trimming {} samples from start/end after resampling.", trim_samples));
+                resampled_padded[start_index..end_index].to_vec()
+            } else {
+                sys_log("WARN: [WaveformRemover] Resampled audio is too short to trim, returning as is.");
+                resampled_padded
+            }
         } else {
             raw_samples
         };
-        sys_log(&format!("DEBUG: [WaveformRemover] Audio load & resample took: {:?}", load_start.elapsed()));
+        sys_log(&format!("PERF: [WaveformRemover] Audio load & resample took: {:?}", load_and_resample_start.elapsed()));
 
         if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
             return Err(anyhow!("Cancelled before model parameter detection"));
         }
 
+        let setup_start = Instant::now();
         let ch_count = channels as usize;
         let total_samples = processed_samples.len() / ch_count;
 
@@ -389,21 +408,23 @@ impl InferenceEngine for WaveformRemover {
             .collect::<Vec<f32>>());
 
         let num_chunks = (total_samples + step_size - 1) / step_size;
+        sys_log(&format!("PERF: [WaveformRemover] Parameter setup took: {:?}", setup_start.elapsed()));
 
         // --- 3-STAGE PIPELINE SETUP ---
-        // Tuple types: (chunk_idx, input_value, current_chunks, chunk_start, is_last)
-        let (pre_tx, pre_rx) = std::sync::mpsc::sync_channel::<(usize, Value, Vec<Vec<f32>>, usize, bool)>(4);
-        // Tuple types: (chunk_idx, outputs, current_chunks, chunk_start, is_last)
-        let (post_tx, post_rx) = std::sync::mpsc::sync_channel::<(usize, Vec<Value>, Vec<Vec<f32>>, usize, bool)>(4);
+        let pipeline_start = Instant::now();
+        let (pre_tx, pre_rx) = std::sync::mpsc::sync_channel::<(usize, Value, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 4);
+        let (post_tx, post_rx) = std::sync::mpsc::sync_channel::<(usize, Vec<Value>, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 4);
 
-        let path_str_prep = path_str.clone();
+        // STAGE 1: Preprocessing (STFT) Thread
         let channels_data_clone = Arc::clone(&channels_data);
         let stft_engine_clone = stft_engine.clone();
-        
-        // STAGE 1: Preprocessing (STFT) Thread
+        let cancel_flag_prep = cancel_flag.clone();
         std::thread::spawn(move || {
-            for chunk_idx in 0..num_chunks {
-                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_prep) { break; }
+            let prep_start = Instant::now();
+            let cancel_flag_inner = cancel_flag_prep.clone(); 
+            (0..num_chunks).into_par_iter().for_each_with(pre_tx, move |tx, chunk_idx| {
+                // High-speed atomic check (lock-free)
+                if cancel_flag_inner.load(Ordering::Relaxed) { return; }
                 
                 let mut chunk_start = chunk_idx * step_size;
                 let mut is_last_chunk_at_end = false;
@@ -459,36 +480,34 @@ impl InferenceEngine for WaveformRemover {
                 };
 
                 if let Ok(input_value) = input_value_res {
-                    if pre_tx.send((chunk_idx, input_value.into_dyn(), current_chunks, chunk_start, is_last_chunk_at_end)).is_err() {
-                        break; 
-                    }
-                } else {
-                    sys_log(&format!("ERROR: [AI-ENGINE] Failed to create input value for chunk {}", chunk_idx));
-                    break;
+                    let _ = tx.send((chunk_idx, input_value.into_dyn(), current_chunks, chunk_start, is_last_chunk_at_end));
                 }
-            }
-            sys_log("DEBUG: [AI-ENGINE] Stage 1 (Preprocessing) thread finished.");
+            });
+            sys_log(&format!("PERF: [AI-ENGINE] Stage 1 (Preprocessing) thread finished in {:?}.", prep_start.elapsed()));
         });
 
         // STAGE 3: Post-processing (iSTFT & OLA) Thread
-        let path_str_post_thread = path_str.clone();
         let stft_engine_clone_2 = stft_engine.clone();
         let chunk_window_clone = Arc::clone(&chunk_window);
         let final_vocal_clone = Arc::clone(&final_vocal);
         let final_inst_clone = Arc::clone(&final_inst);
         let weight_sum_clone = Arc::clone(&weight_sum);
-        let compensation = if is_mdx { 1.15f32 } else { 1.0f32 };
+        let compensation = 1.0f32; // Reset to 1.0 to ensure phase-consistent subtraction
 
+        let cancel_flag_post = cancel_flag.clone();
         let post_handle = std::thread::spawn(move || {
-            while let Ok((chunk_idx, outputs, current_chunks, chunk_start, is_last_chunk_at_end)) = post_rx.recv() {
-                if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_post_thread) { break; }
+            let post_proc_start = Instant::now();
+            while let Ok((chunk_idx, outputs, current_chunks, chunk_start, _is_last_chunk_at_end)) = post_rx.recv() {
+                if cancel_flag_post.load(Ordering::Relaxed) { break; }
                 
                 // Extract Result from Tensor
-                let owned_data: Vec<f32> = if let Ok((shape, slice)) = outputs[0].try_extract_tensor::<f32>() {
-                    let peak = slice.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+                let owned_data: Vec<f32> = if let Ok((_shape, slice)) = outputs[0].try_extract_tensor::<f32>() {
+                    let _peak = slice.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+                    /* Reduced logging to avoid IPC saturation
                     if chunk_idx == 0 {
                         sys_log(&format!("DEBUG: [AI-ENGINE] Output shape: {:?}, slice len: {}, peak: {:.4}", shape, slice.len(), peak));
                     }
+                    */
                     slice.to_vec()
                 } else {
                     sys_log(&format!("ERROR: [AI-ENGINE] Failed to extract output tensor for chunk {}", chunk_idx));
@@ -524,7 +543,25 @@ impl InferenceEngine for WaveformRemover {
                 let voc_r = stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner);
                 let vocal_res = vec![voc_l, voc_r];
 
-                // Overlap-Add
+                // Calculate results in local buffers first to minimize lock contention
+                let mut local_vocal = vec![vec![0.0f32; req_samples_inner]; ch_count];
+                let mut local_inst = vec![vec![0.0f32; req_samples_inner]; ch_count];
+                let mut local_weight = vec![0.0f32; req_samples_inner];
+
+                for ch in 0..ch_count {
+                    for i in 0..req_samples_inner {
+                        let w = chunk_window_clone[i];
+                        
+                        let vocal_sample = vocal_res[ch][i] * compensation;
+                        let orig_sample = current_chunks[ch][i];
+                        
+                        local_vocal[ch][i] = vocal_sample * w;
+                        local_inst[ch][i] = (orig_sample - vocal_sample) * w;
+                        if ch == 0 { local_weight[i] = w; }
+                    }
+                }
+
+                // Final Overlap-Add with minimized lock scope
                 {
                     let mut vocal_guard = final_vocal_clone.lock();
                     let mut inst_guard = final_inst_clone.lock();
@@ -534,60 +571,104 @@ impl InferenceEngine for WaveformRemover {
                         for i in 0..req_samples_inner {
                             let out_idx = chunk_start + i;
                             if out_idx < total_samples {
-                                let mut w = chunk_window_clone[i];
-                                if chunk_idx == 0 && i < overlap_size { w = 1.0; }
-                                if chunk_idx == num_chunks - 1 && !is_last_chunk_at_end && i >= req_samples_inner - overlap_size { w = 1.0; }
-                                if is_last_chunk_at_end && i >= req_samples_inner - overlap_size { w = 1.0; }
-                                
-                                let vocal_sample = vocal_res[ch][i] * compensation;
-                                let orig_sample = current_chunks[ch][i];
-                                
-                                vocal_guard[ch][out_idx] += vocal_sample * w;
-                                inst_guard[ch][out_idx] += (orig_sample - vocal_sample) * w;
-                                if ch == 0 { weight_guard[out_idx] += w; }
+                                vocal_guard[ch][out_idx] += local_vocal[ch][i];
+                                inst_guard[ch][out_idx] += local_inst[ch][i];
+                                if ch == 0 { weight_guard[out_idx] += local_weight[i]; }
                             }
                         }
                     }
                 }
             }
+            sys_log(&format!("PERF: [AI-ENGINE] Stage 3 (Post-processing) thread finished in {:?}.", post_proc_start.elapsed()));
         });
 
         // STAGE 2: Inference Loop (Main Thread - GPU IoBinding Inference)
         let session_guard = self.session.lock();
-        let input_name = session_guard.inputs()[0].name().to_string();
-        let output_name = session_guard.outputs()[0].name().to_string();
+        let _input_name = session_guard.inputs()[0].name().to_string();
+        let _output_name = session_guard.outputs()[0].name().to_string();
         drop(session_guard);
 
-        while let Ok((chunk_idx, input_value, current_chunks, chunk_start, is_last_chunk_at_end)) = pre_rx.recv() {
-            if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
+        let mut batch_buffer = Vec::with_capacity(BATCH_SIZE);
+        let mut processed_count = 0;
+        let mut inference_total_time = std::time::Duration::new(0, 0);
+
+        while processed_count < num_chunks {
+            if cancel_flag.load(Ordering::Relaxed) {
                 return Err(anyhow!("Cancelled by user"));
             }
 
-            let output_values_res = {
-                let mut session_guard = self.session.lock();
-                // Standard session.run() instead of IoBinding to ensure stability in rc.12
-                session_guard.run(ort::inputs![input_value])
-                    .map(|outputs: ort::session::SessionOutputs| {
-                        // Extract outputs from SessionOutputs (taking only values)
-                        outputs.into_iter().map(|(_, v)| v).collect::<Vec<Value>>()
-                    })
-                    .map_err(|e| anyhow!("[AI-ENGINE] Session run error: {}", e))
-            };
-
-            if let Ok(output_values) = output_values_res {
-                if post_tx.send((chunk_idx, output_values, current_chunks, chunk_start, is_last_chunk_at_end)).is_err() {
+            // Collect batch
+            while batch_buffer.len() < BATCH_SIZE && processed_count + batch_buffer.len() < num_chunks {
+                if let Ok(item) = pre_rx.recv() {
+                    batch_buffer.push(item);
+                } else {
                     break;
                 }
-            } else {
-                sys_log(&format!("ERROR: [AI-ENGINE] Inference failed or timed out for chunk {}: {:?}", chunk_idx, output_values_res.err()));
-                return Err(anyhow!("Inference failed at chunk {}", chunk_idx));
+            }
+
+            if batch_buffer.is_empty() { break; }
+
+            let current_batch_size = batch_buffer.len();
+            
+            // Create batched tensor
+            let mut batch_views = Vec::with_capacity(current_batch_size);
+            for (_, val, _, _, _) in &batch_buffer {
+                let (shape_i64, slice) = val.try_extract_tensor::<f32>().map_err(|e| anyhow!("[AI-ENGINE] Extract error: {:?}", e))?;
+                let shape: Vec<usize> = shape_i64.iter().map(|&x| x as usize).collect();
+                let array_view = ndarray::ArrayViewD::from_shape(shape, slice).map_err(|e| anyhow!("[AI-ENGINE] Shape error: {:?}", e))?;
+                batch_views.push(array_view.to_owned());
             }
             
-            if chunk_idx % 5 == 0 || chunk_idx == num_chunks - 1 {
-                on_progress((chunk_idx + 1) as f32 / num_chunks as f32 * 100.0);
+            // Concatenate on Axis 0 to form [B, ...] or [B*2, ...] tensor
+            let views_refs: Vec<_> = batch_views.iter().map(|v| v.view()).collect();
+            let batched_input = ndarray::concatenate(ndarray::Axis(0), &views_refs).map_err(|e| anyhow!("[AI-ENGINE] Concat error: {:?}", e))?;
+            let input_value = Value::from_array(batched_input).map_err(|e| anyhow!("[AI-ENGINE] Input value error: {:?}", e))?.into_dyn();
+
+            let inference_start = Instant::now();
+            let output_values_res = {
+                let mut session_guard = self.session.lock();
+                session_guard.run(ort::inputs![input_value])
+                    .map(|outputs: ort::session::SessionOutputs| {
+                        outputs.into_iter().map(|(_, v)| v).collect::<Vec<Value>>()
+                    })
+                    .map_err(|e| anyhow!("[AI-ENGINE] Session run error: {:?}", e))
+            };
+            inference_total_time += inference_start.elapsed();
+
+            if let Ok(output_values) = output_values_res {
+                // Split output tensor and send to Stage 3
+                let (output_shape_i64, output_slice) = output_values[0].try_extract_tensor::<f32>().map_err(|e| anyhow!("[AI-ENGINE] Output extract error: {:?}", e))?;
+                let output_shape: Vec<usize> = output_shape_i64.iter().map(|&x| x as usize).collect();
+                let output_tensor = ndarray::ArrayViewD::from_shape(output_shape, output_slice).map_err(|e| anyhow!("[AI-ENGINE] Output shape error: {:?}", e))?;
+
+                for (i, (chunk_idx, _, current_chunks, chunk_start, _is_last_chunk_at_end)) in batch_buffer.drain(..).enumerate() {
+                    // Slice the output tensor for this specific chunk
+                    let sliced_output = if is_mdx {
+                        output_tensor.slice(ndarray::s![i..i+1, .., .., ..]).to_owned()
+                    } else {
+                        output_tensor.slice(ndarray::s![i*2..(i+1)*2, .., .., ..]).to_owned()
+                    };
+                    
+                    let sliced_value = Value::from_array(sliced_output).map_err(|e| anyhow!("[AI-ENGINE] Slice creation error: {:?}", e))?.into_dyn();
+                    if post_tx.send((chunk_idx, vec![sliced_value], current_chunks, chunk_start, _is_last_chunk_at_end)).is_err() {
+                        break;
+                    }
+                    
+                    processed_count += 1;
+                    if processed_count % 5 == 0 || processed_count == num_chunks {
+                        on_progress(processed_count as f32 / num_chunks as f32 * 100.0);
+                    }
+                }
+            } else {
+                sys_log(&format!("ERROR: [AI-ENGINE] Inference failed for batch: {:?}", output_values_res.err()));
+                return Err(anyhow!("Inference failed at chunk {}", processed_count));
             }
+            
+            batch_buffer.clear();
         }
-        sys_log("DEBUG: [AI-ENGINE] Stage 2 (Inference) loop finished.");
+        sys_log(&format!("PERF: [AI-ENGINE] Stage 2 (Inference) total GPU time: {:?}", inference_total_time));
+        sys_log(&format!("PERF: [AI-ENGINE] Stage 2 (Inference) loop finished in {:?}.", pipeline_start.elapsed()));
+
 
         drop(post_tx); // Signals post-processing to finish
         let _ = post_handle.join(); 
@@ -595,7 +676,7 @@ impl InferenceEngine for WaveformRemover {
         sys_log("DEBUG: [WaveformRemover] Pipelined processing complete.");
 
         // Finalize OLA Normalization
-        let post_start = Instant::now();
+        let finalize_start = Instant::now();
         // Extract inner vectors from Arc<Mutex<...>>
         let mut final_vocal_inner = Arc::try_unwrap(final_vocal).map_err(|_| anyhow!("Arc unwrap failed"))?.into_inner();
         let mut final_inst_inner = Arc::try_unwrap(final_inst).map_err(|_| anyhow!("Arc unwrap failed"))?.into_inner();
@@ -617,8 +698,8 @@ impl InferenceEngine for WaveformRemover {
         self.save_wav(&final_vocal_inner, &vocal_path, target_sample_rate)?;
         self.save_wav(&final_inst_inner, &inst_path, target_sample_rate)?;
 
-        sys_log(&format!("DEBUG: [WaveformRemover] Post-processing & Save took: {:?}", post_start.elapsed()));
-        sys_log(&format!("DEBUG: [WaveformRemover] Total separation time for track: {:?}", start_time.elapsed()));
+        sys_log(&format!("PERF: [WaveformRemover] Finalize & Save took: {:?}", finalize_start.elapsed()));
+        sys_log(&format!("PERF: [WaveformRemover] Total separation time for track: {:?}", start_time.elapsed()));
         
         sys_log("DEBUG: [WaveformRemover] Advanced Separation complete with 3-stage pipeline.");
         Ok((vocal_path, inst_path))
@@ -762,43 +843,82 @@ impl WaveformRemover {
             sample_format: hound::SampleFormat::Float,
         };
         let mut writer = hound::WavWriter::create(path, spec)?;
-        let len = samples[0].len();
-        
-        // 1. Find the 99.99th percentile peak or just a robust peak
-        let mut max_abs = 0.0f32;
-        for ch in samples {
-            for s in ch { max_abs = max_abs.max(s.abs()); }
+        let num_channels = samples.len();
+        if num_channels == 0 { return Ok(()); }
+        let num_frames = samples[0].len();
+        if num_frames < 200 { // Don't process extremely short files with complex logic
+            if num_frames > 0 {
+                for i in 0..num_frames {
+                    for ch in 0..num_channels {
+                        writer.write_sample(samples[ch][i].clamp(-1.0, 1.0))?;
+                    }
+                }
+            }
+            writer.finalize()?;
+            return Ok(());
+        }
+        let total_samples_f64 = (num_channels * num_frames) as f64;
+
+        // 1. Calculate and correct for DC Offset
+        let mut dc_offset_sum = 0.0f64;
+        for ch_samples in samples {
+            for s in ch_samples { dc_offset_sum += *s as f64; }
+        }
+        let dc_offset = (dc_offset_sum / total_samples_f64) as f32;
+        if dc_offset.abs() > 1e-8 { // Only log if significant
+            sys_log(&format!("[Audio-Save] Path: {:?}, Removing DC offset: {:.6}", path.file_name().unwrap_or_default(), dc_offset));
         }
 
-        // 2. Simple Soft Limiter / Clipper Logic
-        // If we pushed too hard (>1.1), we use a soft knee to prevent hard clipping
-        let threshold = 0.85f32;
-        let target_peak = 0.99f32;
-        
-        // Dynamic normalization scale
-        let scale = if max_abs > 1e-6 { 
-            // If the max peak is already huge, we normalize it to 1.1 first to allow 
-            // the soft clipper to do its work consistently
-            if max_abs > 1.1 { 1.1 / max_abs } else { 1.0 }
-        } else { 1.0 };
-
-        for i in 0..len {
-            for ch in 0..samples.len() {
-                let mut s = samples[ch][i] * scale;
-                let abs_s = s.abs();
-                
-                // Soft Knee Compression for peaks above threshold
-                if abs_s > threshold {
-                    let sign = s.signum();
-                    // Soft clipping curve: threshold + (limit - threshold) * tanh((input - threshold)/(limit - threshold))
-                    let limit = 1.05f32; // Allow slight overshoot for the curve
-                    s = sign * (threshold + (limit - threshold) * ((abs_s - threshold) / (limit - threshold)).tanh());
-                }
-                
-                // Final hard limit & scale to target peak
-                writer.write_sample((s * (target_peak / 1.0f32)).clamp(-1.0, 1.0))?;
+        // 2. Calculate RMS on DC-corrected signal for normalization
+        let mut sum_sq = 0.0f64;
+        for ch_samples in samples {
+            for s in ch_samples {
+                let s_corrected = (*s - dc_offset) as f64;
+                sum_sq += s_corrected * s_corrected;
             }
         }
+        let rms = (sum_sq / total_samples_f64).sqrt() as f32;
+
+        // 3. Determine gain to reach target loudness
+        let target_rms = 10.0_f32.powf(-16.0 / 20.0); // Target -16 dBFS RMS
+        let max_gain = 8.0; // Don't boost more than +18dB to avoid amplifying noise
+        let gain = if rms > 1e-6 { (target_rms / rms).min(max_gain) } else { 1.0 };
+
+        // 4. Setup Limiter & Final Polish Fade
+        let threshold = 0.90f32;
+        let margin = 1.0 - threshold;
+        let fade_duration_ms = 15; // A short, final polish fade
+        let fade_frames = (rate as f32 * (fade_duration_ms as f32 / 1000.0)) as usize;
+        let fade_in_end = fade_frames.min(num_frames / 2);
+        let fade_out_start = num_frames.saturating_sub(fade_frames);
+
+        // 5. Process and write samples
+        for i in 0..num_frames {
+            // Calculate fade multiplier for a guaranteed smooth start/end
+            let fade_multiplier = if i < fade_in_end {
+                (i as f32 / fade_in_end as f32).powi(2) // Use squared curve for smoother fade
+            } else if i >= fade_out_start {
+                let progress = (i - fade_out_start) as f32 / (num_frames - fade_out_start) as f32;
+                (1.0 - progress.min(1.0)).powi(2)
+            } else {
+                1.0
+            };
+
+            for ch in 0..num_channels {
+                // Apply DC correction, then gain, then fade
+                let mut s = (samples[ch][i] - dc_offset) * gain * fade_multiplier;
+                let abs_s = s.abs();
+                
+                // Soft-Knee Limiter
+                if abs_s > threshold {
+                    let sign = s.signum();
+                    s = sign * (threshold + margin * ((abs_s - threshold) / margin).tanh());
+                }
+                
+                writer.write_sample(s.clamp(-1.0, 1.0))?;
+            }
+        }
+
         writer.finalize()?;
         Ok(())
     }
