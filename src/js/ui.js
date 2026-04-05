@@ -192,7 +192,7 @@ function addSongCard(song, index) {
     ${isList ? `
       <div class="song-info-content list-layout">
         <div class="col col-info">
-          <div class="song-name">${song.title || '제목 정보 없음'}</div>
+          <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
           <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
         </div>
         <div class="col col-category">
@@ -211,7 +211,7 @@ function addSongCard(song, index) {
       </div>
     ` : `
       <div class="song-info-content grid-layout">
-        <div class="song-name">${song.title || '제목 정보 없음'}</div>
+        <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
         <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
         <div class="song-meta">
           <span class="category-badge ${!song.category ? 'no-info' : ''}">${(song.category || '전체').toUpperCase()}</span>
@@ -229,12 +229,12 @@ function addSongCard(song, index) {
   // Async MR Badge check
   checkMrSeparated(song.path).then(isSeparated => {
     if (isSeparated) {
-      const thumb = card.querySelector(".thumbnail");
-      if (thumb && !thumb.querySelector(".mr-badge")) {
+      const parent = isList ? card.querySelector(".song-name") : card.querySelector(".thumbnail");
+      if (parent && !parent.querySelector(".mr-badge")) {
         const badge = document.createElement("div");
         badge.className = "mr-badge";
         badge.textContent = "MR";
-        thumb.appendChild(badge);
+        parent.appendChild(badge);
       }
     }
   });

@@ -71,7 +71,27 @@ async function initApp() {
   // Initial volume sync
   await invoke("set_volume", { volume: parseFloat(state.prevVolume) });
 
+  // Setup custom titlebar
+  setupTitlebar();
+
   console.log("[App] Initialization Complete.");
+}
+
+function setupTitlebar() {
+  const { getCurrentWindow } = window.__TAURI__.window;
+  const appWindow = getCurrentWindow();
+
+  document.getElementById('titlebar-minimize')?.addEventListener('click', async () => {
+    try { await appWindow.minimize(); } catch (e) { console.error(e); }
+  });
+
+  document.getElementById('titlebar-maximize')?.addEventListener('click', async () => {
+    try { await appWindow.toggleMaximize(); } catch (e) { console.error(e); }
+  });
+
+  document.getElementById('titlebar-close')?.addEventListener('click', async () => {
+    try { await appWindow.close(); } catch (e) { console.error(e); }
+  });
 }
 
 // Start

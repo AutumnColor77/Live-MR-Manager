@@ -47,11 +47,11 @@ export function switchTab(tabId) {
 
 function getTabTitle(tabId) {
   const titles = {
-    library: "Music Library",
-    youtube: "YouTube 추가",
-    local: "내 파일 추가",
-    settings: "시스템 설정",
-    tasks: "처리 현황"
+    library: "Library",
+    youtube: "YouTube",
+    local: "My Files",
+    settings: "Settings",
+    tasks: "Active Tasks"
   };
   return titles[tabId] || "Live MR Manager";
 }

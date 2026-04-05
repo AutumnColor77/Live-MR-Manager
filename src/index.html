@@ -9,6 +9,31 @@
 </head>
 
 <body>
+  <!-- 커스텀 타이틀바 -->
+  <div data-tauri-drag-region class="titlebar">
+    <div class="titlebar-logo">
+      🎙️ Live MR Manager
+    </div>
+    <div class="titlebar-actions">
+      <div class="titlebar-button" id="titlebar-minimize">
+        <svg viewBox="0 0 10 1" width="12" height="12">
+          <line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" stroke-width="1" />
+        </svg>
+      </div>
+      <div class="titlebar-button" id="titlebar-maximize">
+        <svg viewBox="0 0 10 10" width="12" height="12">
+          <rect width="9" height="9" x="0.5" y="0.5" fill="none" stroke="currentColor" stroke-width="1" />
+        </svg>
+      </div>
+      <div class="titlebar-button" id="titlebar-close">
+        <svg viewBox="0 0 10 10" width="12" height="12">
+          <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2" />
+          <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      </div>
+    </div>
+  </div>
+
   <!-- 배경 글로우 효과 -->
   <div class="bg-glow"></div>
 
@@ -55,7 +80,7 @@
     <header class="top-bar">
       <div class="view-header">
         <div class="title-row">
-          <h1 id="view-title">Music Library</h1>
+          <h1 id="view-title">Library</h1>
           <div class="view-controls">
             <button class="view-btn active" id="view-grid" title="Grid View">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">

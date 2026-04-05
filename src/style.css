@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
 
 :root {
   --bg-color: #08080a;
@@ -18,6 +18,62 @@
 
   --safe-area: 40px;
   --dock-height: 100px;
+  --titlebar-height: 38px;
+}
+
+/* Custom Titlebar */
+.titlebar {
+  height: var(--titlebar-height);
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 0 12px;
+  backdrop-filter: blur(20px);
+}
+
+.titlebar-logo {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.titlebar-actions {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 44px;
+  height: 100%;
+  color: var(--text-dim);
+  transition: all 0.2s;
+  cursor: pointer;
+  pointer-events: auto; /* 드래그 영역 내에서도 클릭 가능하도록 명시 */
+}
+
+.titlebar-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+#titlebar-close:hover {
+  background: #e81123 !important;
+  color: #fff !important;
 }
 
 * {
@@ -36,6 +92,7 @@ body {
   display: flex;
   overflow: hidden;
   position: relative;
+  padding-top: var(--titlebar-height);
 }
 
 /* 諛곌꼍 ?μ떇 */
@@ -84,16 +141,16 @@ body {
 }
 
 .nav-group {
-  margin-bottom: 40px;
+  margin-bottom: 28px;
 }
 
 .nav-label {
-  font-size: 0.7rem;
+  font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-dim);
-  letter-spacing: 1.5px;
-  margin-bottom: 16px;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
   display: block;
   padding-left: 12px;
 }
@@ -103,12 +160,13 @@ body {
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 8px 12px;
   border-radius: 9px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 2px;
+  font-size: 1rem;
   font-weight: 500;
   white-space: nowrap;
   /* Single line enforced */
@@ -460,10 +518,31 @@ h1 {
   font-weight: 700;
   font-size: 0.9rem;
   margin-bottom: 6px;
+  min-height: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.song-name span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-height: 1.2rem;
+  flex: 0 1 auto;
+}
+
+/* MR Badge when inside song-name (List view) */
+.song-name .mr-badge {
+  position: static;
+  font-size: 0.6rem;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 4px;
+  box-shadow: none;
+  margin-left: 0;
+  flex-shrink: 0;
+  line-height: normal;
 }
 
 .song-artist-badge {
