@@ -296,10 +296,10 @@ export function initGlobalListeners() {
       song.title = document.getElementById("edit-title").value;
       song.artist = document.getElementById("edit-artist").value;
       song.tags = document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t);
-      
-      const editCatSelect = document.getElementById("edit-category-select");
-      const catVal = editCatSelect?.value;
-      song.category = catVal === "etc" ? document.getElementById("edit-category-custom").value : catVal;
+      song.category = document.getElementById("edit-category").value.trim();      
+      const editCatSelect = document.getElementById("edit-genre-select");
+      const catVal = editCatSelect ? editCatSelect.value : "";
+      song.genre = catVal === "etc" ? document.getElementById("edit-genre-custom").value : catVal;
       
       await saveLibrary(state.songLibrary);
       renderLibrary();
@@ -437,7 +437,120 @@ export function initGlobalListeners() {
       elements.confirmModal.classList.add("active");
     };
   }
+
+  // --- Library Manager Events ---
+  let libraryBackup = [];
+
+  if (elements.btnOpenManager) {
+    elements.btnOpenManager.onclick = () => {
+      libraryBackup = JSON.parse(JSON.stringify(state.songLibrary));
+      import('./ui.js').then(m => {
+        m.openLibraryManager();
+        m.initTableResizing();
+      });
+    };
+  }
+
+  const managerModalSave = document.getElementById("manager-modal-save");
+  const managerModalCancel = document.getElementById("manager-modal-cancel");
+  const managerModalX = document.getElementById("manager-modal-close");
+
+  if (managerModalSave) {
+    managerModalSave.onclick = async () => {
+      await saveLibrary(state.songLibrary);
+      renderLibrary();
+      elements.managerModal.classList.remove("active");
+      showNotification("라이브러리 수정 사항이 저장되었습니다.", "success");
+    };
+  }
+
+  const handleCancelManager = () => {
+    state.songLibrary = JSON.parse(JSON.stringify(libraryBackup));
+    renderLibrary();
+    elements.managerModal.classList.remove("active");
+  };
+
+  if (managerModalCancel) managerModalCancel.onclick = handleCancelManager;
+  if (managerModalX) managerModalX.onclick = handleCancelManager;
+
+  if (elements.managerSearchInput) {
+    elements.managerSearchInput.oninput = () => {
+      import('./ui.js').then(m => m.renderManagerTable());
+    };
+  }
+
+  // Manager Table Sorting & Editing
+  const managerTable = document.getElementById("manager-table");
+  if (managerTable) {
+    const thead = managerTable.querySelector("thead");
+    const tbody = managerTable.querySelector("tbody");
+
+    if (thead) {
+      thead.onclick = (e) => {
+        const th = e.target.closest("th.sortable");
+        if (!th) return;
+        
+        const currentOrder = th.getAttribute("data-order");
+        const newOrder = currentOrder === "asc" ? "desc" : "asc";
+        
+        thead.querySelectorAll("th").forEach(el => el.removeAttribute("data-order"));
+        th.setAttribute("data-order", newOrder);
+        
+        import('./ui.js').then(m => m.renderManagerTable());
+      };
+    }
+
+    if (tbody) {
+      // Cell Edit (Local update only, no auto-save to disk)
+      tbody.onchange = (e) => {
+        const input = e.target.closest("input");
+        if (!input) return;
+        
+        const tr = input.closest("tr");
+        const index = parseInt(tr.dataset.index);
+        const field = input.dataset.field;
+        const value = input.value.trim();
+        
+        const song = state.songLibrary[index];
+        if (!song) return;
+        
+        if (field === "tags") {
+          song.tags = value.split(",").map(t => t.trim()).filter(t => t);
+        } else {
+          song[field] = value;
+        }
+        // No auto-save here to respect the Save/Cancel pattern
+      };
+
+      // Row Delete
+      tbody.onclick = async (e) => {
+        const btn = e.target.closest(".btn-row-del");
+        if (!btn) return;
+        
+        const index = parseInt(btn.dataset.index);
+        const song = state.songLibrary[index];
+        if (!song) return;
+        
+        const confirmTitle = document.getElementById("confirm-title");
+        const confirmMsg = document.getElementById("confirm-message");
+        const confirmOk = document.getElementById("confirm-ok");
+        
+        if (confirmTitle) confirmTitle.textContent = "곡 삭제 (관리자)";
+        if (confirmMsg) confirmMsg.textContent = `'${song.title}' 곡을 라이브러리에서 삭제하시겠습니까? (저장 시 반영)`;
+        
+        if (confirmOk) {
+          confirmOk.onclick = () => {
+            state.songLibrary.splice(index, 1);
+            import('./ui.js').then(m => m.renderManagerTable());
+            elements.confirmModal.classList.remove("active");
+          };
+        }
+        elements.confirmModal.classList.add("active");
+      };
+    }
+  }
 }
+
 
 export function setupBackendListeners() {
   const { listen } = window.__TAURI__.event;

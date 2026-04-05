@@ -8,44 +8,27 @@ use std::time::Duration;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
-use rodio::{Source, Player};
+use rodio::{Source, Player, MixerDeviceSink, DeviceSinkBuilder};
+use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
 use parking_lot::Mutex;
 use once_cell::sync::Lazy;
 use tauri::{Emitter, WebviewWindow};
 use cpal::traits::{HostTrait, DeviceTrait};
 
 pub static ACTIVE_DOWNLOADS: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
-pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
 pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 pub static IS_PREPARING_PLAYBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn sys_log(message: &str) {
     println!("{}", message);
-    if let Some(guard) = MAIN_WINDOW.try_lock() {
+    if let Some(guard) = crate::state::MAIN_WINDOW.try_lock() {
         if let Some(window) = guard.as_ref() {
             let _ = window.emit("sys-log", message.to_string());
         }
     }
 }
 
-// --- Status Types ---
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Status {
-    Pending,
-    Downloading,
-    Decoding,
-    Playing,
-    Error,
-    Finished,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlaybackStatus {
-    pub status: Status,
-    pub message: String,
-}
+// --- Status types are now in types.rs ---
 
 // --- Streaming Support ---
 
@@ -259,9 +242,10 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
 }
 
 impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
+    #[allow(deprecated)]
     fn current_span_len(&self) -> Option<usize> { None }
-    fn channels(&self) -> NonZeroU16 { NonZeroU16::new(self.input_channels as u16).unwrap() }
-    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
+    fn channels(&self) -> std::num::NonZeroU16 { std::num::NonZeroU16::new((self.input_channels as u16).max(1)).unwrap() }
+    fn sample_rate(&self) -> std::num::NonZeroU32 { self.input.sample_rate() }
     fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
     fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
         self.input.try_seek(pos)?;
@@ -271,51 +255,19 @@ impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlaybackProgress {
-    pub position_ms: u64,
-    pub duration_ms: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+// --- PlaybackProgress and SeekToArgs are in types.rs or defined locally ---
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SeekToArgs {
     pub position_ms: u64,
 }
 
 // --- App Handler Struct ---
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AppState {
-    pub current_track: Option<String>,
-    pub pitch: f32,
-    pub tempo: f32,
-    pub volume: f32,
-    pub vocal_enabled: bool,
-    pub lyric_enabled: bool,
-    pub is_playing: bool,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            current_track: None,
-            pitch: 0.0,
-            tempo: 1.0,
-            volume: 80.0,
-            vocal_enabled: true,
-            lyric_enabled: false,
-            is_playing: false,
-        }
-    }
-}
-
-pub type OSStream = rodio::MixerDeviceSink;
-pub type PlaybackController = rodio::Player;
+// --- AppState is in types.rs ---
 
 pub struct AudioHandler {
-    pub _stream: OSStream, // Keep alive
-    pub controller: Mutex<PlaybackController>,
+    pub _stream: MixerDeviceSink, // Keep alive
+    pub controller: Mutex<Player>,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
@@ -324,31 +276,26 @@ pub struct AudioHandler {
     pub active_sample_rate: u32,
     pub active_channels: u16,
     pub track_sample_rate: Arc<AtomicU32>,
-    pub vocal_volume: Arc<AtomicU32>, // 0-100
-    pub instrumental_volume: Arc<AtomicU32>,
+    pub vocal_volume: Arc<AtomicU32>, // f32 bits
+    pub instrumental_volume: Arc<AtomicU32>, // f32 bits
     pub playback_cv: parking_lot::Condvar,
 }
 
 pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
-    let stream_result: Result<rodio::MixerDeviceSink, _> = rodio::DeviceSinkBuilder::open_default_sink();
-    let stream = match stream_result {
+    let stream = match DeviceSinkBuilder::open_default_sink() {
         Ok(s) => s,
-        Err(e) => {
-            let err_msg = format!("오디오 출력을 열지 못했습니다: {}", e);
-            sys_log(&format!("[AUDIO] CRITICAL ERROR: {}", err_msg));
-            return Err(err_msg);
-        }
+        Err(e) => return Err(format!("오디오 출력을 열지 못했습니다: {}", e)),
     };
     
     let host = cpal::default_host();
-    let device: Option<cpal::Device> = host.default_output_device();
+    let device = host.default_output_device();
     let device_name = match device.as_ref() {
-        Some(d) => d.description().map(|desc| desc.name().to_string()).unwrap_or_else(|_| "Unknown Device".to_string()),
+        Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".into()),
         None => "Unknown Device".to_string(),
     };
     
     let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
-        let config_res: Result<cpal::SupportedStreamConfig, _> = d.default_output_config();
+        let config_res = d.default_output_config();
         if let Ok(config) = config_res {
             (u32::from(config.sample_rate()), config.channels() as u16)
         } else { (44100, 2) }
@@ -359,10 +306,11 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
 
     sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
     
-    let controller = Player::connect_new(&stream.mixer());
+    let player = Player::connect_new(&stream.mixer());
+
     Ok(Arc::new(AudioHandler {
         _stream: stream,
-        controller: Mutex::new(controller),
+        controller: Mutex::new(player),
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
         active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),

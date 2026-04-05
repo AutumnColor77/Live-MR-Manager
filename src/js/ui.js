@@ -12,6 +12,7 @@ const { invoke } = window.__TAURI__.core;
 export const elements = {
   songGrid: null,
   libSearchInput: null,
+  libGenreFilter: null,
   libCategoryFilter: null,
   libSortSelect: null,
   viewTitle: null,
@@ -52,12 +53,20 @@ export const elements = {
   statusMsg: null,
   cudaRecommendBanner: null,
   viewControls: null,
+  
+  // Library Manager
+  managerModal: null,
+  btnOpenManager: null,
+  managerSearchInput: null,
+  managerTableBody: null,
+  managerStat: null,
 };
 
 export function initDomReferences() {
   elements.songGrid = document.getElementById("song-grid");
   elements.viewTitle = document.getElementById("view-title");
   elements.libSearchInput = document.getElementById("lib-search-input");
+  elements.libGenreFilter = document.getElementById("lib-genre-filter");
   elements.libCategoryFilter = document.getElementById("lib-category-filter");
   elements.libSortSelect = document.getElementById("lib-sort-select");
   elements.libraryControls = document.getElementById("library-controls");
@@ -101,7 +110,13 @@ export function initDomReferences() {
   elements.toggleVocal = document.getElementById("toggle-vocal");
   elements.toggleLyric = document.getElementById("toggle-lyric");
   elements.cudaRecommendBanner = document.getElementById("cuda-recommend-banner");
-  elements.viewControls = document.querySelector(".view-controls");
+  
+  // Library Manager
+  elements.managerModal = document.getElementById("library-manager-modal");
+  elements.btnOpenManager = document.getElementById("btn-open-manager");
+  elements.managerSearchInput = document.getElementById("manager-search-input");
+  elements.managerTableBody = document.getElementById("manager-table-body");
+  elements.managerStat = document.getElementById("manager-stat");
 }
 
 export function renderLibrary() {
@@ -113,7 +128,7 @@ export function renderLibrary() {
   elements.songGrid.innerHTML = "";
 
   const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
-  const categoryFilter = elements.libCategoryFilter?.value || "all";
+  const genreFilter = elements.libGenreFilter?.value || "all";
   const sortBy = elements.libSortSelect?.value || "dateNew";
   const currentTab = document.querySelector(".nav-item.active")?.id.replace("nav-", "") || "library";
 
@@ -132,9 +147,15 @@ export function renderLibrary() {
     );
   }
 
+  // Genre Filter
+  if (genreFilter !== "all" && genreFilter !== "") {
+    filtered = filtered.filter(s => s.genre === genreFilter);
+  }
+
   // Category Filter
+  const categoryFilter = elements.libCategoryFilter?.value || "all";
   if (categoryFilter !== "all" && categoryFilter !== "") {
-    filtered = filtered.filter(s => s.category === categoryFilter);
+    filtered = filtered.filter(s => s.category === categoryFilter || (s.categories && s.categories.includes(categoryFilter)));
   }
 
   // Sorting
@@ -195,8 +216,13 @@ function addSongCard(song, index) {
           <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
           <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
         </div>
-        <div class="col col-category">
-          <span class="category-badge ${!song.category ? 'no-info' : ''}">${(song.category || '전체').toUpperCase()}</span>
+        <div class="col col-genre">
+          ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
+            ? `<div class="category-list"><span class="category-badge">${song.category || song.categories[0]}</span></div>`
+            : ''}
+          <div class="genre-list">
+            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '전체').toUpperCase()}</span>
+          </div>
         </div>
         <div class="col col-tags">
           <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
@@ -213,9 +239,14 @@ function addSongCard(song, index) {
       <div class="song-info-content grid-layout">
         <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
         <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
-        <div class="song-meta">
-          <span class="category-badge ${!song.category ? 'no-info' : ''}">${(song.category || '전체').toUpperCase()}</span>
-          <span class="duration-text">${song.duration || '--:--'}</span>
+        <div class="song-meta" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div class="meta-badges" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; overflow: hidden;">
+            ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
+              ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
+              : ''}
+            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '전체').toUpperCase()}</span>
+          </div>
+          <span class="duration-text" style="white-space: nowrap;">${song.duration || '--:--'}</span>
         </div>
         <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
           ${song.tags && song.tags.length > 0 
@@ -313,32 +344,50 @@ export function updatePlayButton() {
   }
 }
 
-export function updateCategoryDropdowns() {
-  const categories = [...new Set(state.songLibrary.map(s => s.category).filter(c => c))];
+export function updateGenreDropdowns() {
+  const categories = [...new Set(state.songLibrary.map(s => s.genre).filter(c => c))];
   const customCategories = categories.filter(c => !DEFAULT_CATEGORIES.some(dc => dc.val === c));
   
   const options = [
-    { val: "all", text: "전체 카테고리" },
+    { val: "all", text: "전체 장르" },
     ...DEFAULT_CATEGORIES,
     ...customCategories.map(c => ({ val: c, text: c })),
     { val: "etc", text: "기타" }
   ];
 
-  renderDropdownOptions("lib-category-dropdown", options, (val) => {
-    if (elements.libCategoryFilter) elements.libCategoryFilter.value = val;
+  renderDropdownOptions("lib-genre-dropdown", options, (val) => {
+    if (elements.libGenreFilter) elements.libGenreFilter.value = val;
     renderLibrary();
   });
 
   // Meta Modal Categories
-  renderDropdownOptions("edit-category-dropdown", [
+  renderDropdownOptions("edit-genre-dropdown", [
     ...DEFAULT_CATEGORIES,
     ...customCategories.map(c => ({ val: c, text: c })),
     { val: "etc", text: "직접 입력" }
   ], (val) => {
-    const editCatSelect = document.getElementById("edit-category-select");
-    const editCatCustom = document.getElementById("edit-category-custom");
+    const editCatSelect = document.getElementById("edit-genre-select");
+    const editCatCustom = document.getElementById("edit-genre-custom");
     if (editCatSelect) editCatSelect.value = val;
     if (editCatCustom) editCatCustom.style.display = (val === "etc") ? "block" : "none";
+  });
+}
+
+export function updateCategoryDropdown() {
+  const allCats = [...new Set(state.songLibrary.flatMap(s => {
+    if (s.category) return [s.category];
+    if (s.categories) return s.categories;
+    return [];
+  }).filter(c => c))];
+  
+  const options = [
+    { val: "all", text: "전체 카테고리" },
+    ...allCats.map(c => ({ val: c, text: c }))
+  ];
+
+  renderDropdownOptions("lib-category-dropdown", options, (val) => {
+    if (elements.libCategoryFilter) elements.libCategoryFilter.value = val;
+    renderLibrary();
   });
 }
 
@@ -462,31 +511,32 @@ function openEditModal(song, index) {
   document.getElementById("edit-title").value = song.title || "";
   document.getElementById("edit-artist").value = song.artist || "";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
+  document.getElementById("edit-category").value = song.category || (song.categories && song.categories[0]) || "";
   
-  const currentCategory = song.category || "etc";
-  const isDefault = DEFAULT_CATEGORIES.some(c => c.val === currentCategory);
-  const editCatSelect = document.getElementById("edit-category-select");
-  const editCatCustom = document.getElementById("edit-category-custom");
+  const currentGenre = song.genre || "etc";
+  const isDefault = DEFAULT_CATEGORIES.some(c => c.val === currentGenre);
+  const editCatSelect = document.getElementById("edit-genre-select");
+  const editCatCustom = document.getElementById("edit-genre-custom");
   
   if (isDefault) {
-    if (editCatSelect) editCatSelect.value = currentCategory;
+    if (editCatSelect) editCatSelect.value = currentGenre;
     if (editCatCustom) editCatCustom.style.display = "none";
   } else {
     if (editCatSelect) editCatSelect.value = "etc";
     if (editCatCustom) {
       editCatCustom.style.display = "block";
-      editCatCustom.value = currentCategory;
+      editCatCustom.value = currentGenre;
     }
   }
 
   // Sync Dropdown UI
-  const dropdown = document.getElementById("edit-category-dropdown");
+  const dropdown = document.getElementById("edit-genre-dropdown");
   if (dropdown) {
     const selectedText = dropdown.querySelector(".selected-text");
     const options = dropdown.querySelectorAll(".option-item");
     options.forEach(opt => {
       opt.classList.remove("selected");
-      if (opt.dataset.value === (isDefault ? currentCategory : "etc")) {
+      if (opt.dataset.value === (isDefault ? currentGenre : "etc")) {
         opt.classList.add("selected");
         if (selectedText) selectedText.textContent = opt.textContent;
       }
@@ -578,3 +628,188 @@ export async function updateAiTogglesState(song = null) {
   elements.toggleLyric.disabled = false;
   elements.toggleLyric.closest(".ai-item")?.classList.remove("disabled");
 }
+
+/**
+ * Opens the Library Manager popup
+ */
+export function openLibraryManager() {
+  if (!elements.managerModal) return;
+  elements.managerModal.classList.add("active");
+  
+  // Reset search and sort states
+  if (elements.managerSearchInput) elements.managerSearchInput.value = "";
+  document.querySelectorAll("#manager-table th").forEach(th => th.removeAttribute("data-order"));
+  
+  renderManagerTable();
+}
+
+/**
+ * Renders the rows of the Library Manager table
+ */
+export function renderManagerTable() {
+  if (!elements.managerTableBody) return;
+  
+  const searchQuery = elements.managerSearchInput ? elements.managerSearchInput.value.trim().toLowerCase() : "";
+  let data = state.songLibrary.map((s, originalIndex) => ({ ...s, originalIndex }));
+  
+  // 1. Filter
+  if (searchQuery) {
+    data = data.filter(s => 
+      (s.title || "").toLowerCase().includes(searchQuery) || 
+      (s.artist || "").toLowerCase().includes(searchQuery) ||
+      (s.category || "").toLowerCase().includes(searchQuery) ||
+      (s.genre || "").toLowerCase().includes(searchQuery) ||
+      (s.tags || []).some(t => t.toLowerCase().includes(searchQuery))
+    );
+  }
+  
+  // 2. Sort
+  const activeHeader = document.querySelector("#manager-table th[data-order]");
+  if (activeHeader) {
+    const key = activeHeader.dataset.sort;
+    const order = activeHeader.dataset.order;
+    data.sort((a, b) => {
+      let valA = (a[key] || "").toString().toLowerCase();
+      let valB = (b[key] || "").toString().toLowerCase();
+      const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      return order === "asc" ? cmp : -cmp;
+    });
+  }
+
+  // 3. Render
+  elements.managerTableBody.innerHTML = data.map(song => `
+    <tr data-index="${song.originalIndex}">
+      <td class="text-center"><input type="text" value="${song.title || ''}" data-field="title" spellcheck="false"></td>
+      <td class="text-center"><input type="text" value="${song.artist || ''}" data-field="artist" spellcheck="false"></td>
+      <td class="text-center"><input type="text" value="${song.category || ''}" data-field="category" spellcheck="false"></td>
+      <td class="text-center"><input type="text" value="${song.genre || ''}" data-field="genre" spellcheck="false"></td>
+      <td class="text-center"><input type="text" value="${(song.tags || []).join(', ')}" data-field="tags" spellcheck="false"></td>
+      <td class="text-center"><input type="text" value="${song.duration || '--:--'}" readonly style="opacity: 0.5; cursor: default;"></td>
+      <td class="text-center">
+        <button class="btn-row-del" data-index="${song.originalIndex}">삭제</button>
+      </td>
+    </tr>
+  `).join("");
+  
+  if (elements.managerStat) {
+    elements.managerStat.textContent = `총 ${data.length}곡 등록됨`;
+  }
+
+  // Load stored widths
+  applyTableWidths();
+}
+
+/**
+ * Initializes table column resizing functionality
+ */
+export function initTableResizing() {
+  const table = document.getElementById("manager-table");
+  if (!table) return;
+  
+  const ths = table.querySelectorAll("th");
+  const colgroup = document.getElementById("manager-table-colgroup");
+  if (!colgroup) return;
+  const cols = colgroup.querySelectorAll("col");
+
+  ths.forEach((th, i) => {
+    // We only attach resizers to columns that have a successor to trade width with
+    if (i >= cols.length - 1) {
+      const lastResizer = th.querySelector(".resizer");
+      if (lastResizer) lastResizer.style.display = "none";
+      return;
+    }
+
+    const resizer = th.querySelector(".resizer");
+    if (!resizer) return;
+    
+    let startX, startWidthLeft, startWidthRight, totalTableWidth;
+    const colLeft = cols[i];
+    const colRight = cols[i+1];
+    
+    const onMouseMove = (e) => {
+      if (!startX) return;
+      const dx = e.clientX - startX;
+      
+      const newWidthLeftPx = startWidthLeft + dx;
+      const newWidthRightPx = startWidthRight - dx;
+
+      // Minimum width protection (e.g., 40px)
+      if (newWidthLeftPx > 40 && newWidthRightPx > 40) {
+        // Apply as percentages to maintain total width at 100%
+        const leftPct = (newWidthLeftPx / totalTableWidth) * 100;
+        const rightPct = (newWidthRightPx / totalTableWidth) * 100;
+        
+        colLeft.style.width = leftPct + "%";
+        colRight.style.width = rightPct + "%";
+      }
+    };
+    
+    const onMouseUp = () => {
+      startX = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.classList.remove("resizing");
+      saveTableWidths(); 
+    };
+    
+    resizer.addEventListener("mousedown", (e) => {
+      startX = e.clientX;
+      totalTableWidth = table.offsetWidth;
+      startWidthLeft = colLeft.offsetWidth;
+      startWidthRight = colRight.offsetWidth;
+      
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      document.body.classList.add("resizing");
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    // Prevent click event from bubbling up to the th (sorting trigger)
+    resizer.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  });
+}
+
+function saveTableWidths() {
+  const table = document.getElementById("manager-table");
+  const colgroup = document.getElementById("manager-table-colgroup");
+  if (!table || !colgroup) return;
+  
+  const totalWidth = table.offsetWidth;
+  if (totalWidth <= 0) return;
+
+  const cols = colgroup.querySelectorAll("col");
+  const percentages = Array.from(cols).map(col => (col.offsetWidth / totalWidth) * 100);
+  localStorage.setItem("lib-manager-widths-pct", JSON.stringify(percentages));
+}
+
+export function applyTableWidths() {
+  const colgroup = document.getElementById("manager-table-colgroup");
+  if (!colgroup) return;
+
+  const cols = colgroup.querySelectorAll("col");
+  const storedData = localStorage.getItem("lib-manager-widths-pct");
+  
+  let percentages;
+  // Refined default layout for first-time users
+  const defaultPercentages = [28, 14, 11, 11, 23, 7, 6]; 
+
+  if (storedData) {
+    try {
+      percentages = JSON.parse(storedData);
+      if (percentages.length !== cols.length) percentages = defaultPercentages;
+    } catch (e) {
+      percentages = defaultPercentages;
+    }
+  } else {
+    percentages = defaultPercentages;
+  }
+  
+  percentages.forEach((p, i) => {
+    if (cols[i]) cols[i].style.width = p + "%";
+  });
+}
+
+

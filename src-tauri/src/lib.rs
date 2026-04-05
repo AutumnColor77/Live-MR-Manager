@@ -12,21 +12,30 @@ use tauri::{Emitter, Manager, WebviewWindow, AppHandle};
 use tauri::path::BaseDirectory;
 use std::process::Command;
 
+mod types;
 mod youtube;
 mod model_manager;
 pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
+pub mod state;
 
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
 pub use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use urlencoding;
 use crate::audio_player::{
-    AUDIO_HANDLER, Status, PlaybackStatus, PlaybackProgress,
-    AppState, StreamingReader, StretchedSource, DynamicVolumeSource,
-    sys_log, MAIN_WINDOW
+    AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource,
+    sys_log
 };
+use crate::state::MAIN_WINDOW;
+pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongMetadata};
+pub use crate::state::DB;
+pub use parking_lot::Mutex;
+use std::path::PathBuf;
+use std::fs;
+use id3::{Tag, TagLike};
+use rusqlite::{params, Connection, Error as SqliteError, Row as SqliteRow};
 use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
@@ -42,23 +51,10 @@ static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 // Audio processing types and handlers have been moved to audio_player.rs
 
 // AppState, Status, PlaybackStatus, etc. are now imported from audio_player.rs
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SongMetadata {
-    pub title: String,
-    pub thumbnail: String,
-    pub duration: String,
-    pub source: String,
-    pub path: String,
-    pub pitch: Option<f32>,
-    pub tempo: Option<f32>,
-    pub volume: Option<f32>,
-    pub artist: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub category: Option<String>,
-    pub play_count: Option<u32>,
-    pub date_added: Option<u64>,
-    pub is_mr: Option<bool>,
+// SongMetadata struct is now imported from crate::state
+
+fn to_sqlite_err(e: SqliteError) -> String {
+    e.to_string()
 }
 
 #[tauri::command]
@@ -439,6 +435,7 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
     };
 
     Ok(SongMetadata {
+        id: None,
         title,
         thumbnail,
         duration,
@@ -449,7 +446,8 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
         volume: Some(80.0),
         artist,
         tags: None,
-        category: None,
+        genre: None,
+        categories: None,
         play_count: Some(0),
         date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
         is_mr: Some(false),
@@ -472,6 +470,7 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
         };
 
         return Ok(SongMetadata {
+            id: None,
             title,
             thumbnail,
             duration,
@@ -482,7 +481,8 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
             volume: Some(80.0),
             artist,
             tags: None,
-            category: None,
+            genre: None,
+            categories: None,
             play_count: Some(0),
             date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
             is_mr: Some(false),
@@ -492,14 +492,62 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
     let file_path = std::path::Path::new(&path);
     let file_name = file_path.file_name().unwrap_or_default().to_string_lossy().to_string();
     
-    // Improved duration extraction using symphonia (handles MP3 VBR etc better)
     let duration_str = match probe_audio_duration(&path) {
         Some(d) => d,
         None => "0:00".into(),
     };
+
+    // --- ID3 Data Extraction ---
+    let mut genre = "Unknown".to_string();
+    let mut artist_id3 = None;
+    let mut title_id3 = None;
+
+    if let Ok(tag) = Tag::read_from_path(&path) {
+        if let Some(g) = tag.genre() { genre = g.to_string(); }
+        artist_id3 = tag.artist().map(|s| s.to_string());
+        title_id3 = tag.title().map(|s| s.to_string());
+    }
+
+    // --- DB Update Logic ---
+    let db = DB.lock();
     
+    // 1. Ensure Genre exists
+    db.execute("INSERT OR IGNORE INTO Genres (name) VALUES (?)", params![genre]).map_err(to_sqlite_err)?;
+    let genre_id: i64 = db.query_row("SELECT id FROM Genres WHERE name = ?", params![genre], |row: &SqliteRow| row.get::<usize, i64>(0)).map_err(to_sqlite_err)?;
+
+    let final_title = title_id3.unwrap_or(file_name);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+    // 2. Insert/Update Tracks
+    db.execute(
+        "INSERT INTO Tracks (path, title, thumbnail, duration, source, pitch, tempo, volume, artist, date_added, is_mr, genre_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+            title = excluded.title,
+            duration = excluded.duration,
+            artist = excluded.artist,
+            genre_id = excluded.genre_id",
+        params![
+            path,
+            final_title,
+            "",
+            duration_str,
+            "local",
+            0.0,
+            1.0,
+            80.0,
+            artist_id3,
+            now,
+            0,
+            genre_id
+        ]
+    ).map_err(to_sqlite_err)?;
+
+    let track_id: i64 = db.query_row("SELECT id FROM Tracks WHERE path = ?", params![path], |row: &SqliteRow| row.get::<usize, i64>(0)).map_err(to_sqlite_err)?;
+
     Ok(SongMetadata {
-        title: file_name,
+        id: Some(track_id),
+        title: final_title,
         thumbnail: "".into(),
         duration: duration_str,
         source: "local".into(),
@@ -507,13 +555,141 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
         pitch: Some(0.0),
         tempo: Some(1.0),
         volume: Some(80.0),
-        artist: None,
+        artist: artist_id3,
         tags: None,
-        category: None,
+        genre: Some(genre),
+        categories: None,
         play_count: Some(0),
-        date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
+        date_added: Some(now),
         is_mr: Some(false),
     })
+}
+
+#[tauri::command]
+async fn add_category(name: String) -> Result<i64, String> {
+    let db = DB.lock();
+    db.execute("INSERT INTO Categories (name) VALUES (?)", params![name]).map_err(to_sqlite_err)?;
+    let id = db.last_insert_rowid();
+    Ok(id)
+}
+
+#[tauri::command]
+async fn delete_category(id: i64) -> Result<(), String> {
+    let db = DB.lock();
+    db.execute("DELETE FROM Track_Category_Map WHERE category_id = ?", params![id]).map_err(to_sqlite_err)?;
+    db.execute("DELETE FROM Categories WHERE id = ?", params![id]).map_err(to_sqlite_err)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn load_library() -> Result<Vec<SongMetadata>, String> {
+    get_songs().await
+}
+
+#[tauri::command]
+async fn get_songs() -> Result<Vec<SongMetadata>, String> {
+    let db = DB.lock();
+    let mut stmt = db.prepare(
+        "SELECT t.id, t.path, t.title, t.thumbnail, t.duration, t.source, t.pitch, t.tempo, t.volume, t.artist, t.play_count, t.date_added, t.is_mr, g.name as genre,
+         (SELECT GROUP_CONCAT(name) FROM Tags JOIN Track_Tag_Map ON Tags.id = Track_Tag_Map.tag_id WHERE Track_Tag_Map.track_id = t.id) as tags,
+         (SELECT GROUP_CONCAT(name) FROM Categories JOIN Track_Category_Map ON Categories.id = Track_Category_Map.category_id WHERE Track_Category_Map.track_id = t.id) as categories
+         FROM Tracks t
+         LEFT JOIN Genres g ON t.genre_id = g.id"
+    ).map_err(to_sqlite_err)?;
+    
+    let song_iter = stmt.query_map([], |row| {
+        let tag_str: Option<String> = row.get(14).ok();
+        let tags = tag_str.map(|s| s.split(',').map(|t| t.to_string()).collect::<Vec<String>>());
+        
+        let cat_str: Option<String> = row.get(15).ok();
+        let categories = cat_str.map(|s| s.split(',').map(|t| t.to_string()).collect::<Vec<String>>());
+        
+        Ok(SongMetadata {
+            id: row.get(0).ok(),
+            path: row.get(1)?,
+            title: row.get(2)?,
+            thumbnail: row.get::<usize, String>(3).unwrap_or_default(),
+            duration: row.get::<usize, String>(4).unwrap_or_default(),
+            source: row.get::<usize, String>(5).unwrap_or_default(),
+            pitch: row.get(6).ok(),
+            tempo: row.get(7).ok(),
+            volume: row.get(8).ok(),
+            artist: row.get(9).ok(),
+            play_count: row.get::<usize, u32>(10).ok(),
+            date_added: row.get::<usize, u64>(11).ok(),
+            is_mr: Some(row.get::<usize, i64>(12).unwrap_or(0) != 0),
+            genre: row.get(13).ok(),
+            tags,
+            categories,
+        })
+    }).map_err(to_sqlite_err)?;
+
+    let mut songs = Vec::new();
+    for song in song_iter {
+        songs.push(song.map_err(to_sqlite_err)?);
+    }
+    Ok(songs)
+}
+
+#[tauri::command]
+async fn get_categories() -> Result<Vec<crate::types::Category>, String> {
+    let db = DB.lock();
+    let mut stmt = db.prepare("SELECT id, name FROM Categories").map_err(to_sqlite_err)?;
+    let category_iter = stmt.query_map([], |row| {
+        Ok(crate::types::Category {
+            id: row.get(0)?,
+            name: row.get(1)?,
+        })
+    }).map_err(to_sqlite_err)?;
+
+    let mut categories = Vec::new();
+    for cat in category_iter {
+        categories.push(cat.map_err(to_sqlite_err)?);
+    }
+    Ok(categories)
+}
+
+#[tauri::command]
+async fn get_genres() -> Result<Vec<crate::types::Genre>, String> {
+    let db = DB.lock();
+    let mut stmt = db.prepare("SELECT id, name FROM Genres").map_err(to_sqlite_err)?;
+    let genre_iter = stmt.query_map([], |row| {
+        Ok(crate::types::Genre {
+            id: row.get(0)?,
+            name: row.get(1)?,
+        })
+    }).map_err(to_sqlite_err)?;
+
+    let mut genres = Vec::new();
+    for g in genre_iter {
+        genres.push(g.map_err(to_sqlite_err)?);
+    }
+    Ok(genres)
+}
+
+#[tauri::command]
+async fn get_track_categories(track_id: i64) -> Result<Vec<i64>, String> {
+    let db = DB.lock();
+    let mut stmt = db.prepare("SELECT category_id FROM Track_Category_Map WHERE track_id = ?").map_err(to_sqlite_err)?;
+    let id_iter = stmt.query_map(params![track_id], |row| row.get::<usize, i64>(0)).map_err(to_sqlite_err)?;
+    
+    let mut ids = Vec::new();
+    for id in id_iter {
+        ids.push(id.map_err(to_sqlite_err)?);
+    }
+    Ok(ids)
+}
+
+#[tauri::command]
+async fn map_track_to_categories(track_id: i64, category_ids: Vec<i64>) -> Result<(), String> {
+    let mut db = DB.lock();
+    let tx = db.transaction().map_err(to_sqlite_err)?;
+    tx.execute("DELETE FROM Track_Category_Map WHERE track_id = ?", params![track_id]).map_err(to_sqlite_err)?;
+    for cat_id in category_ids {
+        tx.execute("INSERT INTO Track_Category_Map (track_id, category_id) VALUES (?, ?)", params![track_id, cat_id]).map_err(to_sqlite_err)?;
+    }
+    tx.commit().map_err(to_sqlite_err)?;
+    Ok(())
 }
 
 
@@ -531,11 +707,12 @@ async fn stop_playback() -> Result<(), String> {
 
 #[tauri::command]
 async fn get_playback_state() -> Result<AppState, String> {
-    if let Ok(handler) = &*AUDIO_HANDLER {
-        Ok(handler.state.lock().clone())
-    } else {
-        Ok(AppState::default())
-    }
+    let handler = match &*AUDIO_HANDLER {
+        Ok(h) => h.clone(),
+        Err(e) => return Err(e.clone()),
+    };
+    let state = handler.state.lock().clone();
+    Ok(state)
 }
 
 #[tauri::command]
@@ -550,7 +727,7 @@ async fn check_ai_runtime() -> Result<Vec<String>, String> {
     Ok(providers)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuStatus {
     pub has_nvidia: bool,
@@ -604,9 +781,6 @@ async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
 #[tauri::command]
 async fn check_model_ready(handle: AppHandle) -> bool {
     let manager = ModelManager::new(&handle);
-    if let Ok(res_path) = handle.path().resolve("resources/Kim_Vocal_2.onnx", BaseDirectory::Resource) {
-        if res_path.exists() { return true; }
-    }
     manager.get_model_path("Kim_Vocal_2.onnx").exists()
 }
 
@@ -710,26 +884,79 @@ fn cancel_separation(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn save_library(app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
-    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("library.json");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
+    let mut db = DB.lock();
+    let tx = db.transaction().map_err(to_sqlite_err)?;
+    
+    for song in songs {
+        let genre_id: Option<i64> = if let Some(cat_name) = &song.genre {
+            tx.execute("INSERT OR IGNORE INTO Genres (name) VALUES (?)", params![cat_name]).ok();
+            tx.query_row("SELECT id FROM Genres WHERE name = ?", params![cat_name], |row| row.get::<usize, i64>(0)).ok()
+        } else {
+            None
+        };
+
+        tx.execute(
+            "INSERT OR REPLACE INTO Tracks (path, title, thumbnail, duration, source, pitch, tempo, volume, artist, play_count, date_added, is_mr, genre_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                song.path,
+                song.title,
+                song.thumbnail,
+                song.duration,
+                song.source,
+                song.pitch.unwrap_or(0.0),
+                song.tempo.unwrap_or(1.0),
+                song.volume.unwrap_or(80.0),
+                song.artist,
+                song.play_count.unwrap_or(0),
+                song.date_added,
+                if song.is_mr.unwrap_or(false) { 1 } else { 0 },
+                genre_id
+            ]
+        ).ok();
+
+        // 3. Update Tags
+        if let Some(tags) = &song.tags {
+            let track_id: Option<i64> = tx.query_row("SELECT id FROM Tracks WHERE path = ?", params![song.path], |row| row.get(0)).ok();
+            if let Some(tid) = track_id {
+                tx.execute("DELETE FROM Track_Tag_Map WHERE track_id = ?", params![tid]).ok();
+                for tag in tags {
+                    tx.execute("INSERT OR IGNORE INTO Tags (name) VALUES (?)", params![tag]).ok();
+                    let tag_id: Option<i64> = tx.query_row("SELECT id FROM Tags WHERE name = ?", params![tag], |row| row.get(0)).ok();
+                    if let Some(tgid) = tag_id {
+                        tx.execute("INSERT OR IGNORE INTO Track_Tag_Map (track_id, tag_id) VALUES (?, ?)", params![tid, tgid]).ok();
+                    }
+                }
+            }
+        }
+
+        // 4. Update Categories
+        if let Some(cats) = &song.categories {
+            let track_id: Option<i64> = tx.query_row("SELECT id FROM Tracks WHERE path = ?", params![song.path], |row| row.get(0)).ok();
+            if let Some(tid) = track_id {
+                tx.execute("DELETE FROM Track_Category_Map WHERE track_id = ?", params![tid]).ok();
+                for cat in cats {
+                    tx.execute("INSERT OR IGNORE INTO Categories (name) VALUES (?)", params![cat]).ok();
+                    let cat_id: Option<i64> = tx.query_row("SELECT id FROM Categories WHERE name = ?", params![cat], |row| row.get(0)).ok();
+                    if let Some(cid) = cat_id {
+                        tx.execute("INSERT OR IGNORE INTO Track_Category_Map (track_id, category_id) VALUES (?, ?)", params![tid, cid]).ok();
+                    }
+                }
+            }
+        }
     }
-    let json = serde_json::to_string_pretty(&songs).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())?;
+    tx.commit().map_err(to_sqlite_err)?;
     Ok(())
 }
 
 #[tauri::command]
-fn load_library(app: AppHandle) -> Result<Vec<SongMetadata>, String> {
-    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("library.json");
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let songs = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    Ok(songs)
+async fn get_track_count() -> Result<i64, String> {
+    let db = DB.lock();
+    let count: i64 = db.query_row("SELECT count(*) FROM Tracks", [], |row| row.get(0)).map_err(to_sqlite_err)?;
+    Ok(count)
 }
+
 
 fn probe_audio_duration(path: &str) -> Option<String> {
     let file = File::open(path).ok()?;
@@ -783,7 +1010,7 @@ pub fn run() {
         .setup(|app| {
             let window = app.get_webview_window("main");
             if let Some(w) = window {
-                *MAIN_WINDOW.lock() = Some(w.clone());
+                *crate::state::MAIN_WINDOW.lock() = Some(w.clone());
                 
                 let w_clone = w.clone();
                 std::thread::spawn(move || {
@@ -866,11 +1093,19 @@ pub fn run() {
             download_ai_model,
             save_library,
             load_library,
+            get_songs,
+            get_categories,
+            get_genres,
+            get_track_categories,
+            get_track_count,
             cancel_separation,
             get_audio_devices,
             open_cache_folder,
             delete_ai_model,
-            get_gpu_recommendation
+            get_gpu_recommendation,
+            add_category,
+            delete_category,
+            map_track_to_categories
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

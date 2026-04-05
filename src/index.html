@@ -64,12 +64,12 @@
 
     <div class="nav-group secondary">
       <label class="nav-label">System</label>
-      <div class="nav-item" id="nav-tasks">
+      <div class="nav-item no-icon" id="nav-tasks">
         <span>Active Tasks</span>
         <span class="task-count" id="task-badge" style="display: none;">0</span>
       </div>
 
-      <div class="nav-item" id="nav-settings">
+      <div class="nav-item no-icon" id="nav-settings">
         <span>Settings</span>
       </div>
     </div>
@@ -138,23 +138,33 @@
           </svg>
           <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색...">
         </div>
-
-        <div class="filter-group">
-          <div class="custom-select" id="lib-category-dropdown">
-            <div class="select-trigger">
-              <span class="selected-text">전체 카테고리</span>
-              <span class="select-arrow"></span>
-            </div>
-            <div class="select-options">
-              <div class="option-item selected" data-value="all">전체 카테고리</div>
-              <div class="option-item" data-value="pop">POP</div>
-              <div class="option-item" data-value="ballad">발라드</div>
-              <div class="option-item" data-value="dance">댄스</div>
-              <div class="option-item" data-value="rock">락/메탈</div>
-              <div class="option-item" data-value="etc">기타</div>
-            </div>
-            <input type="hidden" id="lib-category-filter" value="all">
-          </div>
+<div class="filter-group">
+  <div class="custom-select" id="lib-category-dropdown">
+    <div class="select-trigger">
+      <span class="selected-text">전체 카테고리</span>
+      <span class="select-arrow"></span>
+    </div>
+    <div class="select-options">
+      <div class="option-item" data-value="all">전체 카테고리</div>
+    </div>
+    <input type="hidden" id="lib-category-filter" value="all">
+  </div>
+  <div class="custom-select" id="lib-genre-dropdown">
+    <div class="select-trigger">
+      <span class="selected-text">전체 장르</span>
+      <span class="select-arrow"></span>
+    </div>
+    <div class="select-options">
+      <div class="option-item" data-value="all">전체 장르</div>
+      <div class="option-item" data-value="anime">애니송</div>
+      <div class="option-item" data-value="vocaloid">보컬로이드</div>
+      <div class="option-item" data-value="jpop">J-POP</div>
+      <div class="option-item" data-value="kpop">K-POP</div>
+      <div class="option-item" data-value="rock">락/메탈</div>
+      <div class="option-item" data-value="etc">기타</div>
+    </div>
+    <input type="hidden" id="lib-genre-filter" value="all">
+  </div>
 
           <div class="custom-select" id="lib-sort-dropdown">
             <div class="select-trigger">
@@ -212,6 +222,27 @@
                 <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
                 <button id="btn-delete-model" class="btn-ai-action danger">모델 삭제</button>
                 <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="group-header">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              <h3>곡 정보 관리</h3>
+            </div>
+            <div class="ai-model-card">
+              <div class="ai-info-left">
+                <h2 class="ai-title-large">라이브러리 일괄 수정</h2>
+                <div class="ai-model-desc">
+                  엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
+                </div>
+              </div>
+              <div class="ai-actions-right">
+                <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
               </div>
             </div>
           </section>
@@ -384,23 +415,27 @@
         </div>
         <div class="input-group">
           <label>카테고리</label>
+          <input type="text" id="edit-category" placeholder="예: 애창곡, 벌칙곡, 미션곡 등">
+        </div>
+        <div class="input-group">
+          <label>장르</label>
           <div class="combo-box">
-            <div class="custom-select" id="edit-category-dropdown" style="flex: 1;">
+            <div class="custom-select" id="edit-genre-dropdown" style="flex: 1;">
               <div class="select-trigger">
-                <span class="selected-text">카테고리 선택...</span>
+                <span class="selected-text">장르 선택...</span>
                 <span class="select-arrow"></span>
               </div>
               <div class="select-options">
-                <div class="option-item" data-value="">카테고리 선택...</div>
+                <div class="option-item" data-value="">장르 선택...</div>
                 <div class="option-item" data-value="pop">POP</div>
                 <div class="option-item" data-value="ballad">발라드</div>
                 <div class="option-item" data-value="dance">댄스</div>
                 <div class="option-item" data-value="rock">락/메탈</div>
                 <div class="option-item" data-value="etc">기타</div>
               </div>
-              <input type="hidden" id="edit-category-select" value="">
+              <input type="hidden" id="edit-genre-select" value="">
             </div>
-            <input type="text" id="edit-category-custom" placeholder="직접 입력...">
+            <input type="text" id="edit-genre-custom" placeholder="직접 입력...">
           </div>
         </div>
         <div class="input-group">
@@ -442,6 +477,54 @@
         <div class="download-progress-bar" id="model-download-bar"></div>
       </div>
       <div class="download-percentage" id="model-download-percent">0%</div>
+    </div>
+  </div>
+
+  <!-- 라이브러리 일괄 관리자 모달 -->
+  <div id="library-manager-modal" class="modal-overlay">
+    <div class="modal-content manager-modal">
+      <header class="modal-header">
+        <div class="header-main-info">
+          <h3>곡 정보 관리자</h3>
+          <div class="manager-search-box">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색...">
+          </div>
+        </div>
+        <button class="close-btn" id="manager-modal-close">&times;</button>
+      </header>
+      <div class="modal-body manager-body">
+        <div class="table-container">
+          <table id="manager-table">
+            <colgroup id="manager-table-colgroup">
+              <col><col><col><col><col><col><col>
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="text-center">태그 <div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="text-center">작업</th>
+              </tr>
+            </thead>
+            <tbody id="manager-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <footer class="modal-footer manager-footer">
+        <div class="manager-stat" id="manager-stat">Total 0 Songs</div>
+        <div class="footer-actions">
+          <button class="primary-btn" id="manager-modal-save">저장</button>
+          <button class="secondary-btn" id="manager-modal-cancel">닫기</button>
+        </div>
+      </footer>
     </div>
   </div>
 
