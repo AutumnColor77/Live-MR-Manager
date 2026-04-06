@@ -28,7 +28,7 @@
 ### 🤖 온디바이스 오디오 엔진 (DSP Engine)
 - **고성능 모듈화 아키텍처**: 오디오 처리 로직을 `audio_player.rs`로 분리하여 코드 가독성과 확장성 극대화. 전역 `AUDIO_HANDLER`를 통한 정밀한 상태 관리.
 - **실시간 Pitch/Tempo 독립 제어**: `signalsmith-stretch` 및 `Rodio 0.22.x` 기반의 고성능 오디오 파이프라인. 음질 손실 없이 `-12` ~ `+12` 반음 및 `0.5x` ~ `2.0x` 속도 조절 지원.
-- **보컬 토글 페이딩 (Audio Fading)**: 보컬 On/Off 시 클릭 노이즈(Pops)를 방지하고 부드러운 전환을 위해 **100ms 실시간 선형 페이딩(Linear Interpolation)** 로직 적용.
+- **보컬 토글 페이딩 (Audio Fading)**: 보컬 On/Off 시 클릭 노이즈(Pops)를 방지하고 부드러운 전환을 위해 **300ms 실시간 선형 페이딩(Linear Interpolation)** 로직 적용.
 - **초저지연 Passthrough**: 피치와 속도가 기본값일 때 DSP 엔진을 우회하여 레이턴시를 최소화하고 원래 음원을 그대로 재생.
 - **다중 채널 완벽 지원**: 스테레오 채널 분리 및 위상 정합 처리(Planar processing)를 통해 위상 뒤틀림 없는 사운드 재생.
 
@@ -36,7 +36,7 @@
 - **BS-RoFormer & MDX-Net 통합**: 최신 AI 모델을 활용한 전문가급 보컬/세션 분리 기능 제공.
 - **모듈화된 분리 엔진**: 분리 로직을 별도의 `separation` 모듈로 독립시켜 코드의 유지보수성과 확장성을 비약적으로 향상.
 - **완전 비동기 파이프라인**: `Tokio` 백엔드 워커와 커스텀 이벤트 루프를 통한 비동기 처리로 음원 분리 중에도 UI 및 오디오 재생이 전혀 끊기지 않는 논블로킹(Non-blocking) 환경 구현.
-- **성능 최적화 (Advanced Optimization)**: **병렬 STFT Preprocessing** 및 **Batch Inference** 기술을 도입하여 GPU(CUDA) 및 CPU 자원 활용률을 극대화 (RTX 2060 등 최신 GPU 성능 100% 활용).
+- **성능 최적화 (Advanced Optimization)**: **병렬 STFT Preprocessing** 및 **Batch Inference** 기술 도입. NVIDIA GPU 환경에서 CUDA 가속을 지원하며, 일반 환경에서도 DirectML/CPU를 통해 안정적인 고속 분리 환경 제공.
 - **고정밀 오디오 프로세싱**: 32-bit float 정밀 디코딩, **RMS 기반 자동 볼륨 정규화(Normalization)**, **소프트 리미팅(Soft-limiting)** 기술을 적용하여 클리핑 없는 깨끗한 오디오 품질 확보.
 - **지능형 작업 관리 시스템**: 전역 **AI 가동 락(Global AI Lock)** 및 **작업 큐(Queue)** 관리 시스템을 통해 `Queued`, `Running`, `Completed` 상태를 정확히 추적하고 동시 실행으로 인한 오작동 방지.
 

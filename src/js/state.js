@@ -27,8 +27,9 @@ export const state = {
   filteredTracks: [], // Current view's tracks { ...song, originalIndex }
   
   // Persistent AI Settings
-  vocalEnabled: localStorage.getItem("vocalEnabled") !== "false", // Default to true
+  vocalEnabled: localStorage.getItem("vocalEnabled") === "true", // Default to false
   lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
+  broadcastMode: localStorage.getItem("broadcastMode") === "true",
 };
 
 export const DEFAULT_CATEGORIES = [

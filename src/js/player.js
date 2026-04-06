@@ -5,7 +5,10 @@
 import { state } from './state.js';
 import { elements, updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui.js';
 import { formatTime, showNotification, getThumbnailUrl } from './utils.js';
-import { togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack, setVolume, setPitch, setTempo, saveLibrary, seekTo } from './audio.js';
+import { 
+  togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack, 
+  setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated 
+} from './audio.js';
 
 /**
  * Highlights a track without playing it
@@ -99,6 +102,12 @@ export async function selectTrack(index) {
   
   updateThumbnailOverlay();
   updatePlayButton();
+  
+  // MR이 있는 경우 보컬 토글을 자동으로 꺼짐으로 설정 (요구사항)
+  if (await checkMrSeparated(song.path)) {
+    state.vocalEnabled = false;
+  }
+  
   updateAiTogglesState(song);
   
   // Progress Reset

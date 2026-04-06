@@ -93,6 +93,19 @@
               </svg>
             </button>
           </div>
+          <!-- [NEW] Broadcast Toggle in same line with title -->
+          <div id="broadcast-tasks-control" style="display: none;">
+            <div
+              style="display: flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.08); padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255, 193, 7, 0.25);">
+              <span
+                style="font-size: 0.75rem; font-weight: 700; color: #ffc107; text-transform: uppercase; letter-spacing: 0.5px;">Broadcast
+                Safe</span>
+              <label class="switch" style="transform: scale(0.85); margin-top: 2px;">
+                <input type="checkbox" id="toggle-broadcast-mode-tasks">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -108,7 +121,8 @@
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input" autocomplete="off" spellcheck="false" />
+            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
+              autocomplete="off" spellcheck="false" />
           </div>
           <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
         </div>
@@ -132,36 +146,37 @@
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
-          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off" role="presentation">
+          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off"
+            role="presentation">
           <div id="lib-search-input-suggestions" class="suggestion-dropdown"></div>
         </div>
-<div class="filter-group">
-  <div class="custom-select" id="lib-category-dropdown">
-    <div class="select-trigger">
-      <span class="selected-text">전체 카테고리</span>
-      <span class="select-arrow"></span>
-    </div>
-    <div class="select-options">
-      <div class="option-item" data-value="all">전체 카테고리</div>
-    </div>
-    <input type="hidden" id="lib-category-filter" value="all">
-  </div>
-  <div class="custom-select" id="lib-genre-dropdown">
-    <div class="select-trigger">
-      <span class="selected-text">전체 장르</span>
-      <span class="select-arrow"></span>
-    </div>
-    <div class="select-options">
-      <div class="option-item" data-value="all">전체 장르</div>
-      <div class="option-item" data-value="anime">애니송</div>
-      <div class="option-item" data-value="vocaloid">보컬로이드</div>
-      <div class="option-item" data-value="jpop">J-POP</div>
-      <div class="option-item" data-value="kpop">K-POP</div>
-      <div class="option-item" data-value="rock">락/메탈</div>
-      <div class="option-item" data-value="etc">기타</div>
-    </div>
-    <input type="hidden" id="lib-genre-filter" value="all">
-  </div>
+        <div class="filter-group">
+          <div class="custom-select" id="lib-category-dropdown">
+            <div class="select-trigger">
+              <span class="selected-text">전체 카테고리</span>
+              <span class="select-arrow"></span>
+            </div>
+            <div class="select-options">
+              <div class="option-item" data-value="all">전체 카테고리</div>
+            </div>
+            <input type="hidden" id="lib-category-filter" value="all">
+          </div>
+          <div class="custom-select" id="lib-genre-dropdown">
+            <div class="select-trigger">
+              <span class="selected-text">전체 장르</span>
+              <span class="select-arrow"></span>
+            </div>
+            <div class="select-options">
+              <div class="option-item" data-value="all">전체 장르</div>
+              <div class="option-item" data-value="anime">애니송</div>
+              <div class="option-item" data-value="vocaloid">보컬로이드</div>
+              <div class="option-item" data-value="jpop">J-POP</div>
+              <div class="option-item" data-value="kpop">K-POP</div>
+              <div class="option-item" data-value="rock">락/메탈</div>
+              <div class="option-item" data-value="etc">기타</div>
+            </div>
+            <input type="hidden" id="lib-genre-filter" value="all">
+          </div>
 
           <div class="custom-select" id="lib-sort-dropdown">
             <div class="select-trigger">
@@ -208,8 +223,37 @@
 
           <section class="settings-group">
             <div class="group-header">
-              <i class="icon-ai"></i>
-              <h3>AI Separation Engine</h3>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                <rect x="9" y="9" width="6" height="6"></rect>
+                <line x1="9" y1="1" x2="9" y2="4"></line>
+                <line x1="15" y1="1" x2="15" y2="4"></line>
+                <line x1="9" y1="20" x2="9" y2="23"></line>
+                <line x1="15" y1="20" x2="15" y2="23"></line>
+                <line x1="20" y1="9" x2="23" y2="9"></line>
+                <line x1="20" y1="15" x2="23" y2="15"></line>
+                <line x1="1" y1="9" x2="4" y2="9"></line>
+                <line x1="1" y1="15" x2="4" y2="15"></line>
+              </svg>
+              <h3>AI 분리 엔진</h3>
+            </div>
+
+            <!-- 방송 보호 모드 -->
+            <div class="ai-model-card" style="margin-bottom: 20px;">
+              <div class="ai-info-left">
+                <h2 class="ai-title-large">방송 제원 보호 모드 (Broadcast Safe)</h2>
+                <div class="ai-model-desc">
+                  켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
+                  (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
+                </div>
+              </div>
+              <div class="ai-actions-right" style="align-items: flex-end; justify-content: center;">
+                <label class="switch" style="transform: scale(1.2); transform-origin: right center;">
+                  <input type="checkbox" id="toggle-broadcast-mode">
+                  <span class="slider round"></span>
+                </label>
+              </div>
             </div>
 
             <!-- CUDA 설치 권장 알림 (기본 숨김) -->
@@ -218,11 +262,12 @@
               <div class="ai-recommend-content">
                 <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
                 <div class="ai-recommend-text">
-                  시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다. 
+                  시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다.
                   CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
                 </div>
                 <div class="ai-recommend-actions">
-                  <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA 다운로드</a>
+                  <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA
+                    다운로드</a>
                   <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN 다운로드</a>
                 </div>
               </div>
@@ -489,9 +534,11 @@
           <h3>곡 정보 관리자</h3>
           <div class="manager-search-box">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
-              <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off" spellcheck="false">
+            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off"
+              spellcheck="false">
           </div>
         </div>
         <button class="close-btn" id="manager-modal-close">&times;</button>
@@ -500,16 +547,33 @@
         <div class="table-container">
           <table id="manager-table">
             <colgroup id="manager-table-colgroup">
-              <col><col><col><col><col><col><col>
+              <col>
+              <col>
+              <col>
+              <col>
+              <col>
+              <col>
+              <col>
             </colgroup>
             <thead>
               <tr>
-                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="text-center">태그 <div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="text-center">태그 <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
                 <th class="text-center">작업</th>
               </tr>
             </thead>

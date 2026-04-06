@@ -14,6 +14,7 @@ use crate::vocal_remover::InferenceEngine;
 pub static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
 pub static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 pub static ACTIVE_SEPARATIONS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+pub static BROADCAST_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

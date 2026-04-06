@@ -60,6 +60,9 @@ export const elements = {
   managerSearchInput: null,
   managerTableBody: null,
   managerStat: null,
+  toggleBroadcastMode: null,
+  toggleBroadcastModeActive: null,
+  broadcastTasksControl: null,
 };
 
 export function initDomReferences() {
@@ -118,6 +121,9 @@ export function initDomReferences() {
   elements.managerTableBody = document.getElementById("manager-table-body");
   elements.managerStat = document.getElementById("manager-stat");
   elements.viewControls = document.getElementById("view-controls");
+  elements.toggleBroadcastMode = document.getElementById("toggle-broadcast-mode");
+  elements.toggleBroadcastModeActive = document.getElementById("toggle-broadcast-mode-tasks");
+  elements.broadcastTasksControl = document.getElementById("broadcast-tasks-control");
 }
 
 export function updateSuggestions(fieldId) {

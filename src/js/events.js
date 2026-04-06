@@ -32,6 +32,7 @@ export function switchTab(tabId) {
   if (elements.localSection) elements.localSection.style.display = tabId === "local" ? "block" : "none";
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
+  if (elements.broadcastTasksControl) elements.broadcastTasksControl.style.display = tabId === "tasks" ? "block" : "none";
   
   const settingsPage = document.getElementById("settings-page");
   const tasksPage = document.getElementById("tasks-page");
@@ -62,8 +63,7 @@ export function initGlobalListeners() {
     elements.ytFetchBtn.onclick = async () => {
       const url = elements.ytUrlInput.value.trim();
       if (!url) return;
-      elements.ytFetchBtn.disabled = true;
-      elements.ytFetchBtn.textContent = "가져오는 중...";
+      elements.ytFetchBtn.classList.add("loading-btn");
       try {
         const metadata = await getAudioMetadata(url);
         state.songLibrary.push(metadata);
@@ -74,8 +74,7 @@ export function initGlobalListeners() {
       } catch (err) {
         showNotification("정보를 가져오는데 실패했습니다.", "error");
       } finally {
-        elements.ytFetchBtn.disabled = false;
-        elements.ytFetchBtn.textContent = "정보 가져오기";
+        elements.ytFetchBtn.classList.remove("loading-btn");
       }
     };
   }
@@ -256,6 +255,10 @@ export function initGlobalListeners() {
       state.targetProgressMs = posMs;
       state.currentProgressMs = posMs;
       
+      // Show loading spinner immediately for better responsiveness
+      state.isLoading = true;
+      updateThumbnailOverlay();
+      
       await seekTo(posMs);
       state.isSeeking = false;
     };
@@ -405,12 +408,50 @@ export function initGlobalListeners() {
 
   // LYRIC Toggle persistence
   elements.toggleLyric?.addEventListener("change", async (e) => {
-    state.lyricsEnabled = e.target.checked;
-    localStorage.setItem("lyricsEnabled", state.lyricsEnabled);
-    console.log(`[STATE] Lyrics Enabled: ${state.lyricsEnabled}`);
+    if (e.target.checked) {
+      showNotification("가사 기능은 현재 준비 중입니다.", "info");
+      e.target.checked = false; // 다시 꺼짐 상태로
+      state.lyricsEnabled = false;
+      localStorage.setItem("lyricsEnabled", "false");
+    } else {
+      state.lyricsEnabled = false;
+      localStorage.setItem("lyricsEnabled", "false");
+    }
+    
     const { toggleAiFeature } = await import('./audio.js');
     await toggleAiFeature("lyric", state.lyricsEnabled);
   });
+
+  // BROADCAST MODE Toggle persistence (Settings & Active Tasks UI)
+  const syncBroadcastToggles = () => {
+    if (elements.toggleBroadcastMode) elements.toggleBroadcastMode.checked = state.broadcastMode;
+    if (elements.toggleBroadcastModeActive) elements.toggleBroadcastModeActive.checked = state.broadcastMode;
+  };
+
+  const handleBroadcastChange = async (enabled) => {
+    state.broadcastMode = enabled;
+    localStorage.setItem("broadcastMode", state.broadcastMode);
+    syncBroadcastToggles();
+    console.log(`[STATE] Broadcast Mode: ${state.broadcastMode}`);
+    try {
+      await window.__TAURI__.core.invoke("set_broadcast_mode", { enabled: state.broadcastMode });
+      showNotification(state.broadcastMode ? "방송 보호 모드가 활성화되었습니다." : "방송 보호 모드가 해제되었습니다.", "info");
+    } catch (err) {
+      console.error("Failed to set broadcast mode:", err);
+    }
+  };
+
+  if (elements.toggleBroadcastMode) {
+    elements.toggleBroadcastMode.checked = state.broadcastMode;
+    elements.toggleBroadcastMode.addEventListener("change", (e) => handleBroadcastChange(e.target.checked));
+  }
+  if (elements.toggleBroadcastModeActive) {
+    elements.toggleBroadcastModeActive.checked = state.broadcastMode;
+    elements.toggleBroadcastModeActive.addEventListener("change", (e) => handleBroadcastChange(e.target.checked));
+  }
+  
+  // Initial Sync to Backend
+  window.__TAURI__.core.invoke("set_broadcast_mode", { enabled: state.broadcastMode }).catch(console.error);
 
   // Settings Events
   const btnDownloadModel = document.getElementById("btn-download-model");
@@ -631,18 +672,19 @@ export function setupBackendListeners() {
     console.log(`[AUDIO STATUS] ${status}: ${message}`);
     
     // 1. Loading/Activity status
-    if (status === "Loading" || status === "Downloading" || status === "Decoding" || status === "Pending") {
+    const s = (status || "").toLowerCase();
+    if (s === "loading" || s === "downloading" || s === "decoding" || s === "pending") {
       state.isLoading = true;
     } else {
       state.isLoading = false;
     }
 
     // 2. Playback state updates
-    if (status === "Playing") {
+    if (s === "playing") {
       state.isPlaying = true;
-    } else if (status === "Finished" || status === "Error") {
+    } else if (s === "finished" || s === "error") {
       state.isPlaying = false;
-      if (status === "Finished") {
+      if (s === "finished") {
         state.currentProgressMs = 0;
         state.targetProgressMs = 0;
         // Progress UI reset
@@ -654,11 +696,11 @@ export function setupBackendListeners() {
 
     // 3. Visual Status Message in Dock
     if (elements.statusMsg) {
-      elements.statusMsg.textContent = message || (status === "Playing" ? "Ready" : "");
+      elements.statusMsg.textContent = message || (s === "playing" ? "Ready" : "");
       elements.statusMsg.classList.toggle("active", !!elements.statusMsg.textContent);
       
       // Auto-hide status text after 3s on successful start
-      if (status === "Playing") {
+      if (s === "playing") {
         setTimeout(() => {
           if (elements.statusMsg.textContent === "Ready" || elements.statusMsg.textContent === message) {
             elements.statusMsg.textContent = "";
@@ -668,7 +710,7 @@ export function setupBackendListeners() {
       }
     }
 
-    if (status === "Error") {
+    if (s === "error") {
       showNotification(message || "재생 중 오류가 발생했습니다.", "error");
     }
 
@@ -787,7 +829,31 @@ function updateTaskUI(targetPath = null) {
       if (bar) bar.style.width = pct + '%';
       if (pctText) pctText.textContent = pct + '%';
       if (statusTextEl) {
-        statusTextEl.textContent = task.status === "Queued" ? "대기 중..." : task.status === "Starting" ? "준비 중..." : task.status;
+        const s = (task.status || "").toLowerCase();
+        statusTextEl.textContent = s === "queued" ? "대기 중..." : s === "starting" ? "준비 중..." : task.status;
+      }
+
+      // [FIX] Update Provider Badge (AI/GPU/CPU etc.)
+      const badgeEl = existingCard.querySelector(".task-provider-badge");
+      if (badgeEl && task.provider) {
+        const rawProv = task.provider.toUpperCase();
+        const isGPU = rawProv.includes("GPU") || rawProv.includes("CUDA") || rawProv.includes("DIRECTML");
+        const isCPU = rawProv.includes("CPU");
+        const isNetwork = rawProv.includes("NETWORK") || task.status.toLowerCase().includes("down");
+        const isSystem = rawProv.includes("SYSTEM") || task.status.includes("모델");
+
+        let pText = "AI";
+        let pClass = "provider-ai";
+
+        if (isGPU) { pText = "GPU"; pClass = "provider-gpu"; }
+        else if (isCPU) { pText = "CPU"; pClass = "provider-cpu"; }
+        else if (isNetwork) { pText = "NETWORK"; pClass = "provider-network"; }
+        else if (isSystem) { pText = "AI"; pClass = "provider-ai"; }
+        else if (task.status === "Queued") { pText = "QUEUED"; pClass = "provider-queued"; }
+
+        badgeEl.textContent = pText;
+        // Reset and update classes
+        badgeEl.className = "task-provider-badge " + pClass;
       }
       
       // Only skip full render if task is STILL RUNNING.

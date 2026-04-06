@@ -94,11 +94,10 @@ impl YoutubeManager {
         let mut cmd = Command::new(&exe);
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
         let output = cmd
-            .args(&["-j", "--no-playlist", "--no-check-certificates", url])
+            .args(&["-j", "--no-playlist", "--no-warnings", "--no-check-certificates", url])
             .output()
             .await
             .map_err(|e| {
@@ -179,23 +178,38 @@ impl YoutubeManager {
             let mut cmd = Command::new(&exe);
             #[cfg(windows)]
             {
-                use std::os::windows::process::CommandExt;
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
-            let mut child = cmd
-                .args(&[
-                    "--newline",
-                    "--progress-template",
-                    "%(progress)j",
-                    "--no-check-certificates",
-                    "--no-part", 
-                    "--buffer-size", "16K",
+            let mut args = vec![
+                "--newline",
+                "--progress-template", "%(progress)j",
+                "--no-check-certificates",
+                "--no-part",
+                "--no-warnings",
+                "--buffer-size", "16K"
+            ];
+
+            if wait_for_full {
+                // High quality post-processing for separation
+                args.extend_from_slice(&[
                     "-f", "ba",
                     "-x",
                     "--audio-format", "m4a",
-                    "-o", destination.to_str().ok_or("Invalid path")?,
-                    url
-                ])
+                ]);
+            } else {
+                // Streaming friendly: no post-processing
+                args.extend_from_slice(&[
+                    "-f", "ba[ext=m4a]/ba",
+                ]);
+            }
+
+            args.extend_from_slice(&[
+                "-o", destination.to_str().ok_or("Invalid path")?,
+                url
+            ]);
+
+            let mut child = cmd
+                .args(&args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()

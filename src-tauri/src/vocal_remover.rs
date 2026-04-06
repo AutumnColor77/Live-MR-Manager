@@ -54,7 +54,9 @@ impl StftEngine {
         let mut stft_result = ndarray::Array2::from_elem((num_frames, target_bins), Complex::new(0.0f32, 0.0f32));
         let mut input = vec![Complex::new(0.0f32, 0.0f32); n_fft];
 
+        let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
         for (f_idx, start) in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length).enumerate() {
+            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
             if f_idx >= num_frames { break; }
             for i in 0..n_fft {
                 input[i] = Complex::new(samples[start + i] * self.window[i], 0.0);
@@ -80,7 +82,9 @@ impl StftEngine {
         let n_bins_limit = n_fft / 2 + 1;
         let bins_in_frame = frames.shape()[1];
 
+        let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
         for f_idx in 0..num_frames {
+            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
             let start = f_idx * self.hop_length;
             
             // Reset buffer
@@ -132,7 +136,9 @@ impl StftEngine {
         
         let mut input = vec![Complex::new(0.0f32, 0.0f32); n_fft];
 
-        for start in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length) {
+        let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
+        for (f_idx, start) in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length).enumerate() {
+            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
             for i in 0..n_fft {
                 input[i] = Complex::new(samples[start + i] * self.window[i], 0.0);
             }
@@ -162,7 +168,9 @@ impl StftEngine {
         let mut complex_buffer = vec![Complex::new(0.0f32, 0.0f32); n_fft];
         let n_bins_limit = n_fft / 2 + 1;
 
+        let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
         for (f_idx, frame) in frames.iter().enumerate() {
+            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
             let start = f_idx * self.hop_length;
             
             // Reset buffer
@@ -282,9 +290,9 @@ impl InferenceEngine for WaveformRemover {
         }
 
         let target_sample_rate = 44100;
-        let processed_samples = if sample_rate != target_sample_rate {
+        let mut processed_samples = if sample_rate != target_sample_rate {
             sys_log(&format!("DEBUG: [WaveformRemover] Resampling from {} to {}", sample_rate, target_sample_rate));
-            let padding_samples = (sample_rate as f32 * 0.1) as usize; // 100ms padding
+            let padding_samples = (sample_rate as f32 * 0.1) as usize; // 100ms padding for resampler
             let num_channels = channels as usize;
 
             // 1. Pad audio to prevent resampler artifacts at boundaries
@@ -311,16 +319,25 @@ impl InferenceEngine for WaveformRemover {
             if resampled_padded.len() > 2 * trim_samples * num_channels {
                 let start_index = trim_samples * num_channels;
                 let end_index = resampled_padded.len() - (trim_samples * num_channels);
-                sys_log(&format!("DEBUG: [WaveformRemover] Trimming {} samples from start/end after resampling.", trim_samples));
                 resampled_padded[start_index..end_index].to_vec()
             } else {
-                sys_log("WARN: [WaveformRemover] Resampled audio is too short to trim, returning as is.");
                 resampled_padded
             }
         } else {
             raw_samples
         };
-        sys_log(&format!("PERF: [WaveformRemover] Audio load & resample took: {:?}", load_and_resample_start.elapsed()));
+
+        // [ENHANCE] Always add 1.0s silence padding for AI Stabilizing
+        let ai_padding_sec = 1.0;
+        let ai_padding_samples = (target_sample_rate as f32 * ai_padding_sec) as usize;
+        let num_channels = channels as usize;
+        
+        let mut final_v_padded = vec![0.0f32; ai_padding_samples * num_channels];
+        final_v_padded.extend_from_slice(&processed_samples);
+        final_v_padded.extend_from_slice(&vec![0.0f32; ai_padding_samples * num_channels]);
+        processed_samples = final_v_padded;
+        
+        sys_log(&format!("PERF: [WaveformRemover] Audio load & resample (+ 1.0s Padding) took: {:?}", load_and_resample_start.elapsed()));
 
         if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
             return Err(anyhow!("Cancelled before model parameter detection"));
@@ -427,6 +444,11 @@ impl InferenceEngine for WaveformRemover {
             for chunk_idx in 0..num_chunks {
                 if cancel_flag_prep.load(Ordering::Relaxed) { break; }
                 
+                // [FIX] Broadcast Mode Throttle
+                if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                
                 let mut chunk_start = chunk_idx * step_size;
                 let mut is_last_chunk_at_end = false;
                 if chunk_start + required_samples > total_samples {
@@ -443,10 +465,16 @@ impl InferenceEngine for WaveformRemover {
 
                 // Internal parallelism for Left/Right channels is still maintained
                 let (left_stft, right_stft) = if ch_count > 1 {
-                    rayon::join(
-                        || stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins),
-                        || stft_engine_clone.stft_ndarray(&current_chunks[1], target_bins)
-                    )
+                    if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
+                        let l = stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins);
+                        let r = stft_engine_clone.stft_ndarray(&current_chunks[1], target_bins);
+                        (l, r)
+                    } else {
+                        rayon::join(
+                            || stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins),
+                            || stft_engine_clone.stft_ndarray(&current_chunks[1], target_bins)
+                        )
+                    }
                 } else {
                     let l = stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins);
                     (l.clone(), l)
@@ -556,10 +584,21 @@ impl InferenceEngine for WaveformRemover {
 
                 let req_samples_inner = current_chunks[0].len();
                 // Parallelized Channel Processing: iSTFT for Left and Right channels executed in parallel
-                let (voc_l, voc_r) = rayon::join(
-                    || stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner),
-                    || stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner)
-                );
+                let (voc_l, voc_r) = if ch_count > 1 {
+                    if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
+                        let l = stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner);
+                        let r = stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner);
+                        (l, r)
+                    } else {
+                        rayon::join(
+                            || stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner),
+                            || stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner)
+                        )
+                    }
+                } else {
+                    let l = stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner);
+                    (l.clone(), l)
+                };
                 let vocal_res = vec![voc_l, voc_r];
 
                 // Calculate results in local buffers first to minimize lock contention
@@ -614,6 +653,11 @@ impl InferenceEngine for WaveformRemover {
         while processed_count < num_chunks {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err(anyhow!("Cancelled by user"));
+            }
+
+            // [FIX] Broadcast Mode Throttle for inference
+            if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(100)); // Give GPU breathing room
             }
 
             // Collect batch
@@ -710,12 +754,31 @@ impl InferenceEngine for WaveformRemover {
             }
         }
 
-        // 6. Save Results
+        // 6. Trim Padding (Remove 1.0s from both ends)
+        let ai_padding_samples = (target_sample_rate as f32 * 1.0) as usize;
+        let mut trimmed_vocal = vec![vec![0.0f32; 0]; ch_count];
+        let mut trimmed_inst = vec![vec![0.0f32; 0]; ch_count];
+        
+        if total_samples > 2 * ai_padding_samples {
+            let start = ai_padding_samples;
+            let end = total_samples - ai_padding_samples;
+            for ch in 0..ch_count {
+                trimmed_vocal[ch] = final_vocal_inner[ch][start..end].to_vec();
+                trimmed_inst[ch] = final_inst_inner[ch][start..end].to_vec();
+            }
+            sys_log(&format!("DEBUG: [WaveformRemover] Trimming AI Stabilizing padding ({} samples).", ai_padding_samples));
+        } else {
+            sys_log("WARN: [WaveformRemover] Result too short to trim padding, results might have edge artifacts.");
+            trimmed_vocal = final_vocal_inner;
+            trimmed_inst = final_inst_inner;
+        }
+
+        // 7. Save Results
         let vocal_path = output_dir.join("vocal.wav");
         let inst_path = output_dir.join("inst.wav");
         
-        self.save_wav(&final_vocal_inner, &vocal_path, target_sample_rate)?;
-        self.save_wav(&final_inst_inner, &inst_path, target_sample_rate)?;
+        self.save_wav(&trimmed_vocal, &vocal_path, target_sample_rate)?;
+        self.save_wav(&trimmed_inst, &inst_path, target_sample_rate)?;
 
         sys_log(&format!("PERF: [WaveformRemover] Finalize & Save took: {:?}", finalize_start.elapsed()));
         sys_log(&format!("PERF: [WaveformRemover] Total separation time for track: {:?}", start_time.elapsed()));

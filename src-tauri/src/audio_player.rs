@@ -86,7 +86,6 @@ pub struct DynamicVolumeSource<S> where S: Source<Item = f32> {
     pub input: S,
     pub volume: Arc<AtomicU32>, // Shared target volume (bits of f32)
     pub current_vol: f32,       // Internal state for fading
-    pub is_first: bool,         // Initial state flag
 }
 
 impl<S> DynamicVolumeSource<S> where S: Source<Item = f32> {
@@ -95,7 +94,6 @@ impl<S> DynamicVolumeSource<S> where S: Source<Item = f32> {
             input,
             volume,
             current_vol: 0.0,
-            is_first: true,
         }
     }
 }
@@ -107,11 +105,7 @@ impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
         let target_vol_bits = self.volume.load(Ordering::Relaxed);
         let target_vol = f32::from_bits(target_vol_bits) / 100.0;
         
-        // Initialize current_vol on first sample to avoid fading from 0 on start
-        if self.is_first {
-            self.current_vol = target_vol;
-            self.is_first = false;
-        }
+        // Smoothly interpolate current_vol towards target_vol
 
         // Smoothly interpolate current_vol towards target_vol
         // Fade duration: 100ms

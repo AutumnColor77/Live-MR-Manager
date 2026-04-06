@@ -32,11 +32,7 @@
     "targets": ["nsis"],
     "resources": [
       "resources/*",
-      "target/release/DirectML.dll",
-      "target/release/onnxruntime_providers_cuda.dll",
-      "target/release/onnxruntime_providers_shared.dll",
-      "target/release/onnxruntime_providers_tensorrt.dll",
-      "target/release/onnxruntime_providers_nv_tensorrt_rtx.dll"
+      "resources/libs/*.dll"
     ],
     "icon": [
       "icons/32x32.png",
