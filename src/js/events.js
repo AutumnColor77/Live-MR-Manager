@@ -290,7 +290,7 @@ export function initGlobalListeners() {
   // Modal Save
   const modalSave = document.getElementById("modal-save");
   if (modalSave) {
-    modalSave.onclick = async () => {
+    const performSave = async () => {
       if (state.editingSongIndex === -1) return;
       const song = state.songLibrary[state.editingSongIndex];
       song.title = document.getElementById("edit-title").value;
@@ -303,13 +303,29 @@ export function initGlobalListeners() {
       
       const editGenreSelect = document.getElementById("edit-genre-select");
       const genreVal = editGenreSelect ? editGenreSelect.value : "";
-      song.genre = genreVal === "etc" ? document.getElementById("edit-genre-custom").value : genreVal;
+      const customGenreVal = document.getElementById("edit-genre-custom").value;
+      song.genre = genreVal === "etc" ? customGenreVal : genreVal;
       
       await saveLibrary(state.songLibrary);
       renderLibrary();
       elements.metadataModal.classList.remove("active");
       showNotification("변경사항이 저장되었습니다.", "success");
     };
+
+    modalSave.onclick = performSave;
+
+    // Add Enter key listener to all metadata inputs
+    ["edit-title", "edit-artist", "edit-category", "edit-genre-custom", "edit-tags"].forEach(id => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            performSave();
+          }
+        });
+      }
+    });
   }
 
   // Modal Actions
