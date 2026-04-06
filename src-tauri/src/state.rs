@@ -36,6 +36,7 @@ pub static DB: Lazy<Arc<Mutex<Connection>>> = Lazy::new(|| {
     sys_log(&format!("[DB] Connecting to: {:?}", db_path));
     
     let mut conn = Connection::open(db_path).expect("Failed to open database");
+    conn.execute("PRAGMA foreign_keys = ON", []).ok();
     init_db(&mut conn, &app_dir);
     
     Arc::new(Mutex::new(conn))

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::{Emitter, Manager, WebviewWindow, AppHandle};
 use std::process::Command;
+use std::collections::HashSet;
 
 mod types;
 mod youtube;
@@ -881,10 +882,33 @@ fn cancel_separation(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn delete_song(path: String) -> Result<(), String> {
+    let db = DB.lock();
+    db.execute("DELETE FROM Tracks WHERE path = ?", params![path]).map_err(to_sqlite_err)?;
+    sys_log(&format!("[DB] Song deleted from library: {}", path));
+    Ok(())
+}
+
+#[tauri::command]
 fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
     let mut db = DB.lock();
     let tx = db.transaction().map_err(to_sqlite_err)?;
     
+    // 1. Sync Deletions: Remove tracks that are not in the current 'songs' list
+    {
+        let mut stmt = tx.prepare("SELECT path FROM Tracks").map_err(to_sqlite_err)?;
+        let db_paths: Vec<String> = stmt.query_map([], |row| row.get::<usize, String>(0)).map_err(to_sqlite_err)?
+            .filter_map(|r| r.ok()).collect();
+        
+        let input_paths: HashSet<String> = songs.iter().map(|s| s.path.clone()).collect();
+        for path in db_paths {
+            if !input_paths.contains(&path) {
+                tx.execute("DELETE FROM Tracks WHERE path = ?", params![path]).ok();
+            }
+        }
+    }
+
+    // 2. Insert/Update existing tracks
     for song in songs {
         let genre_id: Option<i64> = if let Some(cat_name) = &song.genre {
             tx.execute("INSERT OR IGNORE INTO Genres (name) VALUES (?)", params![cat_name]).ok();
@@ -1102,6 +1126,7 @@ pub fn run() {
             get_gpu_recommendation,
             add_category,
             delete_category,
+            delete_song,
             map_track_to_categories
         ])
         .run(tauri::generate_context!())

@@ -21,6 +21,29 @@
   --titlebar-height: 38px;
 }
 
+/* Premium Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
 /* Custom Titlebar */
 .titlebar {
   height: var(--titlebar-height);
@@ -262,33 +285,6 @@ h1 {
 }
 
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--glass-bg);
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--glass-border);
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  box-shadow: 0 0 10px currentColor;
-}
-
-.status-indicator.online {
-  background-color: #10b981;
-  color: #10b981;
-}
-
-.status-text {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
 
 /* View Controls */
 .view-controls {

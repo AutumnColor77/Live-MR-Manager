@@ -4,7 +4,7 @@
 
 import { state, DEFAULT_CATEGORIES, SORT_OPTIONS } from './state.js';
 import { getThumbnailUrl, showNotification } from './utils.js';
-import { checkMrSeparated, saveLibrary } from './audio.js';
+import { checkMrSeparated, saveLibrary, deleteSongFromDb } from './audio.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -117,6 +117,7 @@ export function initDomReferences() {
   elements.managerSearchInput = document.getElementById("manager-search-input");
   elements.managerTableBody = document.getElementById("manager-table-body");
   elements.managerStat = document.getElementById("manager-stat");
+  elements.viewControls = document.getElementById("view-controls");
 }
 
 export function updateSuggestions(fieldId) {
@@ -692,12 +693,17 @@ function deleteSong(index) {
   if (confirmMsg) confirmMsg.textContent = `'${song.title}' 곡을 삭제하시겠습니까?`;
   
   if (confirmOk) {
-    confirmOk.onclick = () => {
-      state.songLibrary.splice(index, 1);
-      saveLibrary(state.songLibrary);
-      renderLibrary();
-      elements.confirmModal.classList.remove("active");
-      showNotification("곡이 삭제되었습니다.", "success");
+    confirmOk.onclick = async () => {
+      try {
+        const path = song.path;
+        state.songLibrary.splice(index, 1);
+        await deleteSongFromDb(path);
+        renderLibrary();
+        elements.confirmModal.classList.remove("active");
+        showNotification("곡이 삭제되었습니다.", "success");
+      } catch (err) {
+        showNotification("곡 삭제 중 오류가 발생했습니다.", "error");
+      }
     };
   }
   elements.confirmModal.classList.add("active");

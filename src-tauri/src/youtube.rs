@@ -15,6 +15,15 @@ pub struct DownloadProgress {
     pub total_size: Option<u64>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SeparationProgress {
+    pub path: String,
+    pub percentage: f32,
+    pub status: String,
+    pub provider: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct YoutubeMetadata {
     pub id: Option<String>,
@@ -179,6 +188,8 @@ impl YoutubeManager {
             let mut reader = FramedRead::new(stdout, LinesCodec::new());
             let window_clone = window.clone();
             let dest_clone = destination.clone();
+            let url_clone = url.to_string();
+            let wait_for_full_clone = wait_for_full;
 
             tokio::spawn(async move {
                 while let Some(line_result) = reader.next().await {
@@ -191,7 +202,7 @@ impl YoutubeManager {
                                         let total = progress.get("total_bytes")
                                             .or_else(|| progress.get("total_bytes_estimate"))
                                             .and_then(|b| b.as_u64());
-
+                                        
                                         let percentage = if let Some(t) = total {
                                             (downloaded as f32 / t as f32) * 100.0
                                         } else { 0.0 };
@@ -201,6 +212,15 @@ impl YoutubeManager {
                                             current_chunk: downloaded as usize,
                                             total_size: total,
                                         });
+
+                                        if wait_for_full_clone {
+                                            let _ = window_clone.emit("separation-progress", SeparationProgress {
+                                                path: url_clone.clone(),
+                                                percentage,
+                                                status: format!("Downloading... ({:.1}%)", percentage),
+                                                provider: "NETWORK".into(),
+                                            });
+                                        }
                                     }
                                 }
                             }

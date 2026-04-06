@@ -81,13 +81,13 @@
       <div class="view-header">
         <div class="title-row">
           <h1 id="view-title">Library</h1>
-          <div class="view-controls">
-            <button class="view-btn active" id="view-grid" title="Grid View">
+          <div class="view-controls" id="view-controls">
+            <button class="view-btn active" id="view-grid">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                 <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zM13 3h8v8h-8V3zm0 10h8v8h-8v-8z" />
               </svg>
             </button>
-            <button class="view-btn" id="view-list" title="List View">
+            <button class="view-btn" id="view-list">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                 <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2z" />
               </svg>
@@ -97,10 +97,6 @@
       </div>
 
 
-      <div class="user-info">
-        <span class="status-indicator online"></span>
-        <span class="status-text">OBS Connected</span>
-      </div>
     </header>
 
     <div class="scroll-area">
@@ -112,7 +108,7 @@
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input" />
+            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input" autocomplete="off" spellcheck="false" />
           </div>
           <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
         </div>
@@ -191,6 +187,27 @@
         <div class="settings-container" style="padding-top: 20px;">
           <section class="settings-group">
             <div class="group-header">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              <h3>곡 정보 관리</h3>
+            </div>
+            <div class="ai-model-card">
+              <div class="ai-info-left">
+                <h2 class="ai-title-large">라이브러리 일괄 수정</h2>
+                <div class="ai-model-desc">
+                  엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
+                </div>
+              </div>
+              <div class="ai-actions-right">
+                <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="group-header">
               <i class="icon-ai"></i>
               <h3>AI Separation Engine</h3>
             </div>
@@ -223,27 +240,6 @@
                 <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
                 <button id="btn-delete-model" class="btn-ai-action danger">모델 삭제</button>
                 <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-group">
-            <div class="group-header">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-              <h3>곡 정보 관리</h3>
-            </div>
-            <div class="ai-model-card">
-              <div class="ai-info-left">
-                <h2 class="ai-title-large">라이브러리 일괄 수정</h2>
-                <div class="ai-model-desc">
-                  엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
-                </div>
-              </div>
-              <div class="ai-actions-right">
-                <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
               </div>
             </div>
           </section>
@@ -439,7 +435,7 @@
               </div>
               <input type="hidden" id="edit-genre-select" value="">
             </div>
-            <input type="text" id="edit-genre-custom" placeholder="직접 입력...">
+            <input type="text" id="edit-genre-custom" placeholder="직접 입력..." autocomplete="off" spellcheck="false">
           </div>
         </div>
         <div class="input-group">
@@ -495,7 +491,7 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색...">
+            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off" spellcheck="false">
           </div>
         </div>
         <button class="close-btn" id="manager-modal-close">&times;</button>
@@ -524,7 +520,7 @@
         </div>
       </div>
       <footer class="modal-footer manager-footer">
-        <div class="manager-stat" id="manager-stat">Total 0 Songs</div>
+        <div id="manager-stat">Total 0 Songs</div>
         <div class="footer-actions">
           <button class="primary-btn" id="manager-modal-save">저장</button>
           <button class="secondary-btn" id="manager-modal-cancel">닫기</button>

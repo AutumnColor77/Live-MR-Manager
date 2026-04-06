@@ -141,7 +141,7 @@ impl SeparationTask {
         window.emit("separation-progress", SeparationProgress {
             path: path.to_string(),
             percentage: 0.0,
-            status: "Downloading YouTube Audio...".into(),
+            status: "Downloading... (Preparing)".into(),
             provider: "NETWORK".into(),
         }).ok();
 

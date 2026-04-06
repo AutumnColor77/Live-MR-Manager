@@ -71,6 +71,15 @@ export async function checkAiModelStatus() {
   return await invoke("check_model_ready");
 }
 
+export async function deleteSongFromDb(path) {
+  try {
+    await invoke("delete_song", { path });
+  } catch (err) {
+    console.error("Failed to delete song from DB:", err);
+    throw err;
+  }
+}
+
 export async function checkMrSeparated(path) {
   return await invoke("check_mr_separated", { path });
 }
