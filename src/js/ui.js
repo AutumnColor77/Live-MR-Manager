@@ -119,11 +119,131 @@ export function initDomReferences() {
   elements.managerStat = document.getElementById("manager-stat");
 }
 
+export function updateSuggestions(fieldId) {
+  const fieldType = fieldId === "lib-search-input" ? "search" : fieldId.replace("edit-", ""); // title, artist, category, tags, search
+  
+  // 1. Get unique values from library for this field
+  let allValues = [];
+  state.songLibrary.forEach(song => {
+    if (fieldType === "tags" || fieldType === "search") {
+      if (song.tags) allValues.push(...song.tags);
+    }
+    if (fieldType === "category" || fieldType === "search") {
+      if (song.category) allValues.push(song.category);
+      if (song.categories) allValues.push(...song.categories);
+    }
+    if (fieldType === "artist" || fieldType === "search") {
+      if (song.artist) allValues.push(song.artist);
+    }
+    if (fieldType === "title") {
+      if (song.title) allValues.push(song.title);
+    }
+  });
+
+  // Unique and clean
+  let uniqueValues = [...new Set(allValues)].filter(v => v && v.trim());
+  
+  // 2. Filter by ignored list (stored in localStorage)
+  const ignoredCat = JSON.parse(localStorage.getItem(`ignored-category`) || "[]");
+  const ignoredTags = JSON.parse(localStorage.getItem(`ignored-tags`) || "[]");
+  const ignoredArtist = JSON.parse(localStorage.getItem(`ignored-artist`) || "[]");
+  const ignoredSearch = JSON.parse(localStorage.getItem(`ignored-search`) || "[]");
+  
+  uniqueValues = uniqueValues.filter(v => {
+    return !ignoredCat.includes(v) && !ignoredTags.includes(v) && !ignoredArtist.includes(v) && !ignoredSearch.includes(v);
+  });
+
+  // 3. Filter by query
+  const inputEl = document.getElementById(fieldId);
+  if (!inputEl) return;
+  const query = inputEl.value.trim().toLowerCase();
+  
+  let filtered = uniqueValues;
+  if (query) {
+    filtered = uniqueValues.filter(v => v.toLowerCase().includes(query));
+  }
+  
+  // Limit results
+  filtered = filtered.slice(0, 10);
+  
+  const dropdown = document.getElementById(`${fieldId}-suggestions`);
+  if (dropdown) {
+    renderSuggestions(inputEl, dropdown, filtered);
+  }
+}
+
+function renderSuggestions(inputEl, dropdown, suggestions) {
+  if (suggestions.length === 0) {
+    dropdown.innerHTML = "";
+    dropdown.classList.remove("active");
+    return;
+  }
+
+  dropdown.innerHTML = suggestions.map(val => `
+    <div class="suggestion-item" data-value="${val.replace(/"/g, '&quot;')}">
+      <span class="suggestion-text">${val}</span>
+      <div class="suggestion-del-btn" title="제안에서 삭제">&times;</div>
+    </div>
+  `).join("");
+
+  dropdown.classList.add("active");
+  
+  // Re-bind click events for newly rendered items
+  dropdown.querySelectorAll(".suggestion-item").forEach(item => {
+    item.onclick = (e) => {
+      const delBtn = e.target.closest(".suggestion-del-btn");
+      if (delBtn) {
+        e.stopPropagation();
+        handleSuggestionDelete(inputEl, item.dataset.value);
+      } else {
+        const value = item.dataset.value;
+        const fieldId = inputEl.id;
+        
+        if (fieldId === "edit-tags") {
+          // Append for tags
+          const currentTags = inputEl.value.split(",").map(t => t.trim()).filter(t => t);
+          if (!currentTags.includes(value)) {
+            currentTags.push(value);
+            inputEl.value = currentTags.join(", ") + ", ";
+          }
+        } else {
+          inputEl.value = value;
+          // Trigger any related UI updates (like filtering the library)
+          inputEl.dispatchEvent(new Event("input"));
+        }
+        dropdown.classList.remove("active");
+        inputEl.focus();
+      }
+    };
+  });
+}
+
+function handleSuggestionDelete(inputEl, value) {
+  const fieldId = inputEl.id;
+  const fieldType = fieldId === "lib-search-input" ? "search" : fieldId.replace("edit-", "");
+  const ignored = JSON.parse(localStorage.getItem(`ignored-${fieldType}`) || "[]");
+  if (!ignored.includes(value)) {
+    ignored.push(value);
+    localStorage.setItem(`ignored-${fieldType}`, JSON.stringify(ignored));
+  }
+  updateSuggestions(fieldId);
+}
+
 export function renderLibrary() {
   if (!elements.songGrid) return;
   
-  // Ensure every song in the master library has an original index for tracking
-  state.songLibrary.forEach((s, i) => { s.originalIndex = i; });
+  // Ensure every song in the master library has an original index for tracking 
+  // AND synchronize category/categories to ensure UI consistency
+  state.songLibrary.forEach((s, i) => { 
+    s.originalIndex = i; 
+    
+    // Sync category (singular) and categories (plural) for consistency
+    if (s.category && (!s.categories || s.categories.length === 0 || s.categories[0] !== s.category)) {
+      s.categories = [s.category];
+    } else if (!s.category && s.categories && s.categories.length > 0) {
+      s.category = s.categories[0];
+    }
+  });
 
   elements.songGrid.innerHTML = "";
 
@@ -182,6 +302,21 @@ export function renderLibrary() {
   });
   
   updateThumbnailOverlay();
+  syncDockMetadata();
+}
+
+/**
+ * Synchronizes the player dock UI with current track metadata
+ */
+export function syncDockMetadata() {
+  if (!state.currentTrack) return;
+  
+  const song = state.currentTrack;
+  if (elements.dockTitle) elements.dockTitle.textContent = song.title;
+  if (elements.dockArtist) elements.dockArtist.textContent = song.artist || "Unknown Artist";
+  if (elements.dockThumbImg) {
+    elements.dockThumbImg.src = getThumbnailUrl(song.thumbnail, song);
+  }
 }
 
 function addSongCard(song, index) {

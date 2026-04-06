@@ -296,10 +296,14 @@ export function initGlobalListeners() {
       song.title = document.getElementById("edit-title").value;
       song.artist = document.getElementById("edit-artist").value;
       song.tags = document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t);
-      song.category = document.getElementById("edit-category").value.trim();      
-      const editCatSelect = document.getElementById("edit-genre-select");
-      const catVal = editCatSelect ? editCatSelect.value : "";
-      song.genre = catVal === "etc" ? document.getElementById("edit-genre-custom").value : catVal;
+      
+      const catVal = document.getElementById("edit-category").value.trim();
+      song.category = catVal;
+      song.categories = catVal ? [catVal] : [];
+      
+      const editGenreSelect = document.getElementById("edit-genre-select");
+      const genreVal = editGenreSelect ? editGenreSelect.value : "";
+      song.genre = genreVal === "etc" ? document.getElementById("edit-genre-custom").value : genreVal;
       
       await saveLibrary(state.songLibrary);
       renderLibrary();
@@ -320,12 +324,18 @@ export function initGlobalListeners() {
   if (confirmCancel) confirmCancel.onclick = () => elements.confirmModal.classList.remove("active");
 
   // Event Delegation for Custom Selects and Outside Clicks
+  let lastMouseDownTarget = null;
+  
+  document.addEventListener("mousedown", (e) => {
+    lastMouseDownTarget = e.target;
+  });
+
   document.addEventListener("click", (e) => {
     // 1. Context Menu Close
     if (elements.contextMenu) elements.contextMenu.classList.remove("active");
     
-    // 2. Modal Overlay Close (Outside click)
-    if (e.target.classList.contains("modal-overlay")) {
+    // 2. Modal Overlay Close (Outside click - only if started AND ended on the overlay)
+    if (e.target.classList.contains("modal-overlay") && lastMouseDownTarget === e.target) {
       e.target.classList.remove("active");
     }
 
@@ -360,7 +370,13 @@ export function initGlobalListeners() {
         import('./ui.js').then(m => m.updateAiTogglesState(null));
       }
     }
+
+    if (!e.target.closest(".suggestion-dropdown") && !e.target.closest(".input-group input")) {
+      document.querySelectorAll(".suggestion-dropdown").forEach(el => el.classList.remove("active"));
+    }
   });
+
+  initAutocompleteListeners();
 
   // VOCAL Toggle persistence
   elements.toggleVocal?.addEventListener("change", async (e) => {
@@ -457,6 +473,29 @@ export function initGlobalListeners() {
 
   if (managerModalSave) {
     managerModalSave.onclick = async () => {
+      // 1. Manually read ALL inputs from current table rows to ensure latest values are captured
+      // (Handles cases where blur/change event hasn't fired yet)
+      const rows = elements.managerTableBody.querySelectorAll("tr");
+      rows.forEach(tr => {
+        const index = parseInt(tr.dataset.index);
+        const song = state.songLibrary[index];
+        if (song) {
+          tr.querySelectorAll("input[data-field]").forEach(input => {
+            const field = input.dataset.field;
+            const value = input.value.trim();
+            if (field === "tags") {
+              song.tags = value.split(",").map(t => t.trim()).filter(t => t);
+            } else if (field === "category") {
+              song.category = value;
+              song.categories = value ? [value] : [];
+            } else {
+              song[field] = value;
+            }
+          });
+        }
+      });
+      
+      // 2. Persist to backend and refresh ALL UI parts
       await saveLibrary(state.songLibrary);
       renderLibrary();
       elements.managerModal.classList.remove("active");
@@ -761,8 +800,32 @@ function updateTaskUI(targetPath = null) {
       const statusText = t.status === "Queued" ? "대기 중..." : t.status === "Starting" ? "준비 중..." : t.status;
       const isQueued = t.status === "Queued";
       
-      const providerClass = t.provider?.includes('GPU') ? 'provider-gpu' : (t.provider === 'CPU' ? 'provider-cpu' : 'provider-network');
-      const providerText = t.provider?.includes('GPU') ? 'GPU' : (t.provider === 'CPU' ? 'CPU' : 'NETWORK');
+      // Provider logic refinement
+      const rawProvider = (t.provider || "").toUpperCase();
+      const isGPU = rawProvider.includes("GPU") || rawProvider.includes("CUDA") || rawProvider.includes("DIRECTML");
+      const isCPU = rawProvider.includes("CPU");
+      const isSystem = rawProvider.includes("SYSTEM") || t.status.includes("모델");
+      const isNetwork = rawProvider.includes("NETWORK") || t.status.toLowerCase().includes("down");
+
+      let providerText = "AI";
+      let providerClass = "provider-ai";
+
+      if (isGPU) {
+        providerText = "GPU";
+        providerClass = "provider-gpu";
+      } else if (isCPU) {
+        providerText = "CPU";
+        providerClass = "provider-cpu";
+      } else if (isNetwork) {
+        providerText = "NETWORK";
+        providerClass = "provider-network";
+      } else if (isSystem) {
+        providerText = "AI";
+        providerClass = "provider-ai";
+      } else if (t.status === "Queued") {
+        providerText = "QUEUED";
+        providerClass = "provider-queued";
+      }
 
       return `
         <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path}">
@@ -862,4 +925,53 @@ function setupDirectInput(displayEl, sliderEl) {
       if (displayEl.contains(input)) save();
     };
   };
+}
+
+/**
+ * Binds events for custom autocomplete/suggestion logic
+ */
+function initAutocompleteListeners() {
+  const fields = ["lib-search-input", "edit-title", "edit-artist", "edit-category", "edit-tags"];
+  
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    el.addEventListener("focus", () => {
+      import('./ui.js').then(m => m.updateSuggestions(el));
+    });
+
+    el.addEventListener("input", () => {
+      import('./ui.js').then(m => m.updateSuggestions(el));
+    });
+
+    el.addEventListener("keydown", (e) => {
+      const dropdown = document.getElementById(`${id}-suggestions`);
+      if (!dropdown || !dropdown.classList.contains("active")) return;
+
+      const items = dropdown.querySelectorAll(".suggestion-item");
+      if (items.length === 0) return;
+
+      let selectedIndex = Array.from(items).findIndex(item => item.classList.contains("selected"));
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (selectedIndex !== -1) items[selectedIndex].classList.remove("selected");
+        selectedIndex = (selectedIndex + 1) % items.length;
+        items[selectedIndex].classList.add("selected");
+        items[selectedIndex].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (selectedIndex !== -1) items[selectedIndex].classList.remove("selected");
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        items[selectedIndex].classList.add("selected");
+        items[selectedIndex].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter" && selectedIndex !== -1) {
+        e.preventDefault();
+        items[selectedIndex].click();
+      } else if (e.key === "Escape") {
+        dropdown.classList.remove("active");
+      }
+    });
+  });
 }

@@ -136,7 +136,8 @@
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
-          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색...">
+          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off" role="presentation">
+          <div id="lib-search-input-suggestions" class="suggestion-dropdown"></div>
         </div>
 <div class="filter-group">
   <div class="custom-select" id="lib-category-dropdown">
@@ -407,15 +408,18 @@
       <div class="modal-body">
         <div class="input-group">
           <label>제목</label>
-          <input type="text" id="edit-title">
+          <input type="text" id="edit-title" autocomplete="off">
+          <div id="edit-title-suggestions" class="suggestion-dropdown"></div>
         </div>
         <div class="input-group">
           <label>아티스트</label>
-          <input type="text" id="edit-artist" placeholder="아티스트명 입력">
+          <input type="text" id="edit-artist" placeholder="아티스트명 입력" autocomplete="off">
+          <div id="edit-artist-suggestions" class="suggestion-dropdown"></div>
         </div>
         <div class="input-group">
           <label>카테고리</label>
-          <input type="text" id="edit-category" placeholder="예: 애창곡, 벌칙곡, 미션곡 등">
+          <input type="text" id="edit-category" placeholder="예: 애창곡, 벌칙곡, 미션곡 등" autocomplete="off">
+          <div id="edit-category-suggestions" class="suggestion-dropdown"></div>
         </div>
         <div class="input-group">
           <label>장르</label>
@@ -440,7 +444,8 @@
         </div>
         <div class="input-group">
           <label>태그 (쉼표로 구분)</label>
-          <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브">
+          <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브" autocomplete="off">
+          <div id="edit-tags-suggestions" class="suggestion-dropdown"></div>
         </div>
       </div>
       <footer class="modal-footer">

@@ -1040,9 +1040,22 @@ h1 {
 }
 
 .provider-network {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.provider-ai {
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.05);
+}
+
+.provider-queued {
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .task-info {
@@ -2260,6 +2273,16 @@ input:checked+.slider:before {
   display: flex;
 }
 
+/* 확인 모달은 다른 모달보다 위에 표시되어야 하며, 시스템 전체에서도 상위 수준이어야 함 */
+#confirm-modal {
+  z-index: 11510;
+}
+
+/* AI 모델 다운로드 오버레이 역시 최상위 수준으로 유지 */
+#model-download-overlay {
+  z-index: 11600;
+}
+
 .modal-content {
   background: rgba(18, 18, 24, 0.95);
   border: 1px solid var(--glass-border);
@@ -2488,9 +2511,90 @@ input:checked+.slider:before {
 .select-arrow {
   width: 10px;
   height: 6px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
+  background: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center;
+  transition: transform 0.3s;
+}
+
+/* --- Suggestion Dropdown (Themed Autocomplete) --- */
+.suggestion-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(10, 10, 15, 0.98);
+  backdrop-filter: blur(35px) saturate(210%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  margin-top: 8px;
+  z-index: 15000; /* Extremely high to stay on top of everything */
+  box-shadow: 
+    0 25px 60px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-primary) transparent;
+}
+
+.suggestion-dropdown.active {
+  display: block;
+  animation: slideInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.suggestion-item {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: #eee;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover, .suggestion-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.suggestion-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-del-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.suggestion-del-btn:hover {
+  background: rgba(255, 100, 100, 0.15);
+  color: #ff5555;
+}
+
+@keyframes slideInDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.input-group {
+  position: relative; /* For absolutely positioned dropdowns */
 }
 
 /* ============================================================ 
@@ -3060,16 +3164,18 @@ input:checked+.slider:before {
 }
 
 .task-status-row-top .task-status-text {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
+  line-height: 1;
 }
 
 .task-status-row-top .task-percentage {
   font-size: 0.75rem;
   font-weight: 800;
   color: var(--accent-primary);
+  line-height: 1;
 }
 
 .task-header-info {
