@@ -1,7 +1,5 @@
 use rodio::{Decoder, Source};
 use rodio::source::UniformSourceIterator;
-use serde::{Deserialize, Serialize};
-use cpal::traits::{HostTrait, DeviceTrait};
 use std::fs::File;
 use std::io::BufReader;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -9,7 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{Emitter, Manager, WebviewWindow, AppHandle};
-use tauri::path::BaseDirectory;
 use std::process::Command;
 
 mod types;
@@ -32,15 +29,15 @@ use crate::state::MAIN_WINDOW;
 pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongMetadata};
 pub use crate::state::DB;
 pub use parking_lot::Mutex;
-use std::path::PathBuf;
-use std::fs;
 use id3::{Tag, TagLike};
-use rusqlite::{params, Connection, Error as SqliteError, Row as SqliteRow};
-use ort::execution_providers::{ExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
+use rusqlite::{params, Error as SqliteError, Row as SqliteRow};
+use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
+use ort::ep::ExecutionProvider;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
+use cpal::traits::{HostTrait, DeviceTrait};
 
 
 // --- AI Engine ---
@@ -188,7 +185,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
         
         if !final_path.exists() {
-            YoutubeManager::download_audio(&window, &path, final_path.clone()).await?;
+            YoutubeManager::download_audio(&window, &path, final_path.clone(), false).await?;
         }
         final_path
     } else {
@@ -323,7 +320,7 @@ async fn seek_to(position_ms: u64) -> Result<(), String> {
     };
 
     if let Some(p) = path {
-        let window_opt = { MAIN_WINDOW.lock().clone() };
+        let window_opt = { crate::state::MAIN_WINDOW.lock().clone() };
         
         if let Some(window) = window_opt {
             sys_log(&format!("[AUDIO] Seek request received: {}ms for {}", position_ms, p));
@@ -761,8 +758,8 @@ async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
     sys_log(&format!("[GPU-CHECK] has_nvidia: {}, cuda_available: {}, directml_available: {}", 
         has_nvidia, is_cuda_available, is_directml_available));
 
-    // 3. Recommendation logic
-    let recommend_cuda = has_nvidia && !is_cuda_available;
+    // 3. Recommendation logic: Only recommend CUDA if DirectML is also unavailable on NVIDIA hardware
+    let recommend_cuda = has_nvidia && !is_cuda_available && !is_directml_available;
     
     if recommend_cuda {
         sys_log("[GPU-CHECK] RESULT: RECOMMENDATION BANNER SHOULD BE VISIBLE.");

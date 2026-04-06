@@ -154,7 +154,7 @@ impl SeparationTask {
                     return Ok(final_path);
                 }
 
-                match YoutubeManager::download_audio(window, path, final_path.clone()).await {
+                match YoutubeManager::download_audio(window, path, final_path.clone(), true).await {
                     Ok(_) => Ok(final_path),
                     Err(e) => {
                         Self::emit_error(window, path, &format!("YT Error: {}", e), "NETWORK");

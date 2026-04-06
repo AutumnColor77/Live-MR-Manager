@@ -17,8 +17,7 @@ use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::DecoderOptions;
 use rubato::{Resampler, SincFixedIn, SincInterpolationType, SincInterpolationParameters, WindowFunction};
 use anyhow::{anyhow, Result};
-use rayon::prelude::*;
-const BATCH_SIZE: usize = 8;
+const BATCH_SIZE: usize = 4;
 
 pub trait InferenceEngine: Send + Sync {
     fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)>;
@@ -218,12 +217,12 @@ impl WaveformRemover {
         let threads = (num_cpus::get() / 2).max(1).min(4);
         sys_log(&format!("[AI-ENGINE] Initializing with {} intra-op threads", threads));
 
-        // Advanced CUDA options for maximum performance
+        // Prioritize DirectML for better standard Windows support and stability
         let providers_to_try = [
+            ("GPU (DirectML)", DirectMLExecutionProvider::default().build()),
             ("GPU (CUDA)", CUDAExecutionProvider::default()
                 .with_device_id(0)
                 .build()),
-            ("GPU (DirectML)", DirectMLExecutionProvider::default().build()),
             ("CPU", CPUExecutionProvider::default().build()),
         ];
 
@@ -234,6 +233,7 @@ impl WaveformRemover {
             let session_res: Result<Session, ort::Error> = (|| {
                 Session::builder()?
                     .with_intra_threads(threads)?
+                    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
                     .with_execution_providers([ep])?
                     .commit_from_file(model_path)
             })();
@@ -412,8 +412,9 @@ impl InferenceEngine for WaveformRemover {
 
         // --- 3-STAGE PIPELINE SETUP ---
         let pipeline_start = Instant::now();
-        let (pre_tx, pre_rx) = std::sync::mpsc::sync_channel::<(usize, Value, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 4);
-        let (post_tx, post_rx) = std::sync::mpsc::sync_channel::<(usize, Vec<Value>, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 4);
+        // Reduced buffer to BATCH_SIZE * 2 to minimize memory pressure during DirectML testing
+        let (pre_tx, pre_rx) = std::sync::mpsc::sync_channel::<(usize, Value, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 2);
+        let (post_tx, post_rx) = std::sync::mpsc::sync_channel::<(usize, Vec<Value>, Vec<Vec<f32>>, usize, bool)>(BATCH_SIZE * 2);
 
         // STAGE 1: Preprocessing (STFT) Thread
         let channels_data_clone = Arc::clone(&channels_data);
@@ -421,10 +422,10 @@ impl InferenceEngine for WaveformRemover {
         let cancel_flag_prep = cancel_flag.clone();
         std::thread::spawn(move || {
             let prep_start = Instant::now();
-            let cancel_flag_inner = cancel_flag_prep.clone(); 
-            (0..num_chunks).into_par_iter().for_each_with(pre_tx, move |tx, chunk_idx| {
-                // High-speed atomic check (lock-free)
-                if cancel_flag_inner.load(Ordering::Relaxed) { return; }
+            // Use regular loop instead of into_par_iter to ensure sync_channel backpressure works properly
+            // This prevents Rayon from flooding memory with pre-calculated tensors.
+            for chunk_idx in 0..num_chunks {
+                if cancel_flag_prep.load(Ordering::Relaxed) { break; }
                 
                 let mut chunk_start = chunk_idx * step_size;
                 let mut is_last_chunk_at_end = false;
@@ -440,6 +441,7 @@ impl InferenceEngine for WaveformRemover {
                     current_chunks[ch][..len].copy_from_slice(&channels_data_clone[ch][chunk_start..end_idx]);
                 }
 
+                // Internal parallelism for Left/Right channels is still maintained
                 let (left_stft, right_stft) = if ch_count > 1 {
                     rayon::join(
                         || stft_engine_clone.stft_ndarray(&current_chunks[0], target_bins),
@@ -453,8 +455,8 @@ impl InferenceEngine for WaveformRemover {
                 let num_frames = left_stft.shape()[0];
                 let input_value_res = if is_mdx {
                     let mut stereo_tensor = Array4::<f32>::zeros((1, 4, target_bins, num_frames));
-                    for f in 0..num_frames {
-                        for b in 0..target_bins {
+                    for b in 0..target_bins {
+                        for f in 0..num_frames {
                             let l = left_stft[[f, b]];
                             let r = right_stft[[f, b]];
                             stereo_tensor[[0, 0, b, f]] = l.re;
@@ -480,9 +482,11 @@ impl InferenceEngine for WaveformRemover {
                 };
 
                 if let Ok(input_value) = input_value_res {
-                    let _ = tx.send((chunk_idx, input_value.into_dyn(), current_chunks, chunk_start, is_last_chunk_at_end));
+                    if pre_tx.send((chunk_idx, input_value.into_dyn(), current_chunks, chunk_start, is_last_chunk_at_end)).is_err() {
+                        break;
+                    }
                 }
-            });
+            }
             sys_log(&format!("PERF: [AI-ENGINE] Stage 1 (Preprocessing) thread finished in {:?}.", prep_start.elapsed()));
         });
 
@@ -521,26 +525,41 @@ impl InferenceEngine for WaveformRemover {
                 let mut res_r = ndarray::Array2::from_elem((frames, target_bins), Complex::new(0.0f32, 0.0f32));
                 
                 if is_mdx {
-                    for f in 0..frames {
-                        for b in 0..target_bins {
-                            let base = b * frames + f;
-                            res_l[[f, b]] = Complex::new(owned_data[0 * target_bins * frames + base], owned_data[1 * target_bins * frames + base]);
-                            res_r[[f, b]] = Complex::new(owned_data[2 * target_bins * frames + base], owned_data[3 * target_bins * frames + base]);
+                    // Optimized extraction: Group by bins to improve cache locality
+                    for b in 0..target_bins {
+                        let offset = b * frames;
+                        for f in 0..frames {
+                            let base = offset + f;
+                            res_l[[f, b]] = Complex::new(
+                                owned_data[0 * target_bins * frames + base],
+                                owned_data[1 * target_bins * frames + base]
+                            );
+                            res_r[[f, b]] = Complex::new(
+                                owned_data[2 * target_bins * frames + base],
+                                owned_data[3 * target_bins * frames + base]
+                            );
                         }
                     }
                 } else {
                     for f in 0..frames {
+                        let f_offset = f * target_bins * 2;
                         for b in 0..target_bins {
-                            let base = f * target_bins * 2 + b * 2;
+                            let base = f_offset + b * 2;
                             res_l[[f, b]] = Complex::new(owned_data[base + 0], owned_data[base + 1]);
-                            res_r[[f, b]] = Complex::new(owned_data[frames * target_bins * 2 + base + 0], owned_data[frames * target_bins * 2 + base + 1]);
+                            res_r[[f, b]] = Complex::new(
+                                owned_data[frames * target_bins * 2 + base + 0],
+                                owned_data[frames * target_bins * 2 + base + 1]
+                            );
                         }
                     }
                 }
 
                 let req_samples_inner = current_chunks[0].len();
-                let voc_l = stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner);
-                let voc_r = stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner);
+                // Parallelized Channel Processing: iSTFT for Left and Right channels executed in parallel
+                let (voc_l, voc_r) = rayon::join(
+                    || stft_engine_clone_2.istft_ndarray(&res_l, req_samples_inner),
+                    || stft_engine_clone_2.istft_ndarray(&res_r, req_samples_inner)
+                );
                 let vocal_res = vec![voc_l, voc_r];
 
                 // Calculate results in local buffers first to minimize lock contention

@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashSet};
+use std::collections::{VecDeque, HashSet, HashMap};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU16, NonZeroU32};
@@ -6,16 +6,16 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 use rodio::{Source, Player, MixerDeviceSink, DeviceSinkBuilder};
-use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
+use crate::types::AppState;
 use parking_lot::Mutex;
 use once_cell::sync::Lazy;
-use tauri::{Emitter, WebviewWindow};
+use tauri::Emitter;
 use cpal::traits::{HostTrait, DeviceTrait};
 
 pub static ACTIVE_DOWNLOADS: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+pub static DOWNLOAD_FINISHED_NOTIFIER: Lazy<Mutex<HashMap<PathBuf, Arc<tokio::sync::Notify>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 pub static IS_PREPARING_PLAYBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 

@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use std::sync::Arc;
 use serde_json::Value;
 use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
@@ -127,108 +128,160 @@ impl YoutubeManager {
         window: &WebviewWindow,
         url: &str,
         destination: PathBuf,
+        wait_for_full: bool,
     ) -> Result<PathBuf, String> {
         let exe = Self::find_yt_dlp();
-        println!("Using yt-dlp at: {} for download to: {}", exe, destination.display());
         
-        {
+        // 1. Check if already downloading (Synchronization)
+        let notifier = {
             let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
-            active.insert(destination.clone());
-        }
+            if active.contains(&destination) {
+                // Return notifier to wait on existing process
+                let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
+                Some(notifiers.entry(destination.clone()).or_insert_with(|| Arc::new(tokio::sync::Notify::new())).clone())
+            } else {
+                active.insert(destination.clone());
+                None
+            }
+        };
 
-        let mut child = Command::new(&exe)
-            .args(&[
-                "--newline",
-                "--progress-template",
-                "%(progress)j",
-                "--no-check-certificates",
-                "--no-part", // Use real extension immediately for streaming
-                "--buffer-size", "16K",
-                "-f", "ba",
-                "-x",
-                "--audio-format", "m4a",
-                "-o", destination.to_str().ok_or("Invalid path")?,
-                url
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
+        if let Some(n) = notifier {
+            println!("Download already in progress for {:?}, waiting...", destination);
+            if wait_for_full {
+                n.notified().await;
+                return if destination.exists() { Ok(destination) } else { Err("Download failed in other thread".into()) };
+            } else {
+                // If streaming, still check for header
+            }
+        } else {
+            // This is the primary download thread
+            println!("Starting new yt-dlp download: {}", url);
+            let mut child = Command::new(&exe)
+                .args(&[
+                    "--newline",
+                    "--progress-template",
+                    "%(progress)j",
+                    "--no-check-certificates",
+                    "--no-part", 
+                    "--buffer-size", "16K",
+                    "-f", "ba",
+                    "-x",
+                    "--audio-format", "m4a",
+                    "-o", destination.to_str().ok_or("Invalid path")?,
+                    url
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
 
-        let stdout = child.stdout.take().unwrap();
-        let mut reader = FramedRead::new(stdout, LinesCodec::new());
-        let window_clone = window.clone();
-        let dest_clone = destination.clone();
+            let stdout = child.stdout.take().unwrap();
+            let mut reader = FramedRead::new(stdout, LinesCodec::new());
+            let window_clone = window.clone();
+            let dest_clone = destination.clone();
 
-        // Spawn a background task to monitor progress and wait for completion
-        tokio::spawn(async move {
-            while let Some(line_result) = reader.next().await {
-                match line_result {
-                    Ok(line) => {
-                        if let Ok(progress) = serde_json::from_str::<Value>(&line) {
-                            if let Some(status) = progress.get("status").and_then(|s| s.as_str()) {
-                                if status == "downloading" {
-                                    let downloaded = progress.get("downloaded_bytes").and_then(|b| b.as_u64()).unwrap_or(0);
-                                    let total = progress.get("total_bytes")
-                                        .or_else(|| progress.get("total_bytes_estimate"))
-                                        .and_then(|b| b.as_u64());
+            tokio::spawn(async move {
+                while let Some(line_result) = reader.next().await {
+                    match line_result {
+                        Ok(line) => {
+                            if let Ok(progress) = serde_json::from_str::<Value>(&line) {
+                                if let Some(status) = progress.get("status").and_then(|s| s.as_str()) {
+                                    if status == "downloading" {
+                                        let downloaded = progress.get("downloaded_bytes").and_then(|b| b.as_u64()).unwrap_or(0);
+                                        let total = progress.get("total_bytes")
+                                            .or_else(|| progress.get("total_bytes_estimate"))
+                                            .and_then(|b| b.as_u64());
 
-                                    let percentage = if let Some(t) = total {
-                                        (downloaded as f32 / t as f32) * 100.0
-                                    } else {
-                                        0.0
-                                    };
+                                        let percentage = if let Some(t) = total {
+                                            (downloaded as f32 / t as f32) * 100.0
+                                        } else { 0.0 };
 
-                                    let _ = window_clone.emit("youtube-download-progress", DownloadProgress {
-                                        percentage,
-                                        current_chunk: downloaded as usize,
-                                        total_size: total,
-                                    });
+                                        let _ = window_clone.emit("youtube-download-progress", DownloadProgress {
+                                            percentage,
+                                            current_chunk: downloaded as usize,
+                                            total_size: total,
+                                        });
+                                    }
                                 }
                             }
                         }
+                        Err(_) => {}
                     }
-                    Err(e) => println!("Error reading yt-dlp output: {}", e),
                 }
-            }
 
-            let status = child.wait().await;
+                let status = child.wait().await;
+                
+                {
+                    let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+                    active.remove(&dest_clone);
+                    
+                    // Notify all waiters
+                    let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
+                    if let Some(n) = notifiers.remove(&dest_clone) {
+                        n.notify_waiters();
+                    }
+                }
+
+                match status {
+                    Ok(s) if s.success() => {
+                        let _ = window_clone.emit("youtube-download-finished", dest_clone.to_string_lossy());
+                    },
+                    _ => {}
+                }
+            });
+        }
+
+        // 2. Wait logic (Full or Streaming)
+        if wait_for_full {
+            // Need to re-acquire notifier if we are the primary but someone else might have joined
+            let n = {
+                let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
+                notifiers.entry(destination.clone()).or_insert_with(|| Arc::new(tokio::sync::Notify::new())).clone()
+            };
             
-            {
-                let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
-                active.remove(&dest_clone);
-            }
-
-            match status {
-                Ok(s) if s.success() => {
-                    println!("yt-dlp download finished successfully: {:?}", dest_clone);
-                    let _ = window_clone.emit("youtube-download-finished", dest_clone.to_string_lossy());
-                },
-                Ok(s) => println!("yt-dlp download failed with status: {}", s),
-                Err(e) => println!("yt-dlp wait error: {}", e),
-            }
-        });
-
-        // Wait for the file to exist and have at least some bytes (for audio headers)
-        let start_wait = std::time::Instant::now();
-        let mut file_ready = false;
-        
-        while start_wait.elapsed().as_secs() < 10 {
-            if destination.exists() {
-                if let Ok(meta) = std::fs::metadata(&destination) {
-                    if meta.len() > 8192 { // Wait for 8KB (typical header size)
-                        file_ready = true;
-                        break;
-                    }
+            // Wait for completion via notification
+            let start = std::time::Instant::now();
+            while start.elapsed().as_secs() < 300 { // 5 min max for full download
+                {
+                    let active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+                    if !active.contains(&destination) { break; }
+                }
+                tokio::select! {
+                    _ = n.notified() => break,
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {}
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        }
+            
+            if destination.exists() { return Ok(destination); }
+            return Err("YouTube 오디오 파일을 완전히 다운로드하지 못했습니다".into());
+        } else {
+            // Streaming mode: wait for headers (8KB)
+            let start_wait = std::time::Instant::now();
+            let mut file_ready = false;
+            
+            // Increased to 30s as metadata extraction can be slow
+            while start_wait.elapsed().as_secs() < 30 {
+                {
+                    // If the download thread finished (meaning it succeeded or failed completely), stop waiting
+                    let active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+                    if !active.contains(&destination) { break; }
+                }
+                
+                if destination.exists() {
+                    if let Ok(meta) = std::fs::metadata(&destination) {
+                        if meta.len() > 8192 {
+                            file_ready = true;
+                            break;
+                        }
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            }
 
-        if !file_ready && !destination.exists() {
-            return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
+            if !file_ready && !destination.exists() {
+                return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
+            }
+            Ok(destination)
         }
-
-        Ok(destination)
     }
 }
