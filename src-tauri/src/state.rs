@@ -10,22 +10,61 @@ use crate::vocal_remover::WaveformRemover;
 use crate::audio_player::sys_log;
 use crate::types::SongMetadata;
 
+// --- App Paths Management ---
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AppPaths {
+    pub root: PathBuf,
+    pub models: PathBuf,
+    pub cache: PathBuf,
+    pub separated: PathBuf,
+    pub temp: PathBuf,
+    pub db: PathBuf,
+}
+
+impl AppPaths {
+    pub fn from_handle(handle: &tauri::AppHandle) -> Self {
+        let root = handle.path().app_local_data_dir().expect("Failed to get app data dir");
+        let models = root.join("models");
+        let cache = root.join("cache");
+        let separated = cache.join("separated");
+        let temp = root.join("temp");
+        let db = root.join("library.db");
+
+        // Ensure directories exist
+        let _ = fs::create_dir_all(&models);
+        let _ = fs::create_dir_all(&separated);
+        let _ = fs::create_dir_all(&temp);
+
+        Self { root, models, cache, separated, temp, db }
+    }
+}
+
+pub static APP_PATHS: Lazy<Mutex<Option<AppPaths>>> = Lazy::new(|| Mutex::new(None));
+
 // --- Global State ---
 
 pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex::new(None));
 pub static ROFORMER_ENGINE: Lazy<Arc<Mutex<Option<WaveformRemover>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 pub static DB: Lazy<Arc<Mutex<Connection>>> = Lazy::new(|| {
-    // Determine app data directory
-    let app_dir = if let Some(window) = MAIN_WINDOW.lock().as_ref() {
-        window.app_handle().path().app_local_data_dir().expect("Failed to get app data dir")
+    // Determine app data directory using AppPaths if available, otherwise fallback
+    let paths_guard = APP_PATHS.lock();
+    let app_dir = if let Some(paths) = paths_guard.as_ref() {
+        paths.root.clone()
     } else {
-        // As a fallback, check if we can get it from a temporary holder or environment
-        // In most cases, MAIN_WINDOW is set during setup() before any DB access occurs.
-        let mut path = std::env::var("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("data"));
-        path.push("tauri-app");
-        path
+        drop(paths_guard);
+        if let Some(window) = MAIN_WINDOW.lock().as_ref() {
+            window.app_handle().path().app_local_data_dir().expect("Failed to get app data dir")
+        } else {
+            let mut path = std::env::var("LOCALAPPDATA") // Use Local instead of Roaming
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::env::var("APPDATA")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|_| PathBuf::from("data"))
+                });
+            path.push("com.autumncolor77.live-mr-manager");
+            path
+        }
     };
     
     if !app_dir.exists() {

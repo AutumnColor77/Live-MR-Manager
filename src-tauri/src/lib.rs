@@ -110,9 +110,9 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
     }
     
     // 2. Metadata and path setup
-    let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
+    let paths = window.state::<crate::state::AppPaths>();
     let cache_key = urlencoding::encode(&path).to_string();
-    let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
+    let cache_dir = paths.separated.join(&cache_key);
     let vocal_path = cache_dir.join("vocal.wav");
     let inst_path = cache_dir.join("inst.wav");
     
@@ -182,7 +182,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         }
         
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
-        let temp_dir = std::env::temp_dir();
+        let temp_dir = window.state::<crate::state::AppPaths>().temp.clone();
         let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
         
         if !final_path.exists() {
@@ -366,9 +366,9 @@ async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String>
 
 #[tauri::command]
 async fn check_mr_separated(window: WebviewWindow, path: String) -> Result<bool, String> {
-    let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
+    let paths = window.state::<crate::state::AppPaths>();
     let cache_key = urlencoding::encode(&path).to_string();
-    let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
+    let cache_dir = paths.separated.join(&cache_key);
     let vocal_path = cache_dir.join("vocal.wav");
     let inst_path = cache_dir.join("inst.wav");
     Ok(vocal_path.exists() && inst_path.exists())
@@ -391,9 +391,9 @@ async fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
     };
 
     // 2. Delete the cached MR files
-    let app_dir = window.app_handle().path().app_local_data_dir().expect("Failed app dir");
+    let paths = window.state::<crate::state::AppPaths>();
     let cache_key = urlencoding::encode(&path).to_string();
-    let cache_dir = app_dir.join("cache").join("separated").join(&cache_key);
+    let cache_dir = paths.separated.join(&cache_key);
     if cache_dir.exists() {
         std::fs::remove_dir_all(cache_dir).map_err(|e| e.to_string())?;
     }
@@ -741,7 +741,11 @@ async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
     // 1. Detect Hardware (NVIDIA) - Windows implementation
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = Command::new("wmic")
+        use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new("wmic");
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        if let Ok(output) = cmd
             .args(["path", "win32_VideoController", "get", "name"])
             .output() {
             let stdout = String::from_utf8_lossy(&output.stdout).to_uppercase();
@@ -808,8 +812,12 @@ async fn delete_ai_model(window: WebviewWindow) -> Result<(), String> {
         
         sys_log("[AI-ENGINE] Model deleted and engine reset.");
     }
-    
     Ok(())
+}
+
+#[tauri::command]
+fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths {
+    handle.state::<crate::state::AppPaths>().inner().clone()
 }
 
 #[tauri::command]
@@ -830,16 +838,18 @@ async fn get_audio_devices() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
-    let app_dir = window.app_handle().path().app_local_data_dir().map_err(|e| e.to_string())?;
-    let path = app_dir.join("cache").join("separated");
+    let paths = window.state::<crate::state::AppPaths>();
+    let path = paths.separated.clone();
     if !path.exists() {
         std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
+        use std::os::windows::process::CommandExt;
         Command::new("explorer")
             .arg(path.to_string_lossy().to_string())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -1029,6 +1039,15 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
+            // 1. Initialize Global AppPaths
+            let app_paths = crate::state::AppPaths::from_handle(app.handle());
+            *crate::state::APP_PATHS.lock() = Some(app_paths.clone());
+            app.manage(app_paths);
+
+            // 2. Pre-initialize DB with correct paths
+            let _ = &*crate::state::DB;
+            sys_log("[SYSTEM] Global AppPaths and DB initialized.");
+
             let window = app.get_webview_window("main");
             if let Some(w) = window {
                 *crate::state::MAIN_WINDOW.lock() = Some(w.clone());
@@ -1127,7 +1146,8 @@ pub fn run() {
             add_category,
             delete_category,
             delete_song,
-            map_track_to_categories
+            map_track_to_categories,
+            get_app_paths
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

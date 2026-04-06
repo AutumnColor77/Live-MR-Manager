@@ -100,9 +100,8 @@ impl SeparationTask {
             provider: "SYSTEM".into(),
         }).ok();
 
-        let app_handle = window.app_handle();
-        let app_dir = app_handle.path().app_local_data_dir().map_err(|e| e.to_string())?;
-        let model_path = app_dir.join("models").join("Kim_Vocal_2.onnx");
+        let paths = window.state::<crate::state::AppPaths>();
+        let model_path = paths.models.join("Kim_Vocal_2.onnx");
 
         if !model_path.exists() {
             let err = "Error: 모델 파일 없음".to_string();
@@ -147,7 +146,8 @@ impl SeparationTask {
 
         match YoutubeManager::get_video_metadata(path).await {
             Ok(metadata) => {
-                let temp_dir = std::env::temp_dir();
+                let paths = window.state::<crate::state::AppPaths>();
+                let temp_dir = paths.temp.clone();
                 let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
                 
                 if final_path.exists() {

@@ -39,13 +39,18 @@ impl YoutubeManager {
     /// Finds the best yt-dlp executable by checking common Python script paths first.
     fn find_yt_dlp() -> String {
         // 1. Try to see if it's already in the system PATH (highest priority for user-installed ones)
-        let check_path = if cfg!(windows) {
-            std::process::Command::new("where.exe").arg("yt-dlp").output()
-        } else {
-            std::process::Command::new("which").arg("yt-dlp").output()
+        #[cfg(windows)]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            std::process::Command::new("where.exe")
+                .arg("yt-dlp")
+                .creation_flags(0x08000000)
+                .output()
         };
+        #[cfg(not(windows))]
+        let output = std::process::Command::new("which").arg("yt-dlp").output();
 
-        if let Ok(output) = check_path {
+        if let Ok(output) = output {
             if output.status.success() {
                 let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !p.is_empty() {
@@ -86,7 +91,13 @@ impl YoutubeManager {
         let exe = Self::find_yt_dlp();
         println!("Using yt-dlp at: {} for metadata from: {}", exe, url);
         
-        let output = Command::new(&exe)
+        let mut cmd = Command::new(&exe);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let output = cmd
             .args(&["-j", "--no-playlist", "--no-check-certificates", url])
             .output()
             .await
@@ -165,7 +176,13 @@ impl YoutubeManager {
         } else {
             // This is the primary download thread
             println!("Starting new yt-dlp download: {}", url);
-            let mut child = Command::new(&exe)
+            let mut cmd = Command::new(&exe);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            let mut child = cmd
                 .args(&[
                     "--newline",
                     "--progress-template",

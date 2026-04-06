@@ -420,10 +420,13 @@ export function initGlobalListeners() {
     btnDownloadModel.onclick = async () => {
       try {
         const { invoke } = window.__TAURI__.core;
+        const { updateAiModelStatus } = await import('./ui.js');
         await invoke("download_ai_model");
-        showNotification("AI 모델 다운로드를 시작합니다.", "info");
+        state.isAiModelReady = true;
+        updateAiModelStatus(true);
+        showNotification("AI 모델 다운로드 및 준비가 완료되었습니다.", "success");
       } catch (err) {
-        showNotification("모델 다운로드 시작 실패: " + err, "error");
+        showNotification("모델 다운로드 실패: " + err, "error");
       }
     };
   }

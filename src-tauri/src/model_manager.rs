@@ -13,11 +13,8 @@ pub struct ModelManager {
 #[allow(dead_code)]
 impl ModelManager {
     pub fn new(handle: &AppHandle) -> Self {
-        let app_dir = handle.path().app_local_data_dir().expect("Failed to get app data dir");
-        let model_dir = app_dir.join("models");
-        if !model_dir.exists() {
-            fs::create_dir_all(&model_dir).expect("Failed to create model directory");
-        }
+        let paths = handle.state::<crate::state::AppPaths>();
+        let model_dir = paths.models.clone();
         Self { model_dir }
     }
 
