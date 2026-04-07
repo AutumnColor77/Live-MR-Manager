@@ -1,4 +1,45 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 300;
+  src: url('./assets/fonts/SUITE-Light.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 400;
+  src: url('./assets/fonts/SUITE-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 500;
+  src: url('./assets/fonts/SUITE-Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 600;
+  src: url('./assets/fonts/SUITE-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 700;
+  src: url('./assets/fonts/SUITE-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 800;
+  src: url('./assets/fonts/SUITE-ExtraBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 900;
+  src: url('./assets/fonts/SUITE-Heavy.ttf') format('truetype');
+}
+
 
 :root {
   --bg-color: #08080a;
@@ -62,9 +103,9 @@
 }
 
 .titlebar-logo {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -104,7 +145,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Inter', sans-serif;
+  font-family: 'SUITE', sans-serif;
   user-select: none;
 }
 
@@ -151,17 +192,23 @@ body {
 }
 
 .logo-icon {
-  font-size: 1.8rem;
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 10px;
+  object-fit: contain;
 }
 
 .logo-text {
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.4rem;
-  font-weight: 800;
+  font-family: 'SUITE', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.1;
   background: linear-gradient(to right, #fff, #94a3b8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  max-width: 90px;
+  word-break: keep-all;
 }
 
 .nav-group {
@@ -169,11 +216,11 @@ body {
 }
 
 .nav-label {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 900;
   text-transform: uppercase;
   color: var(--text-dim);
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   margin-bottom: 6px;
   display: block;
   padding-left: 12px;
@@ -191,7 +238,7 @@ body {
   color: var(--text-muted);
   margin-bottom: 2px;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 800;
   white-space: nowrap;
   /* Single line enforced */
   position: relative;
@@ -223,7 +270,7 @@ body {
   font-size: 0.7rem;
   padding: 2px 8px;
   border-radius: 20px;
-  font-weight: 700;
+  font-weight: 900;
   margin-left: auto;
   /* Float to the right */
   box-shadow: 0 0 10px var(--accent-glow);
@@ -265,7 +312,7 @@ body {
 }
 
 h1 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   font-size: 1.6rem;
   font-weight: 700;
   white-space: nowrap;
@@ -327,11 +374,30 @@ h1 {
   padding: 10px var(--safe-area) 40px var(--safe-area);
 }
 
+.page-controls-wrapper {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px var(--safe-area) 10px var(--safe-area);
+  background: transparent;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 110;
+}
+
 .search-section {
   display: block;
-  margin: 0 0 32px 0;
+  margin: 0;
   height: 42px;
   animation: fadeIn 0.3s ease;
+}
+
+.library-controls {
+  margin: 0 !important;
+  height: auto;
+  min-height: 42px;
 }
 
 .yt-search-container {
@@ -390,7 +456,7 @@ h1 {
   justify-content: center;
   border: 1px solid transparent;
   outline: none;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   letter-spacing: -0.01em;
 }
 
@@ -434,7 +500,7 @@ h1 {
 /* Song Grid */
 .song-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(192px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   grid-auto-rows: 1fr;
   /* 紐⑤뱺 ?됱쓽 ?믪씠瑜??숈씪?섍쾶 ?좎? */
   gap: 24px;
@@ -534,7 +600,7 @@ h1 {
 .song-name {
   font-weight: 700;
   font-size: 0.9rem;
-  margin-bottom: 6px;
+  margin-bottom: 11px;
   min-height: 1.2rem;
   display: flex;
   align-items: center;
@@ -566,10 +632,11 @@ h1 {
   font-size: 0.7rem;
   color: var(--accent-primary);
   background: rgba(59, 130, 246, 0.1);
-  padding: 2px 8px;
+  padding: 0 10px;
   border-radius: 4px;
-  display: inline-block;
-  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
@@ -988,18 +1055,25 @@ h1 {
 
 .tasks-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .tasks-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .task-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 16px;
-  padding: 24px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
   animation: slideInUp 0.3s ease;
   transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1), background 0.3s ease;
 }
@@ -1032,7 +1106,7 @@ h1 {
   align-items: center;
   margin-left: auto;
   letter-spacing: 0.05em;
-  font-family: 'Inter', sans-serif;
+  font-family: 'SUITE', sans-serif;
 }
 
 .provider-gpu {
@@ -1069,6 +1143,7 @@ h1 {
 
 .task-info {
   width: 100%;
+  min-width: 0;
 }
 
 .task-header-info {
@@ -1824,7 +1899,7 @@ input:checked+.slider:before {
 }
 
 .drop-box-text {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   font-size: 1.2rem;
   font-weight: 700;
   color: #fff;
@@ -2159,12 +2234,15 @@ input:checked+.slider:before {
 .ai-model-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: 20px;
-  padding: 30px;
+  border-radius: 16px;
+  /* 20px -> 16px */
+  padding: 20px;
+  /* 30px -> 20px */
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 30px;
+  gap: 20px;
+  /* 30px -> 20px */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2179,7 +2257,8 @@ input:checked+.slider:before {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  /* 12px -> 8px */
 }
 
 .status-badge {
@@ -2206,18 +2285,21 @@ input:checked+.slider:before {
 }
 
 .ai-title-large {
-  font-size: 1.75rem;
+  font-size: 1.3rem;
+  /* 1.75rem -> 1.3rem */
   font-weight: 800;
   color: #fff;
   margin: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   letter-spacing: -0.5px;
 }
 
 .ai-model-desc {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+  /* 0.95rem -> 0.85rem */
   color: var(--text-dim);
-  line-height: 1.6;
+  line-height: 1.5;
+  /* 1.6 -> 1.5 */
   max-width: 540px;
   word-break: keep-all;
 }
@@ -2225,8 +2307,10 @@ input:checked+.slider:before {
 .ai-actions-right {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 180px;
+  gap: 8px;
+  /* 10px -> 8px */
+  min-width: 150px;
+  /* 180px -> 150px */
 }
 
 .btn-ai-action {
@@ -2329,7 +2413,7 @@ input:checked+.slider:before {
   font-size: 1.25rem;
   font-weight: 700;
   color: #fff;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
 }
 
 .close-btn {
@@ -2494,7 +2578,6 @@ input:checked+.slider:before {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 24px;
   flex-wrap: wrap;
 }
 
@@ -2698,7 +2781,7 @@ input:checked+.slider:before {
 }
 
 .song-name {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'SUITE', sans-serif;
   font-weight: 700;
   font-size: 1.25rem;
   /* Slightly larger as per sketch */
@@ -3036,26 +3119,7 @@ input:checked+.slider:before {
   }
 }
 
-/* --- Processing Task Cards Styles --- */
-.tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 10px 0;
-}
-
-.task-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 16px;
-  transition: transform 0.2s;
-}
-
-.task-card:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.05);
-}
+/* Redundant tasks-list/task-card styles removed to maintain grid responsiveness */
 
 .task-header-info {
   display: flex;
@@ -3206,11 +3270,7 @@ input:checked+.slider:before {
   margin-bottom: 2px;
 }
 
-.task-card {
-  padding: 10px 12px 1px 12px;
-  margin-bottom: 0px;
-  border-radius: 12px;
-}
+/* Redundant task-card styles removed */
 
 /* Bottom padding minimized to 1px */
 .task-progress-container {
@@ -3234,9 +3294,7 @@ input:checked+.slider:before {
   letter-spacing: -0.3px;
 }
 
-.tasks-list {
-  gap: 2px;
-}
+/* Updated in main tasks-list section */
 
 /* Gap between cards minimized to 2px */
 

@@ -12,7 +12,8 @@
   <!-- 커스텀 타이틀바 -->
   <div data-tauri-drag-region class="titlebar">
     <div class="titlebar-logo">
-      🎙️ Live MR Manager
+      <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
+      MR Manager
     </div>
     <div class="titlebar-actions">
       <div class="titlebar-button" id="titlebar-minimize">
@@ -42,7 +43,7 @@
   <!-- 사이드바 -->
   <nav class="sidebar">
     <div class="logo">
-      <span class="logo-icon">🎙️</span>
+      <img src="./assets/images/app-icon.png" alt="Logo" class="logo-icon">
       <span class="logo-text">Live MR Manager</span>
     </div>
 
@@ -112,34 +113,8 @@
 
     </header>
 
-    <div class="scroll-area">
-      <!-- 유튜브 입력 섹션 -->
-      <section class="search-section" id="youtube-search">
-        <div class="yt-search-container">
-          <div class="search-box">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
-              autocomplete="off" spellcheck="false" />
-          </div>
-          <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
-        </div>
-      </section>
-
-      <!-- My Files 전용 드롭존 -->
-      <section class="local-drop-section" id="local-drop-section">
-        <div class="drop-box" id="local-drop-box">
-          <div class="drop-box-content">
-            <span class="drop-box-icon">🎵</span>
-            <span class="drop-box-text">보관할 음악 파일을 여기에 드롭하세요</span>
-            <span class="drop-box-hint">MP3, WAV, FLAC 지원</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- 라이브러리 탐색/필터 컨트롤 -->
+    <div class="page-controls-wrapper">
+      <!-- 1순위: 곡 제목/아티스트 검색란 -->
       <section class="library-controls" id="library-controls" style="display: none;">
         <div class="search-bar">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -194,6 +169,34 @@
         </div>
       </section>
 
+      <!-- 2순위: 유튜브 주소 입력란 -->
+      <section class="search-section" id="youtube-search">
+        <div class="yt-search-container">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
+              autocomplete="off" spellcheck="false" />
+          </div>
+          <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
+        </div>
+      </section>
+
+      <!-- 3순위: 파일 드롭존 -->
+      <section class="local-drop-section" id="local-drop-section" style="display: none;">
+        <div class="drop-box" id="local-drop-box">
+          <div class="drop-box-content">
+            <span class="drop-box-icon">🎵</span>
+            <span class="drop-box-text">보관할 음악 파일을 여기에 드롭하세요</span>
+            <span class="drop-box-hint">MP3, WAV, FLAC 지원</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="scroll-area">
       <!-- 곡 목록 그리드 -->
       <div id="song-grid" class="song-grid"></div>
 
@@ -210,13 +213,26 @@
             </div>
             <div class="ai-model-card">
               <div class="ai-info-left">
-                <h2 class="ai-title-large">라이브러리 일괄 수정</h2>
+                <h2 class="ai-title-large">곡 정보 일괄 수정</h2>
                 <div class="ai-model-desc">
                   엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
                 </div>
               </div>
               <div class="ai-actions-right">
                 <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
+              </div>
+            </div>
+
+            <div class="ai-model-card" style="margin-top: 15px;">
+              <div class="ai-info-left">
+                <h2 class="ai-title-large">데이터 백업 및 복원 (병합)</h2>
+                <div class="ai-model-desc">
+                  현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
+                </div>
+              </div>
+              <div class="ai-actions-right">
+                <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
+                <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
               </div>
             </div>
           </section>
@@ -595,5 +611,7 @@
 
   <script type="module" src="/main.js"></script>
 </body>
+
+</html>
 
 </html>

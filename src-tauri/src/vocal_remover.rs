@@ -56,7 +56,9 @@ impl StftEngine {
 
         let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
         for (f_idx, start) in (0..=num_samples.saturating_sub(n_fft)).step_by(self.hop_length).enumerate() {
-            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
+            if throttle && (f_idx % 2 == 0) { 
+                std::thread::sleep(std::time::Duration::from_millis(1)); 
+            }
             if f_idx >= num_frames { break; }
             for i in 0..n_fft {
                 input[i] = Complex::new(samples[start + i] * self.window[i], 0.0);
@@ -84,7 +86,9 @@ impl StftEngine {
 
         let throttle = crate::separation::BROADCAST_MODE.load(std::sync::atomic::Ordering::Relaxed);
         for f_idx in 0..num_frames {
-            if throttle && (f_idx % 4 == 0) { std::thread::yield_now(); }
+            if throttle && (f_idx % 2 == 0) { 
+                std::thread::sleep(std::time::Duration::from_millis(1)); 
+            }
             let start = f_idx * self.hop_length;
             
             // Reset buffer
@@ -444,9 +448,9 @@ impl InferenceEngine for WaveformRemover {
             for chunk_idx in 0..num_chunks {
                 if cancel_flag_prep.load(Ordering::Relaxed) { break; }
                 
-                // [FIX] Broadcast Mode Throttle
+                // [FIX] Broadcast Mode Throttle (More aggressive)
                 if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    std::thread::sleep(std::time::Duration::from_millis(120));
                 }
                 
                 let mut chunk_start = chunk_idx * step_size;
@@ -655,9 +659,9 @@ impl InferenceEngine for WaveformRemover {
                 return Err(anyhow!("Cancelled by user"));
             }
 
-            // [FIX] Broadcast Mode Throttle for inference
+            // [FIX] Broadcast Mode Throttle for inference (Increased for better system responsiveness)
             if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
-                std::thread::sleep(std::time::Duration::from_millis(100)); // Give GPU breathing room
+                std::thread::sleep(std::time::Duration::from_millis(250)); // Give GPU/CPU significant breathing room
             }
 
             // Collect batch

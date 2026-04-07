@@ -284,6 +284,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
     let host = cpal::default_host();
     let device = host.default_output_device();
     let device_name = match device.as_ref() {
+        #[allow(deprecated)]
         Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".into()),
         None => "Unknown Device".to_string(),
     };

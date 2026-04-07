@@ -454,6 +454,53 @@ export function initGlobalListeners() {
   window.__TAURI__.core.invoke("set_broadcast_mode", { enabled: state.broadcastMode }).catch(console.error);
 
   // Settings Events
+  const btnExportBackup = document.getElementById("btn-export-backup");
+  const btnImportBackup = document.getElementById("btn-import-backup");
+
+  if (btnExportBackup) {
+    btnExportBackup.onclick = async () => {
+      try {
+        const { invoke } = window.__TAURI__.core;
+        btnExportBackup.disabled = true;
+        btnExportBackup.textContent = "백업 중...";
+        await invoke("export_backup");
+        showNotification("라이브러리 목록이 성공적으로 백업되었습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("백업 중 오류가 발생했습니다: " + err, "error");
+        }
+      } finally {
+        btnExportBackup.disabled = false;
+        btnExportBackup.textContent = "목록 백업";
+      }
+    };
+  }
+
+  if (btnImportBackup) {
+    btnImportBackup.onclick = async () => {
+      try {
+        const { invoke } = window.__TAURI__.core;
+        btnImportBackup.disabled = true;
+        btnImportBackup.textContent = "복원 중...";
+        await invoke("import_backup");
+        
+        // Refresh local state and UI
+        const { loadLibrary } = await import('./audio.js');
+        state.songLibrary = await loadLibrary();
+        renderLibrary();
+        
+        showNotification("백업본에서 없는 곡들을 성공적으로 병합했습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("복원 중 오류가 발생했습니다: " + err, "error");
+        }
+      } finally {
+        btnImportBackup.disabled = false;
+        btnImportBackup.textContent = "목록 복원";
+      }
+    };
+  }
+
   const btnDownloadModel = document.getElementById("btn-download-model");
   const btnOpenCache = document.getElementById("btn-open-cache");
 

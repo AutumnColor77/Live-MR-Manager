@@ -1,4 +1,4 @@
-use rodio::{Decoder, Source};
+use rodio::Source;
 use rodio::source::UniformSourceIterator;
 use std::fs::File;
 use std::io::BufReader;
@@ -26,16 +26,16 @@ use crate::audio_player::{
     AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource,
     sys_log
 };
-use crate::state::MAIN_WINDOW;
+// use crate::state::MAIN_WINDOW; // Unused in lib.rs
 pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongMetadata};
 pub use crate::state::DB;
 pub use parking_lot::Mutex;
 use id3::{Tag, TagLike};
-use rusqlite::{params, Error as SqliteError, Row as SqliteRow};
+use rusqlite::{params, Error as SqliteError};
 use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
 use ort::ep::ExecutionProvider;
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::meta::MetadataOptions;
+// use symphonia::core::formats::FormatOptions;
+// use symphonia::core::meta::MetadataOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
 use cpal::traits::{HostTrait, DeviceTrait};
@@ -733,6 +733,50 @@ fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String>
 }
 
 #[tauri::command]
+async fn export_backup() -> Result<(), String> {
+    if let Some(path) = rfd::AsyncFileDialog::new()
+        .add_filter("JSON", &["json"])
+        .set_file_name("LiveMR_Backup.json")
+        .save_file()
+        .await
+    {
+        let songs = get_songs().await?;
+        let json = serde_json::to_string_pretty(&songs).map_err(|e| e.to_string())?;
+        std::fs::write(path.path(), json).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("CANCELLED".into())
+    }
+}
+
+#[tauri::command]
+async fn import_backup(app: AppHandle) -> Result<(), String> {
+    if let Some(path) = rfd::AsyncFileDialog::new()
+        .add_filter("JSON", &["json"])
+        .pick_file()
+        .await
+    {
+        let json = std::fs::read_to_string(path.path()).map_err(|e| e.to_string())?;
+        let backup_songs: Vec<SongMetadata> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        
+        // 병합 (Merge) 로직
+        let mut current_songs = get_songs().await?;
+        let current_paths: std::collections::HashSet<String> = current_songs.iter().map(|s| s.path.clone()).collect();
+        
+        for song in backup_songs {
+            if !current_paths.contains(&song.path) {
+                current_songs.push(song);
+            }
+        }
+        
+        save_library(app, current_songs)?;
+        Ok(())
+    } else {
+        Err("CANCELLED".into())
+    }
+}
+
+#[tauri::command]
 async fn get_track_count() -> Result<i64, String> {
     let db = DB.lock();
     db.query_row("SELECT count(*) FROM Tracks", [], |row| row.get(0)).map_err(to_sqlite_err)
@@ -801,7 +845,7 @@ pub fn run() {
             get_audio_metadata, get_playback_state, check_ai_runtime, check_model_ready, download_ai_model, save_library,
             load_library, get_songs, get_categories, get_genres, get_track_count, cancel_separation, set_broadcast_mode,
             get_audio_devices, open_cache_folder, delete_ai_model, get_gpu_recommendation, add_category, delete_category,
-            delete_song, map_track_to_categories, get_app_paths
+            delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
