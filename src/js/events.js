@@ -23,6 +23,11 @@ export function initNavigation() {
 export function switchTab(tabId) {
   if (elements.viewTitle) elements.viewTitle.textContent = getTabTitle(tabId);
   
+  if (elements.viewSubtitle) {
+    elements.viewSubtitle.textContent = tabId === "tasks" ? "Broadcast Safe 기능을 켜두면 AI 분리 중 연산 속도를 조절하여 방송(OBS) 프레임 드랍을 방지합니다." : "";
+    elements.viewSubtitle.style.display = tabId === "tasks" ? "block" : "none";
+  }
+  
   document.querySelectorAll(".nav-item").forEach(i => {
     i.classList.toggle("active", i.id === `nav-${tabId}`);
   });

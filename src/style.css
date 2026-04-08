@@ -311,6 +311,14 @@ body {
   gap: 15px;
 }
 
+.view-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
 h1 {
   font-family: 'SUITE', sans-serif;
   font-size: 1.6rem;

@@ -16,6 +16,7 @@ export const elements = {
   libCategoryFilter: null,
   libSortSelect: null,
   viewTitle: null,
+  viewSubtitle: null,
   youtubeSection: null,
   localSection: null,
   libraryControls: null,
@@ -68,6 +69,7 @@ export const elements = {
 export function initDomReferences() {
   elements.songGrid = document.getElementById("song-grid");
   elements.viewTitle = document.getElementById("view-title");
+  elements.viewSubtitle = document.getElementById("view-subtitle");
   elements.libSearchInput = document.getElementById("lib-search-input");
   elements.libGenreFilter = document.getElementById("lib-genre-filter");
   elements.libCategoryFilter = document.getElementById("lib-category-filter");
