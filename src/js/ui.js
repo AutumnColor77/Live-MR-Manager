@@ -64,6 +64,15 @@ export const elements = {
   toggleBroadcastMode: null,
   toggleBroadcastModeActive: null,
   broadcastTasksControl: null,
+  btnMetadataSearch: null,
+  metadataSearchResultsModal: null,
+  searchResultsClose: null,
+  
+  // Curation
+  curationOriginal: null,
+  curationCategory: null,
+  curationTranslated: null,
+  unclassifiedTagsList: null,
 };
 
 export function initDomReferences() {
@@ -126,6 +135,15 @@ export function initDomReferences() {
   elements.toggleBroadcastMode = document.getElementById("toggle-broadcast-mode");
   elements.toggleBroadcastModeActive = document.getElementById("toggle-broadcast-mode-tasks");
   elements.broadcastTasksControl = document.getElementById("broadcast-tasks-control");
+  elements.btnMetadataSearch = document.getElementById("btn-metadata-search");
+  elements.metadataSearchResultsModal = document.getElementById("metadata-search-results-modal");
+  elements.searchResultsList = document.getElementById("search-results-list");
+  elements.searchResultsClose = document.getElementById("search-results-close");
+  
+  elements.curationOriginal = document.getElementById("curation-original");
+  elements.curationCategory = document.getElementById("curation-category");
+  elements.curationTranslated = document.getElementById("curation-translated");
+  elements.unclassifiedTagsList = document.getElementById("unclassified-tags-list");
 }
 
 export function updateSuggestions(fieldId) {
@@ -355,42 +373,43 @@ function addSongCard(song, index) {
     </div>
     
     ${isList ? `
-      <div class="song-info-content list-layout">
-        <div class="col col-info">
-          <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
-          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+      <div class="col-info">
+        <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
+        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+      </div>
+      <div class="status-badge-container"></div>
+      <div class="col-genre">
+        ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
+          ? `<div class="category-list"><span class="category-badge">${song.category || song.categories[0]}</span></div>`
+          : ''}
+        <div class="genre-list">
+          <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
         </div>
-        <div class="col col-genre">
-          ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
-            ? `<div class="category-list"><span class="category-badge">${song.category || song.categories[0]}</span></div>`
-            : ''}
-          <div class="genre-list">
-            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '전체').toUpperCase()}</span>
-          </div>
+      </div>
+      <div class="col-tags">
+        <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
+          ${song.tags && song.tags.length > 0 
+            ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('') 
+            : '<span class="tag-no-info">태그 없음</span>'}
         </div>
-        <div class="col col-tags">
-          <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
-            ${song.tags && song.tags.length > 0 
-              ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('') 
-              : '<span class="tag-no-info">태그 없음</span>'}
-          </div>
-        </div>
-        <div class="col col-duration">
-          <span class="duration-text">${song.duration || '--:--'}</span>
-        </div>
+      </div>
+      <div class="col-duration">
+        <span class="duration-text">${song.duration || '--:--'}</span>
       </div>
     ` : `
       <div class="song-info-content grid-layout">
-        <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
-        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
-        <div class="song-meta" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <div class="meta-badges" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; overflow: hidden;">
-            ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
-              ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
-              : ''}
-            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '전체').toUpperCase()}</span>
+        <div class="metadata-stack">
+          <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
+          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+          <div class="song-meta">
+            <div class="meta-badges">
+              ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
+                ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
+                : ''}
+              <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
+            </div>
+            <span class="duration-text">${song.duration || '--:--'}</span>
           </div>
-          <span class="duration-text" style="white-space: nowrap;">${song.duration || '--:--'}</span>
         </div>
         <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
           ${song.tags && song.tags.length > 0 
@@ -401,21 +420,39 @@ function addSongCard(song, index) {
     `}
   `;
   
-  // Async MR Badge check
+  // Unified Status Badge (MR / 분리중 / 대기중)
   checkMrSeparated(song.path).then(isSeparated => {
-    if (isSeparated) {
-      const parent = isList ? card.querySelector(".song-name") : card.querySelector(".thumbnail");
-      if (parent && !parent.querySelector(".mr-badge")) {
-        const badge = document.createElement("div");
-        badge.className = "mr-badge";
-        badge.textContent = "MR";
-        parent.appendChild(badge);
-      }
+    const parent = isList ? card.querySelector(".status-badge-container") : card.querySelector(".thumbnail");
+    if (!parent || parent.querySelector(".status-badge")) return;
+
+    const badge = document.createElement("div");
+    badge.className = "status-badge";
+
+    const activeTask = state.activeTasks[song.path];
+    if (activeTask && activeTask.status !== "Finished") {
+      const isWaiting = activeTask.status === "Pending" || activeTask.status === "Preparing";
+      badge.classList.add(isWaiting ? "pending" : "processing");
+      badge.textContent = isWaiting ? "대기중" : "분리중";
+    } else if (isSeparated || song.isMr) {
+      badge.classList.add("mr");
+      badge.textContent = "MR";
+    } else {
+      return; // No badge needed
     }
+
+    parent.appendChild(badge);
   });
 
   // Integrated click handler: Play immediately on card or thumbnail click
   const handlePlayClick = async (e) => {
+    // If context menu is active, just close it and stop further action
+    if (elements.contextMenu && elements.contextMenu.classList.contains("active")) {
+      elements.contextMenu.classList.remove("active");
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+
     // e.stopPropagation(); // Allow propagation for unified selection tracking
     e.preventDefault();
     const { selectTrack } = await import('./player.js');
@@ -567,8 +604,21 @@ function showSongContextMenu(e, song, originalIndex) {
   if (!elements.contextMenu) return;
   state.editingSongIndex = originalIndex;
   
-  elements.contextMenu.style.top = `${e.clientY}px`;
-  elements.contextMenu.style.left = `${e.clientX}px`;
+  // Boundary check to prevent menu from overflowing viewport
+  const menuWidth = 160;   // Estimated menu width
+  const menuHeight = 200;  // Estimated max menu height
+  let x = e.clientX;
+  let y = e.clientY;
+  const winW = window.innerWidth;
+  const winH = window.innerHeight;
+
+  if (x + menuWidth > winW) x = winW - menuWidth - 10;
+  if (y + menuHeight > winH) y = winH - menuHeight - 10;
+  if (x < 10) x = 10;
+  if (y < 10) y = 10;
+
+  elements.contextMenu.style.top = `${y}px`;
+  elements.contextMenu.style.left = `${x}px`;
   elements.contextMenu.classList.add("active");
   
   const menuSeparate = document.getElementById("menu-separate");
@@ -619,24 +669,52 @@ function showSongContextMenu(e, song, originalIndex) {
     }
     
     if (menuSeparate) {
-      menuSeparate.style.display = isSeparated ? "none" : "block";
-      menuSeparate.onclick = async () => {
-        elements.contextMenu.classList.remove("active");
-        try {
-          const { startMrSeparation } = await import('./audio.js');
-          await startMrSeparation(song.path);
-        } catch (err) {
-          console.error("Separation trigger failed:", err);
+      const activeTask = state.activeTasks[song.path];
+      const isSeparating = activeTask && activeTask.status !== "Finished";
+      
+      if (isSeparated) {
+        menuSeparate.style.display = "none";
+      } else {
+        menuSeparate.style.display = "block";
+        if (isSeparating) {
+          menuSeparate.textContent = "분리 취소";
+          menuSeparate.onclick = () => {
+            elements.contextMenu.classList.remove("active");
+            if (window.cancelTask) window.cancelTask(song.path);
+          };
+        } else {
+          menuSeparate.textContent = "MR 분리";
+          menuSeparate.onclick = async () => {
+            elements.contextMenu.classList.remove("active");
+            try {
+              const { startMrSeparation } = await import('./audio.js');
+              await startMrSeparation(song.path);
+            } catch (err) {
+              console.error("Separation trigger failed:", err);
+            }
+          };
         }
-      };
+      }
     }
   });
 
   // Internal bind to global select logic
-  document.getElementById("menu-play").onclick = () => {
-    window.dispatchEvent(new CustomEvent('song-select', { detail: { index: originalIndex } }));
-    elements.contextMenu.classList.remove("active");
-  };
+  const menuPlay = document.getElementById("menu-play");
+  if (menuPlay) {
+    const isCurrent = state.currentTrack && state.currentTrack.path === song.path;
+    menuPlay.textContent = (isCurrent && state.isPlaying) ? "일시정지" : "재생";
+    
+    menuPlay.onclick = async () => {
+      elements.contextMenu.classList.remove("active");
+      const { selectTrack, handlePlaybackToggle } = await import('./player.js');
+      
+      if (isCurrent) {
+        await handlePlaybackToggle();
+      } else {
+        await selectTrack(originalIndex);
+      }
+    };
+  }
   
   document.getElementById("menu-edit").onclick = () => {
     openEditModal(song, originalIndex);
@@ -686,6 +764,25 @@ function openEditModal(song, index) {
       }
     });
   }
+
+  // MR Checkbox: check if song is already marked as MR or has separated files
+  const mrCheckbox = document.getElementById("edit-is-mr");
+  const mrText = document.querySelector(".mr-checkbox-text");
+  if (mrCheckbox) {
+    mrCheckbox.checked = !!song.isMr;
+    mrCheckbox.disabled = false;
+    if (mrText) mrText.textContent = "이 곡은 이미 MR(인스트루먼탈)입니다";
+    
+    // If MR files exist on disk (AI separated), lock the checkbox
+    checkMrSeparated(song.path).then(isSeparated => {
+      if (isSeparated) {
+        mrCheckbox.checked = true;
+        mrCheckbox.disabled = true;
+        if (mrText) mrText.textContent = "AI 분리 완료 (MR 삭제로 해제)";
+      }
+    });
+  }
+
   elements.metadataModal.classList.add("active");
 }
 
@@ -961,4 +1058,47 @@ export function applyTableWidths() {
   });
 }
 
+/**
+ * Renders the Curation tab in Library Manager
+ */
+export async function renderCurationTab() {
+  if (!elements.unclassifiedTagsList) return;
+  
+  elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">데이터 분석 중...</div>';
+  
+  try {
+    const { invoke } = window.__TAURI__.core;
+    const tags = await invoke("get_unclassified_tags");
+    const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+    
+    if (sortedTags.length === 0) {
+      elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">새로 발견된 미분류 태그가 없습니다.</div>';
+      return;
+    }
+    
+    elements.unclassifiedTagsList.innerHTML = sortedTags.map(([tag, hits]) => `
+      <div class="unclassified-item" data-tag="${tag}">
+        <span class="tag-text">${tag}</span>
+        <span class="hit-count">${hits} hits</span>
+      </div>
+    `).join("");
+    
+    // Bind click events
+    elements.unclassifiedTagsList.querySelectorAll(".unclassified-item").forEach(item => {
+      item.onclick = () => {
+        elements.unclassifiedTagsList.querySelectorAll(".unclassified-item").forEach(i => i.classList.remove("selected"));
+        item.classList.add("selected");
+        if (elements.curationOriginal) {
+          elements.curationOriginal.value = item.dataset.tag;
+          if (elements.curationTranslated) {
+            elements.curationTranslated.value = "";
+            elements.curationTranslated.focus();
+          }
+        }
+      };
+    });
+  } catch (err) {
+    elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--danger);">불러오기 실패</div>';
+  }
+}
 

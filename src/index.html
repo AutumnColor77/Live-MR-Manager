@@ -467,8 +467,10 @@
         </div>
         <div class="input-group">
           <label>아티스트</label>
-          <input type="text" id="edit-artist" placeholder="아티스트명 입력" autocomplete="off">
-          <div id="edit-artist-suggestions" class="suggestion-dropdown"></div>
+          <div style="position: relative;">
+            <input type="text" id="edit-artist" placeholder="아티스트명 입력" autocomplete="off">
+            <div id="edit-artist-suggestions" class="suggestion-dropdown"></div>
+          </div>
         </div>
         <div class="input-group">
           <label>카테고리</label>
@@ -501,10 +503,20 @@
           <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브" autocomplete="off">
           <div id="edit-tags-suggestions" class="suggestion-dropdown"></div>
         </div>
+        <div class="input-group mr-toggle-group">
+          <label class="mr-checkbox-label">
+            <span class="mr-badge-preview">MR</span>
+            <input type="checkbox" id="edit-is-mr">
+            <span class="mr-checkbox-text">이 곡은 이미 MR(인스트루먼탈)입니다</span>
+          </label>
+        </div>
       </div>
-      <footer class="modal-footer">
-        <button class="secondary-btn" id="modal-cancel">취소</button>
-        <button class="primary-btn" id="modal-save">저장</button>
+      <footer class="modal-footer" style="justify-content: space-between;">
+        <button class="secondary-btn" id="btn-metadata-search" style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">곡 정보 검색</button>
+        <div style="display: flex; gap: 10px;">
+          <button class="secondary-btn" id="modal-cancel">취소</button>
+          <button class="primary-btn" id="modal-save">저장</button>
+        </div>
       </footer>
     </div>
   </div>
@@ -556,37 +568,26 @@
         </div>
         <button class="close-btn" id="manager-modal-close">&times;</button>
       </header>
-      <div class="modal-body manager-body">
+      <div class="manager-tab-nav">
+        <button class="manager-tab-btn active" data-tab="list">곡 정보 목록</button>
+        <button class="manager-tab-btn" data-tab="curation">번역 사전 관리</button>
+      </div>
+      
+      <!-- Tab 1: Song List -->
+      <div class="modal-body manager-body active" id="manager-tab-list">
         <div class="table-container">
           <table id="manager-table">
             <colgroup id="manager-table-colgroup">
-              <col>
-              <col>
-              <col>
-              <col>
-              <col>
-              <col>
-              <col>
+              <col><col><col><col><col><col><col>
             </colgroup>
             <thead>
               <tr>
-                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span>
-                  <div class="resizer"></div>
-                </th>
-                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span>
-                  <div class="resizer"></div>
-                </th>
-                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span>
-                  <div class="resizer"></div>
-                </th>
-                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span>
-                  <div class="resizer"></div>
-                </th>
-                <th class="text-center">태그 <div class="resizer"></div>
-                </th>
-                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span>
-                  <div class="resizer"></div>
-                </th>
+                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="text-center">태그 <div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span><div class="resizer"></div></th>
                 <th class="text-center">작업</th>
               </tr>
             </thead>
@@ -596,6 +597,51 @@
           </table>
         </div>
       </div>
+
+      <!-- Tab 2: Curation -->
+      <div class="modal-body manager-body" id="manager-tab-curation">
+        <div class="curation-container">
+          <div class="curation-left">
+            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">미분류 태그 리스트</h4>
+            <div id="unclassified-tags-list" class="unclassified-list">
+              <!-- Dynamically populated -->
+              <div style="padding: 20px; text-align: center; color: #888;">데이터를 불러오는 중...</div>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 8px;">
+               <button class="secondary-btn" id="btn-refresh-unmapped" style="flex: 1; font-size: 0.8rem;">새로고침</button>
+               <button class="secondary-btn" id="btn-copy-unmapped" style="flex: 1; font-size: 0.8rem;">목록 복사 (AI용)</button>
+            </div>
+          </div>
+          <div class="curation-right">
+            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">번역어 등록</h4>
+            <div class="curation-form">
+              <div class="input-group">
+                <label>원본 태그 (English)</label>
+                <input type="text" id="curation-original" readonly placeholder="왼쪽에서 선택하세요" style="background: rgba(255,255,255,0.05);">
+              </div>
+              <div class="input-group">
+                <label>분류</label>
+                <div class="custom-select-wrapper" style="width: 100%;">
+                  <select id="curation-category" class="custom-select-native" style="width: 100%; padding: 10px; border-radius: 8px; background: #1a1a1a; color: white; border: 1px solid rgba(255,255,255,0.1);">
+                    <option value="genre">장르 (Genre)</option>
+                    <option value="tag">태그 (Tag)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="input-group">
+                <label>번역어 (Korean)</label>
+                <input type="text" id="curation-translated" placeholder="예: 몽환적인, 록, 시티팝">
+              </div>
+              <button class="primary-btn" id="btn-save-mapping" style="width: 100%; margin-top: 10px; height: 45px;">사전에 등록</button>
+            </div>
+            
+            <div class="ai-bridge-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05);">
+              <h4 style="margin-bottom: 8px; font-size: 0.95rem;">💡 AI 일괄 작업 가이드</h4>
+              <p style="font-size: 0.85rem; color: #aaa; line-height: 1.5;">[목록 복사] 버튼을 눌러 미분류 태그들을 AI(Antigravity)에게 전달하세요. 대량의 번역 데이터를 한 번에 만들어 드립니다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
       <footer class="modal-footer manager-footer">
         <div id="manager-stat">Total 0 Songs</div>
         <div class="footer-actions">
@@ -603,6 +649,24 @@
           <button class="secondary-btn" id="manager-modal-cancel">닫기</button>
         </div>
       </footer>
+    </div>
+  </div>
+
+  <!-- 온라인 검색 결과 선택 모달 -->
+  <div id="metadata-search-results-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+      <header class="modal-header">
+        <h3>검색 결과 선택</h3>
+        <button class="close-btn" id="search-results-close">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div id="search-results-list" class="search-results-list" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated -->
+        </div>
+        <div style="margin-top: 15px; text-align: right; font-size: 0.8rem; color: #888;">
+          Powered by <a href="https://www.last.fm" target="_blank" style="color: #bbb; text-decoration: none; font-weight: bold;">Last.fm</a>
+        </div>
+      </div>
     </div>
   </div>
 

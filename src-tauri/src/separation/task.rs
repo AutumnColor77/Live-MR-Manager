@@ -34,7 +34,7 @@ impl SeparationTask {
             // Optional: If already being processed, we can exit or just let it queue.
             // But since the frontend might have already sent the command, the safest is to check in lib.rs.
             // Still, registering here ensures it's tracked even while waiting for lock.
-            active.insert(norm_p.clone(), cancel_flag.clone());
+            active.insert(norm_p.clone(), (path.clone(), cancel_flag.clone()));
         }
 
         // 2. Initial status: Queued (Waiting for Lock)

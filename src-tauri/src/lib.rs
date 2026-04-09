@@ -17,6 +17,7 @@ pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
 pub mod state;
+mod metadata_fetcher;
 
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
@@ -632,6 +633,14 @@ async fn set_broadcast_mode(enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_active_separations() -> Vec<String> {
+    crate::separation::ACTIVE_SEPARATIONS.lock()
+        .values()
+        .map(|(original_path, _)| original_path.clone())
+        .collect()
+}
+
+#[tauri::command]
 fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths { handle.state::<crate::state::AppPaths>().inner().clone() }
 
 #[tauri::command]
@@ -672,7 +681,7 @@ async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), 
 #[tauri::command]
 fn cancel_separation(path: String) -> Result<(), String> {
     let norm = path.replace("\\", "/").to_lowercase();
-    if let Some(flag) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) { flag.store(true, Ordering::Relaxed); }
+    if let Some((_, flag)) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) { flag.store(true, Ordering::Relaxed); }
     Ok(())
 }
 
@@ -845,7 +854,10 @@ pub fn run() {
             get_audio_metadata, get_playback_state, check_ai_runtime, check_model_ready, download_ai_model, save_library,
             load_library, get_songs, get_categories, get_genres, get_track_count, cancel_separation, set_broadcast_mode,
             get_audio_devices, open_cache_folder, delete_ai_model, get_gpu_recommendation, add_category, delete_category,
-            delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup
+            delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup, get_active_separations,
+            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
+            metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
+            metadata_fetcher::update_custom_dictionary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

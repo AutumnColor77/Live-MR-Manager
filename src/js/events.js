@@ -141,6 +141,22 @@ export function initGlobalListeners() {
     }, { passive: false });
   }
 
+  // Global Keydown Handler (Escape to Close Modals)
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      // 1. Close any active modals
+      const activeModal = document.querySelector(".modal-overlay.active");
+      if (activeModal) {
+        activeModal.classList.remove("active");
+      }
+      
+      // 2. Close active context menu
+      if (elements.contextMenu && elements.contextMenu.classList.contains("active")) {
+        elements.contextMenu.classList.remove("active");
+      }
+    }
+  });
+
   if (elements.pitchVal) {
     setupDirectInput(elements.pitchVal, elements.pitchSlider);
   }
@@ -314,6 +330,12 @@ export function initGlobalListeners() {
       const customGenreVal = document.getElementById("edit-genre-custom").value;
       song.genre = genreVal === "etc" ? customGenreVal : genreVal;
       
+      // MR (Instrumental) flag
+      const mrCheckbox = document.getElementById("edit-is-mr");
+      if (mrCheckbox) {
+        song.isMr = mrCheckbox.checked;
+      }
+      
       await saveLibrary(state.songLibrary);
       renderLibrary();
       elements.metadataModal.classList.remove("active");
@@ -346,6 +368,110 @@ export function initGlobalListeners() {
   const confirmCancel = document.getElementById("confirm-cancel");
   if (confirmClose) confirmClose.onclick = () => elements.confirmModal.classList.remove("active");
   if (confirmCancel) confirmCancel.onclick = () => elements.confirmModal.classList.remove("active");
+  
+  // Metadata Search Result Modal Close
+  if (elements.searchResultsClose) {
+    elements.searchResultsClose.onclick = () => elements.metadataSearchResultsModal.classList.remove("active");
+  }
+
+  // 온라인 검색 실행 버튼
+  if (elements.btnMetadataSearch) {
+    elements.btnMetadataSearch.onclick = async () => {
+      const title = document.getElementById("edit-title").value;
+      const artist = document.getElementById("edit-artist").value;
+      const query = `${title} ${artist}`.trim();
+      if (!query) return;
+
+      // 1. 모달 즉시 표시 및 로딩 상태 렌더링
+      elements.metadataSearchResultsModal.classList.add("active");
+      elements.searchResultsList.innerHTML = `
+        <div class="loading-container">
+          <div class="spinner"></div>
+          <div>온라인에서 곡 정보를 검색 중입니다...</div>
+        </div>
+      `;
+
+      try {
+        const { invoke } = window.__TAURI__.core;
+        const results = await invoke("search_track_metadata", { query });
+        
+        elements.searchResultsList.innerHTML = "";
+        if (results.length === 0) {
+          elements.searchResultsList.innerHTML = '<div class="loading-container" style="color: #666;">검색 결과가 없습니다.</div>';
+        } else {
+          results.forEach(res => {
+            const item = document.createElement("div");
+            item.className = "search-result-item";
+            
+            const isUnknownGenre = !res.genre || res.genre.toLowerCase() === "unknown" || res.genre.toLowerCase() === "unknown genre";
+            const genreHtml = !isUnknownGenre ? 
+              `<div class="track-genre-preview">${res.genre}</div>` : "";
+            
+            const tagsHtml = res.tags && res.tags.length > 0 ? 
+              `<div class="track-tags-preview">${res.tags.map(t => `<span class="tag-badge-mini">${t}</span>`).join("")}</div>` : 
+              "";
+
+            item.innerHTML = `
+              <div class="search-result-info">
+                <div class="track-name">${res.name}</div>
+                <div class="artist-name">${res.artist}</div>
+                ${genreHtml}
+              </div>
+              ${tagsHtml}
+            `;
+            item.onclick = async () => {
+              elements.metadataSearchResultsModal.classList.remove("active");
+              await finalizeMetadataSelection(res.artist, res.name);
+            };
+            elements.searchResultsList.appendChild(item);
+          });
+        }
+      } catch (err) {
+        elements.searchResultsList.innerHTML = '<div class="loading-container" style="color: var(--accent-red);">검색 중 오류가 발생했습니다.</div>';
+        showNotification("검색 중 오류가 발생했습니다.", "error");
+      }
+    };
+  }
+
+  async function finalizeMetadataSelection(artist, track) {
+    elements.btnMetadataSearch.classList.add("loading-btn");
+    try {
+      const { invoke } = window.__TAURI__.core;
+      const metadata = await invoke("fetch_and_process_tags", { artist, track });
+      
+      document.getElementById("edit-title").value = track;
+      document.getElementById("edit-artist").value = artist;
+      
+      const tagsEl = document.getElementById("edit-tags");
+      if (tagsEl) tagsEl.value = metadata.tags.join(", ");
+      
+      const genreSelect = document.getElementById("edit-genre-select");
+      const genreCustom = document.getElementById("edit-genre-custom");
+      
+      // 장르 매핑 (간소화하여 커스텀 입력기에 결과값 넣기)
+      if (genreSelect) genreSelect.value = "etc";
+      if (genreCustom) {
+        genreCustom.style.display = "block";
+        // 'Unknown' 계열의 값은 빈 값으로 처리하여 UI에서 '미분류'로 보이게 함
+        const genreVal = (metadata.genre || "").toLowerCase();
+        const isUnknown = genreVal === "unknown" || genreVal === "unknown genre" || genreVal === "";
+        genreCustom.value = isUnknown ? "" : metadata.genre;
+      }
+      
+      // 드롭다운 텍스트 업데이트
+      const dropdown = document.getElementById("edit-genre-dropdown");
+      if (dropdown) {
+        const selectedText = dropdown.querySelector(".selected-text");
+        if (selectedText) selectedText.textContent = "직접 입력 (검색됨)";
+      }
+      
+      showNotification("메타데이터가 업데이트되었습니다.", "success");
+    } catch (err) {
+      showNotification("태그 정보를 가져오는데 실패했습니다.", "error");
+    } finally {
+      elements.btnMetadataSearch.classList.remove("loading-btn");
+    }
+  }
 
   // Event Delegation for Custom Selects and Outside Clicks
   let lastMouseDownTarget = null;
@@ -699,6 +825,85 @@ export function initGlobalListeners() {
         elements.confirmModal.classList.add("active");
       };
     }
+  // --- Library Manager Tab Switching ---
+  document.querySelectorAll(".manager-tab-btn").forEach(btn => {
+    btn.onclick = () => {
+      const tabId = btn.dataset.tab;
+      document.querySelectorAll(".manager-tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".manager-body").forEach(body => {
+        body.classList.toggle("active", body.id === `manager-tab-${tabId}`);
+      });
+      
+      if (tabId === "curation") {
+        import('./ui.js').then(m => m.renderCurationTab());
+      } else {
+        import('./ui.js').then(m => m.renderManagerTable());
+      }
+    };
+  });
+
+  // --- Curation Tab Actions ---
+  const btnSaveMapping = document.getElementById("btn-save-mapping");
+  const btnRefreshUnmapped = document.getElementById("btn-refresh-unmapped");
+  const btnCopyUnmapped = document.getElementById("btn-copy-unmapped");
+
+  if (btnSaveMapping) {
+    btnSaveMapping.onclick = async () => {
+      const original = document.getElementById("curation-original").value.trim();
+      const translated = document.getElementById("curation-translated").value.trim();
+      const category = document.getElementById("curation-category").value;
+
+      if (!original || !translated) {
+        showNotification("원본과 번역어를 모두 입력하세요.", "error");
+        return;
+      }
+
+      btnSaveMapping.disabled = true;
+      btnSaveMapping.textContent = "저장 중...";
+      try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke("update_custom_dictionary", { category, original, translated });
+        showNotification("사전이 업데이트되었습니다.", "success");
+        
+        // Clear form
+        document.getElementById("curation-original").value = "";
+        document.getElementById("curation-translated").value = "";
+        
+        // Refresh list
+        import('./ui.js').then(m => m.renderCurationTab());
+      } catch (err) {
+        showNotification("저장 실패: " + err, "error");
+      } finally {
+        btnSaveMapping.disabled = false;
+        btnSaveMapping.textContent = "사전에 등록";
+      }
+    };
+  }
+
+  if (btnRefreshUnmapped) {
+    btnRefreshUnmapped.onclick = () => {
+      import('./ui.js').then(m => m.renderCurationTab());
+    };
+  }
+
+  if (btnCopyUnmapped) {
+    btnCopyUnmapped.onclick = async () => {
+      const { invoke } = window.__TAURI__.core;
+      try {
+        const tagsMap = await invoke("get_unclassified_tags");
+        const tags = Object.keys(tagsMap);
+        if (tags.length === 0) {
+          showNotification("복사할 태그가 없습니다.", "info");
+          return;
+        }
+        const text = tags.join("\n");
+        await navigator.clipboard.writeText(text);
+        showNotification("미분류 태그 목록이 클립보드에 복사되었습니다.", "success");
+      } catch (err) {
+        showNotification("복사 실패", "error");
+      }
+    };
+  }
   }
 }
 
@@ -849,6 +1054,26 @@ export function setupBackendListeners() {
       }
     }
   });
+
+  // Restore active tasks from backend (survives page reload / HMR)
+  (async () => {
+    try {
+      const { invoke } = window.__TAURI__.core;
+      const activePaths = await invoke("get_active_separations");
+      if (activePaths && activePaths.length > 0) {
+        activePaths.forEach(path => {
+          if (!state.activeTasks[path]) {
+            state.activeTasks[path] = { percentage: 0, status: "Processing", provider: "restoring" };
+          }
+        });
+        updateTaskUI();
+        renderLibrary();
+        console.log(`[App] Restored ${activePaths.length} active task(s) from backend.`);
+      }
+    } catch (err) {
+      console.error("[App] Failed to restore active tasks:", err);
+    }
+  })();
 }
 
 function updateTaskUI(targetPath = null) {
@@ -1005,6 +1230,7 @@ window.cancelTask = (el) => {
     delete state.activeTasks[path];
   }
   updateTaskUI(); 
+  renderLibrary(); // 메인 화면의 딱지 등 상태 업데이트를 위해 추가
   
   // 2. Non-blocking backend call
   invoke("cancel_separation", { path }).catch(err => {

@@ -100,9 +100,18 @@ export async function setVocalBalance(balance) {
   }
 }
 export async function startMrSeparation(path) {
+  // 1. 즉시 준비 상태 등록 (백엔드 이벤트 도달 전)
+  const { state } = await import('./state.js');
+  const { renderLibrary } = await import('./ui.js');
+  state.activeTasks[path] = { percentage: 0, status: "Preparing", provider: "local" };
+  renderLibrary(); // 배지 즉시 반영
+  
   try {
     return await invoke("start_mr_separation", { path });
   } catch (err) {
+    // 실패 시 activeTasks 정리
+    delete state.activeTasks[path];
+    renderLibrary();
     if (err === "ALREADY_PROCESSING") {
       showNotification("이미 대기열에 있거나 처리 중인 곡입니다.", "warning");
       return;

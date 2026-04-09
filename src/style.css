@@ -508,7 +508,7 @@ h1 {
 /* Song Grid */
 .song-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, 200px);
   grid-auto-rows: 1fr;
   /* 紐⑤뱺 ?됱쓽 ?믪씠瑜??숈씪?섍쾶 ?좎? */
   gap: 24px;
@@ -555,23 +555,46 @@ h1 {
   /* Contain overlay */
 }
 
-/* MR Badge */
-.mr-badge {
+/* Unified Status Badge (MR / 분리중 / 대기중) */
+.status-badge {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: #fff;
   font-size: 0.65rem;
   font-weight: 900;
   padding: 3px 8px;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
-  text-transform: uppercase;
   letter-spacing: 0.5px;
   z-index: 10;
   border: 1px solid rgba(255, 255, 255, 0.2);
   pointer-events: none;
+  min-width: 42px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.status-badge.mr {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
+}
+
+.status-badge.processing {
+  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+  box-shadow: 0 4px 12px rgba(67, 56, 202, 0.4);
+  animation: pulse-glow 2s infinite;
+}
+
+.status-badge.pending {
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.3);
+  opacity: 0.9;
+}
+
+@keyframes pulse-glow {
+  0% { opacity: 0.8; box-shadow: 0 4px 12px rgba(67, 56, 202, 0.4); }
+  50% { opacity: 1; box-shadow: 0 0 18px rgba(99, 102, 241, 0.7); }
+  100% { opacity: 0.8; box-shadow: 0 4px 12px rgba(67, 56, 202, 0.4); }
 }
 
 .separating-overlay {
@@ -591,66 +614,107 @@ h1 {
   font-weight: 600;
 }
 
-.separating-overlay .spinner {
-  width: 24px;
-  height: 24px;
+.spinner {
+  width: 28px;
+  height: 28px;
   border: 3px solid rgba(255, 255, 255, 0.1);
   border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 16px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
 .song-info-content {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+.metadata-stack {
+  display: block;
 }
 
 .song-name {
   font-weight: 700;
-  font-size: 0.9rem;
-  margin-bottom: 11px;
-  min-height: 1.2rem;
+  font-size: 15px; /* 0.95rem approx */
+  margin-top: 0;
+  margin-bottom: 6px;
+  height: 20px;
+  line-height: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
+  overflow: hidden;
   max-width: 100%;
 }
 
 .song-name span {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 0 1 auto;
+  flex: 1;
+  min-width: 0;
 }
 
-/* MR Badge when inside song-name (List view) */
-.song-name .mr-badge {
+/* Status Badge Container in List View (Next to Title+Artist block) */
+.status-badge-container {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 42px;
+  height: 100%;
+}
+
+.status-badge-container .status-badge {
   position: static;
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 900;
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 0 8px;
+  height: 20px;   /* Match title line height better or feel balanced */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
   box-shadow: none;
-  margin-left: 0;
   flex-shrink: 0;
-  line-height: normal;
+  margin-left: 0;
+  min-width: 42px;
+  text-align: center;
+}
+
+/* MR Badge specifically in list view container */
+.status-badge-container .status-badge.mr {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .song-artist-badge {
-  font-size: 0.7rem;
+  font-size: 14px;
   color: var(--accent-primary);
   background: rgba(59, 130, 246, 0.1);
   padding: 0 10px;
   border-radius: 4px;
-  display: flex;
-  align-items: center;
-  margin-bottom: 5px;
+  display: block;
+  margin-bottom: 10px;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-height: 1.2rem;
+  height: 20px;
+  line-height: 20px;
 }
 
 .song-artist-badge.no-info {
@@ -663,9 +727,24 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--text-dim);
   margin-bottom: 12px;
+  height: 20px;
+  line-height: 20px;
+}
+
+.meta-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  overflow: hidden;
+}
+
+.duration-text {
+  white-space: nowrap;
 }
 
 .genre-badge.no-info {
@@ -681,7 +760,7 @@ h1 {
 
 /* 洹몃━??紐⑤뱶?먯꽌???쒓렇瑜??섎떒?쇰줈 諛?댁쨲 */
 .grid-layout .tag-container {
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .tag-container.no-info {
@@ -692,12 +771,19 @@ h1 {
 }
 
 /* List View Card internal */
-.song-grid.list-view .song-card {
+.song-grid.list-view {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  gap: 8px; /* 리스트는 조금 더 촘촘하게 */
+}
+
+/* List View Card internal - Flattened 6-Column Grid */
+.song-grid.list-view .song-card {
+  display: grid;
+  grid-template-columns: 48px minmax(200px, 1.3fr) 50px 100px 1.7fr 70px;
   align-items: center;
-  padding: 10px 24px;
-  gap: 24px;
+  padding: 8px 16px;
+  gap: 12px;
   border-radius: 12px;
   height: auto;
   border-color: transparent;
@@ -728,17 +814,10 @@ h1 {
   overflow: hidden;
 }
 
-.song-info-content.list-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(200px, 1.5fr) 120px 1fr 80px;
-  align-items: center;
-  gap: 24px;
-}
-
 .col-info {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
   min-width: 0;
 }
@@ -756,12 +835,23 @@ h1 {
   color: var(--text-muted);
 }
 
-.col-genre {
+.col-genre,
+.col-tags,
+.col-duration {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-width: 0; /* Prevent overflow */
+}
+
+.col-tags {
+  align-items: flex-start;
+}
+
+.col-duration {
+  align-items: flex-end; /* 시간은 우측 정렬 */
 }
 
 .category-list,
@@ -2513,6 +2603,7 @@ input:checked+.slider:before {
 }
 
 .input-group input {
+  width: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-border);
   padding: 12px 16px;
@@ -2526,6 +2617,70 @@ input:checked+.slider:before {
 .input-group input:focus {
   border-color: var(--accent-primary);
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* MR Checkbox in Edit Modal */
+.mr-toggle-group {
+  margin-top: 4px;
+}
+
+.mr-checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 0.2s;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.mr-checkbox-label:hover {
+  background: rgba(255, 193, 7, 0.06);
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.mr-badge-preview {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  min-width: 42px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.mr-checkbox-label input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 !important;
+  border-radius: 4px !important;
+}
+
+.mr-checkbox-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.mr-checkbox-label:has(input:disabled) {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mr-checkbox-label:has(input:disabled):hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--glass-border);
 }
 
 /* --- Card Components (Badges, Tags) --- */
@@ -2574,7 +2729,16 @@ input:checked+.slider:before {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  /* margin-top removes to fix list alignment, controlled by layout classes */
+}
+
+.grid-layout .tag-container {
   margin-top: 12px;
+}
+
+/* 리스트 모드에서는 수직 중앙 정렬을 위해 여백 제거 */
+.list-view-item .tag-container {
+  margin-top: 0;
 }
 
 .tag-badge {
@@ -3570,4 +3734,212 @@ input:checked+.slider:before {
 .btn-row-del:hover {
   background: #ef4444;
   color: #fff;
+}
+/* Online Metadata Search Styles */
+.search-results-list {
+  padding: 5px;
+}
+
+.search-result-item {
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-result-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.search-result-item .track-name {
+  font-weight: 600;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.search-result-item .artist-name {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+/* Online Metadata Search Enhanced Styles */
+.search-result-item {
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.search-result-info {
+  flex: 1;
+}
+
+.track-tags-preview {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 40%;
+}
+
+.tag-badge-mini {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #ccc;
+  white-space: nowrap;
+}
+
+/* Metadata Preview Genre Styling */
+.track-genre-preview {
+  font-size: 0.75rem;
+  color: #fbbf24; /* Warm yellow/amber for genre focus */
+  font-weight: 600;
+  margin-top: 4px;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.search-result-item {
+  align-items: flex-start !important; /* Changed from center to allow for wrapped content */
+  padding: 15px 20px !important;
+}
+
+.track-tags-preview {
+  max-width: 50% !important;
+}
+
+/* Library Manager Curation Tabs */
+.manager-tab-nav {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #1a1a1a;
+}
+
+.manager-tab-btn {
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #888;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.manager-tab-btn:hover {
+  color: #fff;
+}
+
+.manager-tab-btn.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.manager-body {
+  display: none;
+  height: 100%;
+}
+
+.manager-body.active {
+  display: block;
+}
+
+/* Curation Tab Layout */
+.curation-container {
+  display: flex;
+  height: 100%;
+  gap: 20px;
+  padding: 10px;
+}
+
+.curation-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.curation-right {
+  width: 320px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.unclassified-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 10px;
+}
+
+.unclassified-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.unclassified-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateX(4px);
+}
+
+.unclassified-item.selected {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: var(--accent-primary);
+}
+
+.unclassified-item .tag-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  color: #efefef;
+}
+
+.unclassified-item .hit-count {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: #aaa;
+}
+
+.curation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.ai-bridge-section p {
+  margin-bottom: 15px;
 }
