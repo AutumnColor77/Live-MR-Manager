@@ -26,6 +26,7 @@ pub struct ProcessedMetadata {
 
 #[derive(Debug, Clone)]
 pub(crate) struct GenreEntity {
+    #[allow(dead_code)]
     pub id: String,
     pub name: String,
     pub depth: i32,

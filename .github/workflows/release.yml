@@ -21,7 +21,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -34,9 +34,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__ # tauri.conf.json의 버전을 사용하거나 태그를 기반으로 함
+          tagName: v__VERSION__
           releaseName: "Live MR Manager v__VERSION__"
           releaseBody: "Automated release from GitHub Actions."
           releaseDraft: true
           prerelease: false
-          args: ""
+          args: "--verbose"
