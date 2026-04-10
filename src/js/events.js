@@ -3,7 +3,7 @@
  */
 
 import { state } from './state.js';
-import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus } from './ui.js';
+import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus, updateTaskUI, updateCardStatusBadge } from './ui.js';
 import { formatTime, showNotification } from './utils.js';
 import { selectTrack, highlightTrack, handlePlaybackToggle, updateProgressBar, handleNextTrack, handlePrevTrack } from './player.js';
 import { 
@@ -48,6 +48,15 @@ export function switchTab(tabId) {
     elements.songGrid.style.display = isMusicTab ? (state.viewMode === "list" ? "flex" : "grid") : "none";
     elements.songGrid.classList.toggle("list-view", state.viewMode === "list");
     if (isMusicTab) renderLibrary();
+  }
+
+  if (tabId === "tasks") {
+    updateTaskUI();
+  }
+
+  // Reset scroll position when switching tabs
+  if (elements.scrollArea) {
+    elements.scrollArea.scrollTop = 0;
   }
 }
 
@@ -865,17 +874,30 @@ export function initGlobalListeners() {
         await invoke("update_custom_dictionary", { category, original, translated });
         showNotification("사전이 업데이트되었습니다.", "success");
         
-        // Clear form
+        // 시각적 피드백 추가
+        btnSaveMapping.classList.add("btn-success");
+        btnSaveMapping.textContent = "저장 완료!";
+        
+        // 폼 초기화
         document.getElementById("curation-original").value = "";
         document.getElementById("curation-translated").value = "";
         
-        // Refresh list
-        import('./ui.js').then(m => m.renderCurationTab());
+        // 1.5초 후 버튼 상태 복구
+        setTimeout(() => {
+          btnSaveMapping.classList.remove("btn-success");
+          btnSaveMapping.textContent = "사전에 등록";
+        }, 1500);
+
+        // 리스트 새로고침
+        import('./ui.js').then(m => {
+          m.renderCurationTab();
+          m.renderLibrary();
+        });
       } catch (err) {
         showNotification("저장 실패: " + err, "error");
+        btnSaveMapping.textContent = "사전에 등록"; // 오류 시에도 텍스트 복구
       } finally {
         btnSaveMapping.disabled = false;
-        btnSaveMapping.textContent = "사전에 등록";
       }
     };
   }
@@ -994,6 +1016,7 @@ export function setupBackendListeners() {
     if (status === "Finished" || status === "Cancelled" || status === "Error") {
       // 1. Show final state immediately
       updateTaskUI(path); 
+      updateCardStatusBadge(path);
       
       if (status === "Finished") {
         renderLibrary();
@@ -1010,6 +1033,7 @@ export function setupBackendListeners() {
       }, 2000);
     } else {
       updateTaskUI(path);
+      updateCardStatusBadge(path);
     }
   });
 
@@ -1076,144 +1100,8 @@ export function setupBackendListeners() {
   })();
 }
 
-function updateTaskUI(targetPath = null) {
-  const badge = document.getElementById("task-badge");
-  const list = document.getElementById("active-tasks-list");
-  if (!list) return;
-
-  const allTasks = Object.entries(state.activeTasks);
-  const runningTasks = allTasks.filter(([_, t]) => t.status !== "Finished" && t.status !== "Cancelled" && t.status !== "Error");
-  const activeCount = runningTasks.length;
-  
-  if (badge) {
-    badge.textContent = activeCount;
-    badge.style.display = activeCount > 0 ? "flex" : "none";
-  }
-
-  // 1. Partial Update: Only update the progress and status if task already in DOM
-  if (targetPath) {
-    // Find numerically to remove some CSS selector escaping issues
-    const cards = list.querySelectorAll('.task-card');
-    const existingCard = Array.from(cards).find(el => el.dataset.taskPath === targetPath);
-    
-    if (existingCard) {
-      const task = state.activeTasks[targetPath];
-      const bar = existingCard.querySelector(".task-progress-bar");
-      const pctText = existingCard.querySelector(".task-percentage");
-      const statusTextEl = existingCard.querySelector(".task-status-text");
-      
-      const pct = Math.round(task.percentage);
-      if (bar) bar.style.width = pct + '%';
-      if (pctText) pctText.textContent = pct + '%';
-      if (statusTextEl) {
-        const s = (task.status || "").toLowerCase();
-        statusTextEl.textContent = s === "queued" ? "대기 중..." : s === "starting" ? "준비 중..." : task.status;
-      }
-
-      // [FIX] Update Provider Badge (AI/GPU/CPU etc.)
-      const badgeEl = existingCard.querySelector(".task-provider-badge");
-      if (badgeEl && task.provider) {
-        const rawProv = task.provider.toUpperCase();
-        const isGPU = rawProv.includes("GPU") || rawProv.includes("CUDA") || rawProv.includes("DIRECTML");
-        const isCPU = rawProv.includes("CPU");
-        const isNetwork = rawProv.includes("NETWORK") || task.status.toLowerCase().includes("down");
-        const isSystem = rawProv.includes("SYSTEM") || task.status.includes("모델");
-
-        let pText = "AI";
-        let pClass = "provider-ai";
-
-        if (isGPU) { pText = "GPU"; pClass = "provider-gpu"; }
-        else if (isCPU) { pText = "CPU"; pClass = "provider-cpu"; }
-        else if (isNetwork) { pText = "NETWORK"; pClass = "provider-network"; }
-        else if (isSystem) { pText = "AI"; pClass = "provider-ai"; }
-        else if (task.status === "Queued") { pText = "QUEUED"; pClass = "provider-queued"; }
-
-        badgeEl.textContent = pText;
-        // Reset and update classes
-        badgeEl.className = "task-provider-badge " + pClass;
-      }
-      
-      // Only skip full render if task is STILL RUNNING.
-      // If Finished/Cancelled/Error, we want it to fall through to full render eventually
-      // (though usually we handle that with updateTaskUI() call after delay)
-      const isRunning = task.status !== "Finished" && task.status !== "Cancelled" && task.status !== "Error";
-      if (isRunning) return; 
-    }
-  }
-
-  // 2. Full Render: If new task, removed task, or no targetPath provided
-  if (allTasks.length === 0) {
-    list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
-  } else {
-    list.innerHTML = allTasks.map(([path, t]) => {
-      // Normalize paths for matching (handle slashes, casing, and encoding like %20)
-      const normalize = (p) => (p ? decodeURIComponent(p).replace(/\\/g, '/').toLowerCase() : '');
-      const targetNorm = normalize(path);
-      const song = state.songLibrary.find(s => normalize(s.path) === targetNorm);
-      
-      let displayName = song ? song.title : (path ? decodeURIComponent(path).split(/[\\/]/).pop() : 'Unknown');
-      const thumbnail = song ? song.thumbnail : null;
-      
-      if (!song && path.startsWith('http')) {
-        displayName = "YouTube 오디오 추출 중...";
-      }
-
-      const pct = Math.round(t.percentage);
-      const statusText = t.status === "Queued" ? "대기 중..." : t.status === "Starting" ? "준비 중..." : t.status;
-      const isQueued = t.status === "Queued";
-      
-      // Provider logic refinement
-      const rawProvider = (t.provider || "").toUpperCase();
-      const isGPU = rawProvider.includes("GPU") || rawProvider.includes("CUDA") || rawProvider.includes("DIRECTML");
-      const isCPU = rawProvider.includes("CPU");
-      const isSystem = rawProvider.includes("SYSTEM") || t.status.includes("모델");
-      const isNetwork = rawProvider.includes("NETWORK") || t.status.toLowerCase().includes("down");
-
-      let providerText = "AI";
-      let providerClass = "provider-ai";
-
-      if (isGPU) {
-        providerText = "GPU";
-        providerClass = "provider-gpu";
-      } else if (isCPU) {
-        providerText = "CPU";
-        providerClass = "provider-cpu";
-      } else if (isNetwork) {
-        providerText = "NETWORK";
-        providerClass = "provider-network";
-      } else if (isSystem) {
-        providerText = "AI";
-        providerClass = "provider-ai";
-      } else if (t.status === "Queued") {
-        providerText = "QUEUED";
-        providerClass = "provider-queued";
-      }
-
-      return `
-        <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path}">
-          <div class="task-header-info">
-            ${thumbnail ? 
-              `<img src="${thumbnail}" class="task-thumb" onerror="this.style.display='none'">` :
-              `<div class="task-icon">MR</div>`
-            }
-            <div class="task-info-main">
-              <span class="task-title" title="${path}">${displayName}</span>
-              <div class="task-status-row-top">
-                <span class="task-status-text">${statusText}</span>
-                <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
-              </div>
-            </div>
-            <div class="task-provider-badge ${providerClass}">${providerText}</div>
-            <button class="btn-task-cancel secondary-btn" onclick="window.cancelTask(this)" data-task-path="${path.replace(/"/g, '&quot;')}">취소</button>
-          </div>
-          
-          <div class="task-progress-container">
-            <div class="task-progress-bar" style="width: ${pct}%; ${isQueued ? 'background: #4b5563;' : ''}"></div>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
+function tempFix_removeOldUpdateTaskUI() {
+  // This chunk replaces the old code with nothing (or a comment)
 }
 
 

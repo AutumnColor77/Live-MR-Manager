@@ -3,7 +3,7 @@
  */
 
 import { state } from './js/state.js';
-import { elements, initDomReferences, renderLibrary, updateGenreDropdowns, updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, updateGpuStatus } from './js/ui.js';
+import { elements, initDomReferences, renderLibrary, updateGenreDropdowns, updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, updateGpuStatus, setupGridResizeObserver } from './js/ui.js';
 import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab } from './js/events.js';
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
@@ -74,6 +74,9 @@ async function initApp() {
 
   // Setup custom titlebar
   setupTitlebar();
+
+  // Setup Smooth Grid Resize
+  setupGridResizeObserver();
 
   console.log("[App] Initialization Complete.");
 }

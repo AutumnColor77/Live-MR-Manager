@@ -25,24 +25,24 @@ pub struct ProcessedMetadata {
 }
 
 #[derive(Debug, Clone)]
-struct GenreEntity {
-    id: String,
-    name: String,
-    depth: i32,
-    priority: i32,
-    parent_id: Option<String>,
+pub(crate) struct GenreEntity {
+    pub id: String,
+    pub name: String,
+    pub depth: i32,
+    pub priority: i32,
+    pub parent_id: Option<String>,
 }
 
-struct AppContext {
-    genre_map: HashMap<String, String>,         // raw -> id
-    genre_master: HashMap<String, GenreEntity>, // id -> entity
-    tag_map: HashMap<String, String>,           // raw -> id
-    tag_master: HashMap<String, String>,        // id -> name
-    exclusions: Vec<Regex>,
+pub(crate) struct AppContext {
+    pub genre_map: HashMap<String, String>,         // raw -> id
+    pub genre_master: HashMap<String, GenreEntity>, // id -> entity
+    pub tag_map: HashMap<String, String>,           // raw -> id
+    pub tag_master: HashMap<String, String>,        // id -> name
+    pub exclusions: Vec<Regex>,
 }
 
 static UNKNOWN_TAGS: Lazy<Arc<RwLock<HashMap<String, usize>>>> = Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
-static CONTEXT: Lazy<Arc<RwLock<Option<AppContext>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
+pub static CONTEXT: Lazy<Arc<RwLock<Option<AppContext>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
 fn load_context(app: &AppHandle) -> AppContext {
     let seed_content = include_str!("seed_tags.json");
@@ -168,6 +168,34 @@ fn load_context(app: &AppHandle) -> AppContext {
     }
 }
 
+pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (Option<String>, Option<Vec<String>>) {
+    let ctx_lock = CONTEXT.read();
+    let ctx = match &*ctx_lock {
+        Some(c) => c,
+        None => return (genre, tags),
+    };
+
+    let new_genre = genre.map(|g| {
+        let low = g.to_lowercase();
+        ctx.genre_map.get(&low)
+            .and_then(|id| ctx.genre_master.get(id))
+            .map(|entity| entity.name.clone())
+            .unwrap_or(g)
+    });
+
+    let new_tags = tags.map(|t_list| {
+        t_list.into_iter().map(|t| {
+            let low = t.to_lowercase();
+            ctx.tag_map.get(&low)
+                .and_then(|id| ctx.tag_master.get(id))
+                .cloned()
+                .unwrap_or(t)
+        }).collect()
+    });
+
+    (new_genre, new_tags)
+}
+
 // --- Commands ---
 
 const CLOUDFLARE_PROXY_URL: &str = "https://live-mr-manager-lastfm.boohun2771.workers.dev"; // Placeholder or real one if user provided
@@ -266,14 +294,66 @@ pub async fn fetch_and_process_tags(
 }
 
 #[tauri::command]
-pub fn get_unclassified_tags() -> Result<HashMap<String, usize>, String> {
-    let tags = UNKNOWN_TAGS.read();
-    Ok(tags.clone())
+pub fn get_unclassified_tags(app: AppHandle) -> Result<HashMap<String, usize>, String> {
+    // 1. 설정 컨텍스트가 로드되었는지 확인하고, 없으면 로드 시도
+    {
+        let ctx = CONTEXT.read();
+        if ctx.is_none() {
+            drop(ctx);
+            let _ = init_metadata_context(app);
+        }
+    }
+
+    use crate::state::DB;
+    
+    let db = DB.lock();
+    // COUNT의 결과는 i64로 받는 것이 안정적입니다.
+    let mut stmt = db.prepare("
+        SELECT Tags.name, COUNT(Track_Tag_Map.track_id) 
+        FROM Tags 
+        LEFT JOIN Track_Tag_Map ON Tags.id = Track_Tag_Map.tag_id 
+        GROUP BY Tags.id"
+    ).map_err(|e| format!("쿼리 준비 실패: {}", e))?;
+
+    let tag_iter = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    }).map_err(|e| format!("쿼리 실행 실패: {}", e))?;
+
+    let mut result = HashMap::new();
+    let ctx_lock = CONTEXT.read();
+    
+    if let Some(ctx) = &*ctx_lock {
+        for tag_res in tag_iter {
+            if let Ok((name, count)) = tag_res {
+                let lower_name = name.to_lowercase();
+                
+                // 한글 포함 여부 확인 (한글이 있으면 이미 번역된 것이므로 제외)
+                let has_hangul = name.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c) || ('\u{1100}'..='\u{11FF}').contains(&c));
+                
+                // 이미 분류된 태그이거나 한글이 포함된 경우 제외
+                let is_mapped = ctx.genre_map.contains_key(&lower_name) || 
+                               ctx.tag_map.contains_key(&lower_name) ||
+                               ctx.exclusions.iter().any(|re| re.is_match(&lower_name));
+                               
+                if !is_mapped && !has_hangul && count > 0 {
+                    result.insert(name, count as usize);
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn update_custom_dictionary(app: AppHandle, category: String, original: String, translated: String) -> Result<(), String> {
     let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    
+    // Ensure the directory exists to avoid OS Error 3
+    if !app_dir.exists() {
+        std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+    }
+    
     let custom_path = app_dir.join("metadata_custom.json");
     
     let mut custom_val = if custom_path.exists() {

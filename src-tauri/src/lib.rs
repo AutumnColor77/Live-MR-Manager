@@ -494,8 +494,12 @@ async fn get_songs() -> Result<Vec<SongMetadata>, String> {
     ).map_err(to_sqlite_err)?;
     
     let song_iter = stmt.query_map([], |row| {
-        let tags = row.get::<_, Option<String>>(14).ok().flatten()
+        let raw_genre = row.get::<_, Option<String>>(13).ok().flatten();
+        let raw_tags = row.get::<_, Option<String>>(14).ok().flatten()
             .map(|s| s.split(',').map(|t| t.to_string()).collect());
+        
+        let (genre, tags) = crate::metadata_fetcher::translate_metadata(raw_genre, raw_tags);
+        
         let categories = row.get::<_, Option<String>>(15).ok().flatten()
             .map(|s| s.split(',').map(|t| t.to_string()).collect());
         
@@ -504,7 +508,7 @@ async fn get_songs() -> Result<Vec<SongMetadata>, String> {
             duration: row.get::<_, String>(4).unwrap_or_default(), source: row.get::<_, String>(5).unwrap_or_default(),
             pitch: row.get(6).ok(), tempo: row.get(7).ok(), volume: row.get(8).ok(), artist: row.get(9).ok(),
             play_count: row.get::<_, u32>(10).ok(), date_added: row.get::<_, u64>(11).ok(),
-            is_mr: Some(row.get::<_, i64>(12).unwrap_or(0) != 0), genre: row.get(13).ok(), tags, categories,
+            is_mr: Some(row.get::<_, i64>(12).unwrap_or(0) != 0), genre, tags, categories,
         })
     }).map_err(to_sqlite_err)?;
 

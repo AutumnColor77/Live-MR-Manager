@@ -25,6 +25,7 @@ logs
 !tauri.conf.json
 !package.json
 !package-lock.json
+!src-tauri/src/seed_tags.json
 
 # Editor
 .vscode/*

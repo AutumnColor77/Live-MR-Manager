@@ -30,6 +30,7 @@ export const state = {
   vocalEnabled: localStorage.getItem("vocalEnabled") === "true", // Default to false
   lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
   broadcastMode: localStorage.getItem("broadcastMode") === "true",
+  lastColumns: 0,
 };
 
 export const DEFAULT_CATEGORIES = [

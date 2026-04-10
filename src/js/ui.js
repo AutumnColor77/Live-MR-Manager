@@ -37,7 +37,7 @@ export const elements = {
   contextMenu: null,
   metadataModal: null,
   confirmModal: null,
-  
+
   // Additional Controls
   volSlider: null,
   vocalBalance: null,
@@ -54,7 +54,7 @@ export const elements = {
   statusMsg: null,
   cudaRecommendBanner: null,
   viewControls: null,
-  
+
   // Library Manager
   managerModal: null,
   btnOpenManager: null,
@@ -67,7 +67,7 @@ export const elements = {
   btnMetadataSearch: null,
   metadataSearchResultsModal: null,
   searchResultsClose: null,
-  
+
   // Curation
   curationOriginal: null,
   curationCategory: null,
@@ -86,28 +86,28 @@ export function initDomReferences() {
   elements.libraryControls = document.getElementById("library-controls");
   elements.youtubeSection = document.getElementById("youtube-search");
   elements.localSection = document.getElementById("local-drop-section");
-  
+
   elements.dockTitle = document.getElementById("dock-title");
   elements.dockArtist = document.getElementById("dock-artist");
   elements.dockThumb = document.getElementById("dock-thumb");
   elements.dockThumbImg = document.querySelector("#dock-thumb img");
   elements.thumbOverlay = document.getElementById("thumb-overlay");
   elements.togglePlayBtn = document.getElementById("btn-toggle-play");
-  
+
   elements.playbackBar = document.getElementById("playback-bar");
   elements.progressFill = document.getElementById("progress-fill");
   elements.timeCurrent = document.getElementById("time-current");
   elements.timeTotal = document.getElementById("time-total");
-  
+
   elements.pitchSlider = document.getElementById("pitch-slider");
   elements.tempoSlider = document.getElementById("tempo-slider");
   elements.pitchVal = document.getElementById("pitch-val");
   elements.tempoVal = document.getElementById("tempo-val");
-  
+
   elements.contextMenu = document.getElementById("context-menu");
   elements.metadataModal = document.getElementById("metadata-modal");
   elements.confirmModal = document.getElementById("confirm-modal");
-  
+
   elements.volSlider = document.querySelector(".volume-slider");
   elements.vocalBalance = document.getElementById("vocal-balance");
   elements.viewGridBtn = document.getElementById("view-grid");
@@ -124,7 +124,7 @@ export function initDomReferences() {
   elements.toggleVocal = document.getElementById("toggle-vocal");
   elements.toggleLyric = document.getElementById("toggle-lyric");
   elements.cudaRecommendBanner = document.getElementById("cuda-recommend-banner");
-  
+
   // Library Manager
   elements.managerModal = document.getElementById("library-manager-modal");
   elements.btnOpenManager = document.getElementById("btn-open-manager");
@@ -139,16 +139,21 @@ export function initDomReferences() {
   elements.metadataSearchResultsModal = document.getElementById("metadata-search-results-modal");
   elements.searchResultsList = document.getElementById("search-results-list");
   elements.searchResultsClose = document.getElementById("search-results-close");
-  
+
   elements.curationOriginal = document.getElementById("curation-original");
   elements.curationCategory = document.getElementById("curation-category");
   elements.curationTranslated = document.getElementById("curation-translated");
   elements.unclassifiedTagsList = document.getElementById("unclassified-tags-list");
+  elements.scrollArea = document.querySelector(".scroll-area");
+
+  // Active Tasks UI
+  elements.taskBadge = document.getElementById("task-badge");
+  elements.activeTasksList = document.getElementById("active-tasks-list");
 }
 
 export function updateSuggestions(fieldId) {
   const fieldType = fieldId === "lib-search-input" ? "search" : fieldId.replace("edit-", ""); // title, artist, category, tags, search
-  
+
   // 1. Get unique values from library for this field
   let allValues = [];
   state.songLibrary.forEach(song => {
@@ -169,13 +174,13 @@ export function updateSuggestions(fieldId) {
 
   // Unique and clean
   let uniqueValues = [...new Set(allValues)].filter(v => v && v.trim());
-  
+
   // 2. Filter by ignored list (stored in localStorage)
   const ignoredCat = JSON.parse(localStorage.getItem(`ignored-category`) || "[]");
   const ignoredTags = JSON.parse(localStorage.getItem(`ignored-tags`) || "[]");
   const ignoredArtist = JSON.parse(localStorage.getItem(`ignored-artist`) || "[]");
   const ignoredSearch = JSON.parse(localStorage.getItem(`ignored-search`) || "[]");
-  
+
   uniqueValues = uniqueValues.filter(v => {
     return !ignoredCat.includes(v) && !ignoredTags.includes(v) && !ignoredArtist.includes(v) && !ignoredSearch.includes(v);
   });
@@ -184,15 +189,15 @@ export function updateSuggestions(fieldId) {
   const inputEl = document.getElementById(fieldId);
   if (!inputEl) return;
   const query = inputEl.value.trim().toLowerCase();
-  
+
   let filtered = uniqueValues;
   if (query) {
     filtered = uniqueValues.filter(v => v.toLowerCase().includes(query));
   }
-  
+
   // Limit results
   filtered = filtered.slice(0, 10);
-  
+
   const dropdown = document.getElementById(`${fieldId}-suggestions`);
   if (dropdown) {
     renderSuggestions(inputEl, dropdown, filtered);
@@ -214,7 +219,7 @@ function renderSuggestions(inputEl, dropdown, suggestions) {
   `).join("");
 
   dropdown.classList.add("active");
-  
+
   // Re-bind click events for newly rendered items
   dropdown.querySelectorAll(".suggestion-item").forEach(item => {
     item.onclick = (e) => {
@@ -225,7 +230,7 @@ function renderSuggestions(inputEl, dropdown, suggestions) {
       } else {
         const value = item.dataset.value;
         const fieldId = inputEl.id;
-        
+
         if (fieldId === "edit-tags") {
           // Append for tags
           const currentTags = inputEl.value.split(",").map(t => t.trim()).filter(t => t);
@@ -258,12 +263,12 @@ function handleSuggestionDelete(inputEl, value) {
 
 export function renderLibrary() {
   if (!elements.songGrid) return;
-  
+
   // Ensure every song in the master library has an original index for tracking 
   // AND synchronize category/categories to ensure UI consistency
-  state.songLibrary.forEach((s, i) => { 
-    s.originalIndex = i; 
-    
+  state.songLibrary.forEach((s, i) => {
+    s.originalIndex = i;
+
     // Sync category (singular) and categories (plural) for consistency
     if (s.category && (!s.categories || s.categories.length === 0 || s.categories[0] !== s.category)) {
       s.categories = [s.category];
@@ -287,9 +292,11 @@ export function renderLibrary() {
 
   // Search Filter
   if (query) {
-    filtered = filtered.filter(s => 
-      s.title.toLowerCase().includes(query) || 
+    filtered = filtered.filter(s =>
+      s.title.toLowerCase().includes(query) ||
       (s.artist && s.artist.toLowerCase().includes(query)) ||
+      (s.genre && s.genre.toLowerCase().includes(query)) ||
+      (s.category && s.category.toLowerCase().includes(query)) ||
       (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
     );
   }
@@ -327,7 +334,7 @@ export function renderLibrary() {
   filtered.forEach(song => {
     addSongCard(song, song.originalIndex);
   });
-  
+
   updateThumbnailOverlay();
   syncDockMetadata();
 }
@@ -337,7 +344,7 @@ export function renderLibrary() {
  */
 export function syncDockMetadata() {
   if (!state.currentTrack) return;
-  
+
   const song = state.currentTrack;
   if (elements.dockTitle) elements.dockTitle.textContent = song.title;
   if (elements.dockArtist) elements.dockArtist.textContent = song.artist || "Unknown Artist";
@@ -354,7 +361,7 @@ function addSongCard(song, index) {
   
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
   const isList = state.viewMode === "list";
-  
+
   card.innerHTML = `
     <div class="thumbnail">
       <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
@@ -379,18 +386,18 @@ function addSongCard(song, index) {
       </div>
       <div class="status-badge-container"></div>
       <div class="col-genre">
-        ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
-          ? `<div class="category-list"><span class="category-badge">${song.category || song.categories[0]}</span></div>`
-          : ''}
+        ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : ""))
+        ? `<div class="category-list"><span class="category-badge">${song.category || song.categories[0]}</span></div>`
+        : ''}
         <div class="genre-list">
           <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
         </div>
       </div>
       <div class="col-tags">
         <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
-          ${song.tags && song.tags.length > 0 
-            ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('') 
-            : '<span class="tag-no-info">태그 없음</span>'}
+          ${song.tags && song.tags.length > 0
+        ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
+        : '<span class="tag-no-info">태그 없음</span>'}
         </div>
       </div>
       <div class="col-duration">
@@ -403,45 +410,25 @@ function addSongCard(song, index) {
           <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
           <div class="song-meta">
             <div class="meta-badges">
-              ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "")) 
-                ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
-                : ''}
+              ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : ""))
+      ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
+      : ''}
               <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
             </div>
             <span class="duration-text">${song.duration || '--:--'}</span>
           </div>
-        </div>
-        <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
-          ${song.tags && song.tags.length > 0 
-            ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('') 
-            : '<span class="tag-no-info">태그 정보 없음</span>'}
+          <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
+            ${song.tags && song.tags.length > 0
+      ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
+      : '<span class="tag-no-info">태그 정보 없음</span>'}
+          </div>
         </div>
       </div>
     `}
   `;
-  
+
   // Unified Status Badge (MR / 분리중 / 대기중)
-  checkMrSeparated(song.path).then(isSeparated => {
-    const parent = isList ? card.querySelector(".status-badge-container") : card.querySelector(".thumbnail");
-    if (!parent || parent.querySelector(".status-badge")) return;
-
-    const badge = document.createElement("div");
-    badge.className = "status-badge";
-
-    const activeTask = state.activeTasks[song.path];
-    if (activeTask && activeTask.status !== "Finished") {
-      const isWaiting = activeTask.status === "Pending" || activeTask.status === "Preparing";
-      badge.classList.add(isWaiting ? "pending" : "processing");
-      badge.textContent = isWaiting ? "대기중" : "분리중";
-    } else if (isSeparated || song.isMr) {
-      badge.classList.add("mr");
-      badge.textContent = "MR";
-    } else {
-      return; // No badge needed
-    }
-
-    parent.appendChild(badge);
-  });
+  updateCardStatusBadge(song.path, card);
 
   // Integrated click handler: Play immediately on card or thumbnail click
   const handlePlayClick = async (e) => {
@@ -474,20 +461,20 @@ export function updateThumbnailOverlay() {
     const cardIndex = parseInt(card.dataset.index);
     const isActive = state.currentTrack && state.currentTrack.path === card.dataset.path;
     const isSelected = state.selectedTrackIndex === cardIndex;
-    
+
     card.classList.toggle("active", isActive);
     card.classList.toggle("selected", isSelected);
-    
+
     // Visual feedback: dim non-selected items
     card.style.opacity = (state.selectedTrackIndex === -1 || isSelected) ? "1" : "0.6";
-    
+
     const overlay = card.querySelector(".thumb-overlay");
     if (overlay) {
       overlay.classList.toggle("active", isActive || isSelected);
       overlay.classList.toggle("playing", isActive && state.isPlaying);
       overlay.classList.toggle("loading", isActive && state.isLoading);
       overlay.classList.toggle("paused", isActive && !state.isPlaying && !state.isLoading);
-      
+
       // Visual feedback for 2-step selection: 
       // If selected but NOT playing, show a distinct "ready" highlight
       overlay.classList.toggle("selected-ready", isSelected && !isActive);
@@ -495,7 +482,7 @@ export function updateThumbnailOverlay() {
   });
 
   // btnStartTrack logic removed
-  
+
   if (elements.thumbOverlay) {
     const hasTrack = !!state.currentTrack;
     elements.thumbOverlay.classList.toggle("active", hasTrack);
@@ -528,7 +515,7 @@ export function updatePlayButton() {
 export function updateGenreDropdowns() {
   const categories = [...new Set(state.songLibrary.map(s => s.genre).filter(c => c))];
   const customCategories = categories.filter(c => !DEFAULT_CATEGORIES.some(dc => dc.val === c));
-  
+
   const options = [
     { val: "all", text: "전체 장르" },
     ...DEFAULT_CATEGORIES,
@@ -560,7 +547,7 @@ export function updateCategoryDropdown() {
     if (s.categories) return s.categories;
     return [];
   }).filter(c => c))];
-  
+
   const options = [
     { val: "all", text: "전체 카테고리" },
     ...allCats.map(c => ({ val: c, text: c }))
@@ -587,9 +574,9 @@ export function renderDropdownOptions(id, opts, cb) {
   if (!el) return;
   const container = el.querySelector(".select-options");
   const selectedText = el.querySelector(".selected-text");
-  
+
   container.innerHTML = opts.map(o => `<div class="option-item" data-value="${o.val}">${o.text}</div>`).join("");
-  
+
   container.querySelectorAll(".option-item").forEach(opt => {
     opt.onclick = (e) => {
       e.stopPropagation();
@@ -603,7 +590,7 @@ export function renderDropdownOptions(id, opts, cb) {
 function showSongContextMenu(e, song, originalIndex) {
   if (!elements.contextMenu) return;
   state.editingSongIndex = originalIndex;
-  
+
   // Boundary check to prevent menu from overflowing viewport
   const menuWidth = 160;   // Estimated menu width
   const menuHeight = 200;  // Estimated max menu height
@@ -620,7 +607,7 @@ function showSongContextMenu(e, song, originalIndex) {
   elements.contextMenu.style.top = `${y}px`;
   elements.contextMenu.style.left = `${x}px`;
   elements.contextMenu.classList.add("active");
-  
+
   const menuSeparate = document.getElementById("menu-separate");
   const menuDeleteMr = document.getElementById("menu-delete-mr");
 
@@ -637,29 +624,29 @@ function showSongContextMenu(e, song, originalIndex) {
           const { invoke } = window.__TAURI__.core;
           // 1. Stop playback immediately
           await invoke("stop_playback");
-          
+
           // 2. Delete physical files
           await invoke("delete_mr", { path: song.path });
-          
+
           // 3. Update song state in library
           song.isMr = false;
           await saveLibrary(state.songLibrary);
-          
+
           // 4. If current track in dock, reset UI to 0:00 and stop
           if (state.currentTrack && state.currentTrack.path === song.path) {
-             state.isPlaying = false;
-             state.currentProgressMs = 0;
-             state.targetProgressMs = 0;
-             if (elements.playbackBar) elements.playbackBar.value = 0;
-             if (elements.progressFill) elements.progressFill.style.width = "0%";
-             if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
-             
-             import('./ui.js').then(m => {
-                m.updateThumbnailOverlay();
-                m.updatePlayButton();
-             });
+            state.isPlaying = false;
+            state.currentProgressMs = 0;
+            state.targetProgressMs = 0;
+            if (elements.playbackBar) elements.playbackBar.value = 0;
+            if (elements.progressFill) elements.progressFill.style.width = "0%";
+            if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+
+            import('./ui.js').then(m => {
+              m.updateThumbnailOverlay();
+              m.updatePlayButton();
+            });
           }
-          
+
           renderLibrary();
           showNotification("MR 파일이 삭제되었으며 원본 곡으로 연결되었습니다.", "success");
         } catch (err) {
@@ -667,11 +654,11 @@ function showSongContextMenu(e, song, originalIndex) {
         }
       };
     }
-    
+
     if (menuSeparate) {
       const activeTask = state.activeTasks[song.path];
       const isSeparating = activeTask && activeTask.status !== "Finished";
-      
+
       if (isSeparated) {
         menuSeparate.style.display = "none";
       } else {
@@ -703,11 +690,11 @@ function showSongContextMenu(e, song, originalIndex) {
   if (menuPlay) {
     const isCurrent = state.currentTrack && state.currentTrack.path === song.path;
     menuPlay.textContent = (isCurrent && state.isPlaying) ? "일시정지" : "재생";
-    
+
     menuPlay.onclick = async () => {
       elements.contextMenu.classList.remove("active");
       const { selectTrack, handlePlaybackToggle } = await import('./player.js');
-      
+
       if (isCurrent) {
         await handlePlaybackToggle();
       } else {
@@ -715,7 +702,7 @@ function showSongContextMenu(e, song, originalIndex) {
       }
     };
   }
-  
+
   document.getElementById("menu-edit").onclick = () => {
     openEditModal(song, originalIndex);
     elements.contextMenu.classList.remove("active");
@@ -730,16 +717,21 @@ function showSongContextMenu(e, song, originalIndex) {
 
 function openEditModal(song, index) {
   state.editingSongIndex = index;
+
+  // Reset scroll position of modal body
+  const modalBody = elements.metadataModal?.querySelector(".modal-body");
+  if (modalBody) modalBody.scrollTop = 0;
+
   document.getElementById("edit-title").value = song.title || "";
   document.getElementById("edit-artist").value = song.artist || "";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
   document.getElementById("edit-category").value = song.category || (song.categories && song.categories[0]) || "";
-  
+
   const currentGenre = song.genre || "etc";
   const isDefault = DEFAULT_CATEGORIES.some(c => c.val === currentGenre);
   const editCatSelect = document.getElementById("edit-genre-select");
   const editCatCustom = document.getElementById("edit-genre-custom");
-  
+
   if (isDefault) {
     if (editCatSelect) editCatSelect.value = currentGenre;
     if (editCatCustom) editCatCustom.style.display = "none";
@@ -772,7 +764,7 @@ function openEditModal(song, index) {
     mrCheckbox.checked = !!song.isMr;
     mrCheckbox.disabled = false;
     if (mrText) mrText.textContent = "이 곡은 이미 MR(인스트루먼탈)입니다";
-    
+
     // If MR files exist on disk (AI separated), lock the checkbox
     checkMrSeparated(song.path).then(isSeparated => {
       if (isSeparated) {
@@ -793,10 +785,10 @@ function deleteSong(index) {
   const confirmTitle = document.getElementById("confirm-title");
   const confirmMsg = document.getElementById("confirm-message");
   const confirmOk = document.getElementById("confirm-ok");
-  
+
   if (confirmTitle) confirmTitle.textContent = "곡 삭제";
   if (confirmMsg) confirmMsg.textContent = `'${song.title}' 곡을 삭제하시겠습니까?`;
-  
+
   if (confirmOk) {
     confirmOk.onclick = async () => {
       try {
@@ -819,13 +811,13 @@ function deleteSong(index) {
  */
 export function updateAiModelStatus(isReady) {
   if (!elements.aiModelStatus) return;
-  
+
   if (isReady) {
     elements.aiModelStatus.textContent = "Online (Ready)";
-    elements.aiModelStatus.className = "status-badge status-online";
+    elements.aiModelStatus.className = "ai-status-badge status-online";
   } else {
     elements.aiModelStatus.textContent = "Offline (Need Download)";
-    elements.aiModelStatus.className = "status-badge status-offline";
+    elements.aiModelStatus.className = "ai-status-badge status-offline";
   }
 }
 
@@ -834,7 +826,7 @@ export function updateAiModelStatus(isReady) {
  */
 export function updateGpuStatus(gpuStatus) {
   if (!elements.cudaRecommendBanner) return;
-  
+
   if (gpuStatus && gpuStatus.recommendCuda) {
     elements.cudaRecommendBanner.style.display = "flex";
     console.log("[UI] NVIDIA GPU detected but CUDA is missing. Showing recommendation banner.");
@@ -848,10 +840,10 @@ export function updateGpuStatus(gpuStatus) {
  */
 export async function updateAiTogglesState(song = null) {
   if (!elements.toggleVocal || !elements.toggleLyric) return;
-  
+
   // Use current playing track if no specific song is highlighted
   const effectiveSong = song || state.currentTrack;
-  
+
   // 1. Restore Checked State from Global State (Persistence)
   elements.toggleVocal.checked = state.vocalEnabled;
   elements.toggleLyric.checked = state.lyricsEnabled;
@@ -881,11 +873,15 @@ export async function updateAiTogglesState(song = null) {
 export function openLibraryManager() {
   if (!elements.managerModal) return;
   elements.managerModal.classList.add("active");
-  
+
+  // Reset scroll position of table container
+  const container = elements.managerModal.querySelector(".table-container");
+  if (container) container.scrollTop = 0;
+
   // Reset search and sort states
   if (elements.managerSearchInput) elements.managerSearchInput.value = "";
   document.querySelectorAll("#manager-table th").forEach(th => th.removeAttribute("data-order"));
-  
+
   renderManagerTable();
 }
 
@@ -894,21 +890,21 @@ export function openLibraryManager() {
  */
 export function renderManagerTable() {
   if (!elements.managerTableBody) return;
-  
+
   const searchQuery = elements.managerSearchInput ? elements.managerSearchInput.value.trim().toLowerCase() : "";
   let data = state.songLibrary.map((s, originalIndex) => ({ ...s, originalIndex }));
-  
+
   // 1. Filter
   if (searchQuery) {
-    data = data.filter(s => 
-      (s.title || "").toLowerCase().includes(searchQuery) || 
+    data = data.filter(s =>
+      (s.title || "").toLowerCase().includes(searchQuery) ||
       (s.artist || "").toLowerCase().includes(searchQuery) ||
       (s.category || "").toLowerCase().includes(searchQuery) ||
       (s.genre || "").toLowerCase().includes(searchQuery) ||
       (s.tags || []).some(t => t.toLowerCase().includes(searchQuery))
     );
   }
-  
+
   // 2. Sort
   const activeHeader = document.querySelector("#manager-table th[data-order]");
   if (activeHeader) {
@@ -936,7 +932,7 @@ export function renderManagerTable() {
       </td>
     </tr>
   `).join("");
-  
+
   if (elements.managerStat) {
     elements.managerStat.textContent = `총 ${data.length}곡 등록됨`;
   }
@@ -951,7 +947,7 @@ export function renderManagerTable() {
 export function initTableResizing() {
   const table = document.getElementById("manager-table");
   if (!table) return;
-  
+
   const ths = table.querySelectorAll("th");
   const colgroup = document.getElementById("manager-table-colgroup");
   if (!colgroup) return;
@@ -967,15 +963,15 @@ export function initTableResizing() {
 
     const resizer = th.querySelector(".resizer");
     if (!resizer) return;
-    
+
     let startX, startWidthLeft, startWidthRight, totalTableWidth;
     const colLeft = cols[i];
-    const colRight = cols[i+1];
-    
+    const colRight = cols[i + 1];
+
     const onMouseMove = (e) => {
       if (!startX) return;
       const dx = e.clientX - startX;
-      
+
       const newWidthLeftPx = startWidthLeft + dx;
       const newWidthRightPx = startWidthRight - dx;
 
@@ -984,26 +980,26 @@ export function initTableResizing() {
         // Apply as percentages to maintain total width at 100%
         const leftPct = (newWidthLeftPx / totalTableWidth) * 100;
         const rightPct = (newWidthRightPx / totalTableWidth) * 100;
-        
+
         colLeft.style.width = leftPct + "%";
         colRight.style.width = rightPct + "%";
       }
     };
-    
+
     const onMouseUp = () => {
       startX = null;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       document.body.classList.remove("resizing");
-      saveTableWidths(); 
+      saveTableWidths();
     };
-    
+
     resizer.addEventListener("mousedown", (e) => {
       startX = e.clientX;
       totalTableWidth = table.offsetWidth;
       startWidthLeft = colLeft.offsetWidth;
       startWidthRight = colRight.offsetWidth;
-      
+
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
       document.body.classList.add("resizing");
@@ -1022,7 +1018,7 @@ function saveTableWidths() {
   const table = document.getElementById("manager-table");
   const colgroup = document.getElementById("manager-table-colgroup");
   if (!table || !colgroup) return;
-  
+
   const totalWidth = table.offsetWidth;
   if (totalWidth <= 0) return;
 
@@ -1037,10 +1033,10 @@ export function applyTableWidths() {
 
   const cols = colgroup.querySelectorAll("col");
   const storedData = localStorage.getItem("lib-manager-widths-pct");
-  
+
   let percentages;
   // Refined default layout for first-time users
-  const defaultPercentages = [28, 14, 11, 11, 23, 7, 6]; 
+  const defaultPercentages = [28, 14, 11, 11, 23, 7, 6];
 
   if (storedData) {
     try {
@@ -1052,7 +1048,7 @@ export function applyTableWidths() {
   } else {
     percentages = defaultPercentages;
   }
-  
+
   percentages.forEach((p, i) => {
     if (cols[i]) cols[i].style.width = p + "%";
   });
@@ -1063,26 +1059,27 @@ export function applyTableWidths() {
  */
 export async function renderCurationTab() {
   if (!elements.unclassifiedTagsList) return;
-  
+
   elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">데이터 분석 중...</div>';
-  
+
   try {
     const { invoke } = window.__TAURI__.core;
     const tags = await invoke("get_unclassified_tags");
+    console.log("[DEBUG] Unclassified Tags received:", tags);
     const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
-    
+
     if (sortedTags.length === 0) {
       elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">새로 발견된 미분류 태그가 없습니다.</div>';
       return;
     }
-    
+
     elements.unclassifiedTagsList.innerHTML = sortedTags.map(([tag, hits]) => `
       <div class="unclassified-item" data-tag="${tag}">
         <span class="tag-text">${tag}</span>
         <span class="hit-count">${hits} hits</span>
       </div>
     `).join("");
-    
+
     // Bind click events
     elements.unclassifiedTagsList.querySelectorAll(".unclassified-item").forEach(item => {
       item.onclick = () => {
@@ -1101,4 +1098,235 @@ export async function renderCurationTab() {
     elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--danger);">불러오기 실패</div>';
   }
 }
-
+
+/**
+ * Sets up a ResizeObserver on the parent container to enable smooth layout transitions
+ * using the FLIP (First, Last, Invert, Play) technique.
+ */
+export function setupGridResizeObserver() {
+  const container = elements.scrollArea || (elements.songGrid ? elements.songGrid.parentElement : null);
+  if (!container || !elements.songGrid) return;
+  
+  const ro = new ResizeObserver(entries => {
+    if (state.viewMode === 'list') return;
+    
+    for (let entry of entries) {
+      const width = entry.contentRect.width;
+      if (width <= 0) continue;
+      
+      const columns = Math.floor((width + 24) / (200 + 24));
+      
+      if (columns > 0 && state.lastColumns !== columns) {
+        // 1. [First] Capture current positions
+        const cards = Array.from(elements.songGrid.querySelectorAll('.song-card'));
+        const firstPositions = cards.map(card => {
+          const rect = card.getBoundingClientRect();
+          return { id: card.dataset.index, left: rect.left, top: rect.top };
+        });
+
+        // 2. [Last] Apply new layout
+        state.lastColumns = columns;
+        elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, 200px)`;
+
+        // 3. [Invert & Play] Trigger animation in next frame to allow layout shift
+        requestAnimationFrame(() => {
+          cards.forEach((card, i) => {
+            const first = firstPositions[i];
+            const last = card.getBoundingClientRect();
+
+            const dx = first.left - last.left;
+            const dy = first.top - last.top;
+
+            if (dx === 0 && dy === 0) return;
+
+            // Invert: Set to old position immediately (no transition)
+            card.style.transition = 'none';
+            card.style.transform = `translate(${dx}px, ${dy}px)`;
+
+            // Force reflow
+            card.offsetHeight;
+
+            // Play: Trigger smooth move to new position
+            card.style.transition = ''; // Restore CSS transition
+            card.style.transform = '';
+          });
+        });
+      }
+    }
+  });
+  
+  ro.observe(container);
+
+  // Initial column count sync using container width
+  const initialWidth = container.clientWidth;
+  if (initialWidth > 0) {
+    state.lastColumns = Math.floor((initialWidth + 24) / (200 + 24));
+    if (state.lastColumns > 0) {
+      elements.songGrid.style.gridTemplateColumns = `repeat(${state.lastColumns}, 200px)`;
+    }
+  }
+}
+
+/**
+ * Updates the Active Tasks UI (badge count and task list)
+ * @param {string|null} targetPath - Optional path for partial update
+ */
+export function updateTaskUI(targetPath = null) {
+  const badge = elements.taskBadge || document.getElementById("task-badge");
+  const list = elements.activeTasksList || document.getElementById("active-tasks-list");
+  if (!list) return;
+
+  const allTasks = Object.entries(state.activeTasks);
+  const runningTasks = allTasks.filter(([_, t]) => t.status !== "Finished" && t.status !== "Cancelled" && t.status !== "Error");
+  const activeCount = runningTasks.length;
+  
+  if (badge) {
+    badge.textContent = activeCount;
+    badge.style.display = activeCount > 0 ? "flex" : "none";
+  }
+
+  // 1. Partial Update: Only update progress/status if task exists in DOM
+  if (targetPath) {
+    const cards = list.querySelectorAll('.task-card');
+    const existingCard = Array.from(cards).find(el => el.dataset.taskPath === targetPath);
+    
+    if (existingCard) {
+      const task = state.activeTasks[targetPath];
+      const bar = existingCard.querySelector(".task-progress-bar");
+      const pctText = existingCard.querySelector(".task-percentage");
+      const statusTextEl = existingCard.querySelector(".task-status-text");
+      
+      const pct = Math.round(task.percentage);
+      if (bar) bar.style.width = pct + '%';
+      if (pctText) pctText.textContent = pct + '%';
+      if (statusTextEl) {
+        const s = (task.status || "").toLowerCase();
+        statusTextEl.textContent = s === "queued" ? "대기 중..." : s === "starting" ? "준비 중..." : task.status;
+      }
+
+      const badgeEl = existingCard.querySelector(".task-provider-badge");
+      if (badgeEl && task.provider) {
+        const rawProv = task.provider.toUpperCase();
+        const isGPU = rawProv.includes("GPU") || rawProv.includes("CUDA") || rawProv.includes("DIRECTML");
+        const isCPU = rawProv.includes("CPU");
+        const isNetwork = rawProv.includes("NETWORK") || task.status.toLowerCase().includes("down");
+        const isSystem = rawProv.includes("SYSTEM") || task.status.includes("모델");
+
+        let pText = "AI";
+        let pClass = "provider-ai";
+
+        if (isGPU) { pText = "GPU"; pClass = "provider-gpu"; }
+        else if (isCPU) { pText = "CPU"; pClass = "provider-cpu"; }
+        else if (isNetwork) { pText = "NETWORK"; pClass = "provider-network"; }
+        else if (isSystem) { pText = "AI"; pClass = "provider-ai"; }
+        else if (task.status === "Queued") { pText = "QUEUED"; pClass = "provider-queued"; }
+
+        badgeEl.textContent = pText;
+        badgeEl.className = "task-provider-badge " + pClass;
+      }
+      
+      const isRunning = task.status !== "Finished" && task.status !== "Cancelled" && task.status !== "Error";
+      if (isRunning) return; 
+    }
+  }
+
+  // 2. Full Render
+  if (allTasks.length === 0) {
+    list.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
+  } else {
+    list.innerHTML = allTasks.map(([path, t]) => {
+      const normalize = (p) => (p ? decodeURIComponent(p).replace(/\\/g, '/').toLowerCase() : '');
+      const targetNorm = normalize(path);
+      const song = state.songLibrary.find(s => normalize(s.path) === targetNorm);
+      
+      let displayName = song ? song.title : (path ? decodeURIComponent(path).split(/[\\/]/).pop() : 'Unknown');
+      const thumbnail = song ? song.thumbnail : null;
+      
+      if (!song && path.startsWith('http')) {
+        displayName = "YouTube 오디오 추출 중...";
+      }
+
+      const pct = Math.round(t.percentage);
+      const statusText = t.status === "Queued" ? "대기 중..." : t.status === "Starting" ? "준비 중..." : t.status;
+      const isQueued = t.status === "Queued";
+      
+      const rawProvider = (t.provider || "").toUpperCase();
+      const isGPU = rawProvider.includes("GPU") || rawProvider.includes("CUDA") || rawProvider.includes("DIRECTML");
+      const isCPU = rawProvider.includes("CPU");
+      const isSystem = rawProvider.includes("SYSTEM") || t.status.includes("모델");
+      const isNetwork = rawProvider.includes("NETWORK") || t.status.toLowerCase().includes("down");
+
+      let pText = "AI", pClass = "provider-ai";
+      if (isGPU) { pText = "GPU"; pClass = "provider-gpu"; }
+      else if (isCPU) { pText = "CPU"; pClass = "provider-cpu"; }
+      else if (isNetwork) { pText = "NETWORK"; pClass = "provider-network"; }
+      else if (isSystem) { pText = "AI"; pClass = "provider-ai"; }
+      else if (t.status === "Queued") { pText = "QUEUED"; pClass = "provider-queued"; }
+
+      return `
+        <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path}">
+          <div class="task-header-info">
+            ${thumbnail ? `<img src="${thumbnail}" class="task-thumb" onerror="this.style.display='none'">` : `<div class="task-icon">MR</div>`}
+            <div class="task-info-main">
+              <span class="task-title" title="${path}">${displayName}</span>
+              <div class="task-status-row-top">
+                <span class="task-status-text">${statusText}</span>
+                <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
+              </div>
+            </div>
+            <div class="task-provider-badge ${pClass}">${pText}</div>
+            <button class="btn-task-cancel secondary-btn" onclick="window.cancelTask(this)" data-task-path="${path.replace(/"/g, '&quot;')}">취소</button>
+          </div>
+          <div class="task-progress-container">
+            <div class="task-progress-bar" style="width: ${pct}%; ${isQueued ? 'background: #4b5563;' : ''}"></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+}
+
+/**
+ * Updates the status badge of a specific song card in real-time
+ * @param {string} path - The path of the song to update
+ * @param {HTMLElement|null} card - Optional card element to update directly
+ */
+export async function updateCardStatusBadge(path, card = null) {
+  const targetCard = card || document.querySelector(`.song-card[data-path="${path}"]`);
+  if (!targetCard) return;
+
+  const isList = state.viewMode === "list";
+  const parent = isList ? targetCard.querySelector(".status-badge-container") : targetCard.querySelector(".thumbnail");
+  if (!parent) return;
+
+  // Clear existing badge
+  const existingBadge = parent.querySelector(".status-badge");
+  if (existingBadge) existingBadge.remove();
+
+  // Find song in library for isMr info
+  const song = state.songLibrary.find(s => s.path === path);
+  const isSeparated = await checkMrSeparated(path);
+  
+  const badge = document.createElement("div");
+  badge.className = "status-badge";
+
+  const activeTask = state.activeTasks[path];
+  if (activeTask && activeTask.status !== "Finished") {
+    const status = (activeTask.status || "").toLowerCase();
+    const isWaiting = status.includes("queued") ||
+      status.includes("pending") ||
+      status.includes("starting") ||
+      status.includes("preparing");
+
+    badge.classList.add(isWaiting ? "pending" : "processing");
+    badge.textContent = isWaiting ? "대기중" : "분리중";
+  } else if (isSeparated || (song && song.isMr)) {
+    badge.classList.add("mr");
+    badge.textContent = "MR";
+  } else {
+    return; // No badge to show
+  }
+
+  parent.appendChild(badge);
+}
+

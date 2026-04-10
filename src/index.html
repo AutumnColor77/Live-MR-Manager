@@ -288,7 +288,7 @@
 
             <div class="ai-model-card">
               <div class="ai-info-left">
-                <div id="ai-model-status" class="status-badge status-offline">상태 확인 중...</div>
+               <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
                 <h2 class="ai-title-large">Kim Vocal 2 (MDX-Net)</h2>
                 <div class="ai-model-desc">
                   고품질 보컬/반주 분리를 위해 약 67MB의 AI 모델 파일이 필요합니다.
@@ -607,9 +607,9 @@
               <!-- Dynamically populated -->
               <div style="padding: 20px; text-align: center; color: #888;">데이터를 불러오는 중...</div>
             </div>
-            <div style="margin-top: 15px; display: flex; gap: 8px;">
-               <button class="secondary-btn" id="btn-refresh-unmapped" style="flex: 1; font-size: 0.8rem;">새로고침</button>
-               <button class="secondary-btn" id="btn-copy-unmapped" style="flex: 1; font-size: 0.8rem;">목록 복사 (AI용)</button>
+            <div class="flex-row gap-sm mt-sm">
+               <button class="secondary-btn btn-sm flex-1" id="btn-refresh-unmapped">새로고침</button>
+               <button class="secondary-btn btn-sm flex-1" id="btn-copy-unmapped">목록 복사 (AI용)</button>
             </div>
           </div>
           <div class="curation-right">
@@ -632,7 +632,7 @@
                 <label>번역어 (Korean)</label>
                 <input type="text" id="curation-translated" placeholder="예: 몽환적인, 록, 시티팝">
               </div>
-              <button class="primary-btn" id="btn-save-mapping" style="width: 100%; margin-top: 10px; height: 45px;">사전에 등록</button>
+              <button class="primary-btn btn-md w-full mt-xs" id="btn-save-mapping">사전에 등록</button>
             </div>
             
             <div class="ai-bridge-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05);">
@@ -645,8 +645,8 @@
       <footer class="modal-footer manager-footer">
         <div id="manager-stat">Total 0 Songs</div>
         <div class="footer-actions">
-          <button class="primary-btn" id="manager-modal-save">저장</button>
-          <button class="secondary-btn" id="manager-modal-cancel">닫기</button>
+          <button class="primary-btn btn-md" id="manager-modal-save">저장</button>
+          <button class="secondary-btn btn-md" id="manager-modal-cancel">닫기</button>
         </div>
       </footer>
     </div>
