@@ -622,17 +622,16 @@ function showSongContextMenu(e, song, originalIndex) {
         elements.contextMenu.classList.remove("active");
         try {
           const { invoke } = window.__TAURI__.core;
-          // 1. Stop playback immediately
-          await invoke("stop_playback");
-
-          // 2. Delete physical files
+          
+          // 1. 백엔드에서 안전하게 중단 및 삭제 수행 (백엔드 내부에서 stop_playback 로직 포함됨)
           await invoke("delete_mr", { path: song.path });
 
-          // 3. Update song state in library
-          song.isMr = false;
+          // 2. 라이브러리 상태 업데이트 (원본 데이터 갱신)
+          const masterTrack = state.songLibrary.find(s => s.path === song.path);
+          if (masterTrack) masterTrack.isMr = false;
           await saveLibrary(state.songLibrary);
 
-          // 4. If current track in dock, reset UI to 0:00 and stop
+          // 3. 현재 재생 중인 곡이었다면 UI 초기화
           if (state.currentTrack && state.currentTrack.path === song.path) {
             state.isPlaying = false;
             state.currentProgressMs = 0;
@@ -641,16 +640,17 @@ function showSongContextMenu(e, song, originalIndex) {
             if (elements.progressFill) elements.progressFill.style.width = "0%";
             if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
 
-            import('./ui.js').then(m => {
-              m.updateThumbnailOverlay();
-              m.updatePlayButton();
-            });
+            updateThumbnailOverlay();
+            updatePlayButton();
           }
 
-          renderLibrary();
-          showNotification("MR 파일이 삭제되었으며 원본 곡으로 연결되었습니다.", "success");
+          showNotification("MR 파일이 삭제되었습니다. 원본 곡으로 재생됩니다.", "success");
         } catch (err) {
           console.error("MR Delete failed:", err);
+          showNotification("MR 삭제 중 오류가 발생했습니다: " + err, "error");
+        } finally {
+          // 어떤 상황에서도 UI는 최신 상태로 갱신
+          renderLibrary();
         }
       };
     }

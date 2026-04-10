@@ -392,32 +392,40 @@ async fn check_mr_separated(window: WebviewWindow, path: String) -> Result<bool,
 #[tauri::command]
 async fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
-    let (current_path, is_playing, current_pos_ms) = {
-        let state = handler.state.lock();
-        let samples = handler.current_pos_samples.load(Ordering::Relaxed);
-        let track_rate = handler.track_sample_rate.load(Ordering::Relaxed);
-        let pos_ms = if track_rate > 0 { (samples as f64 / track_rate as f64 * 1000.0) as u64 } else { 0 };
-        (state.current_track.clone(), state.is_playing, pos_ms)
-    };
+    
+    // 1. 현재 재생 중인 곡이 삭제 대상이라면 즉시 중단
+    let mut needs_cooldown = false;
+    {
+        let mut state = handler.state.lock();
+        if state.current_track.as_deref() == Some(&path) {
+            let controller = handler.controller.lock();
+            controller.clear();
+            state.is_playing = false;
+            state.current_track = None;
+            sys_log(&format!("[AUDIO] Stopped playback for {} to allow MR deletion.", path));
+            needs_cooldown = true;
+        }
+    }
+    
+    if needs_cooldown {
+        // Windows에서 파일 핸들이 완전히 닫힐 시간을 잠시 기다림
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    }
 
+    // 2. 물리 파일 삭제
     let paths = window.state::<crate::state::AppPaths>();
     let cache_dir = paths.separated.join(urlencoding::encode(&path).to_string());
     if cache_dir.exists() {
         std::fs::remove_dir_all(cache_dir).map_err(|e| e.to_string())?;
     }
 
-    // Update DB: Reset MR flag
+    // 3. DB 상태 업데이트: MR 플래그 해제
     {
         let db = DB.lock();
         let _ = db.execute("UPDATE Tracks SET is_mr = 0 WHERE path = ?", params![&path]);
         sys_log(&format!("[DB] Reset is_mr flag for {}", path));
     }
 
-    if is_playing && current_path.as_deref() == Some(&path) {
-        sys_log(&format!("[DEBUG] Deleted MR for active track. Reverting to original source @{}ms.", current_pos_ms));
-        let hint = handler.total_duration_ms.load(Ordering::Relaxed);
-        play_track_internal(window, path, Some(hint), Some(current_pos_ms)).await?;
-    }
     Ok(())
 }
 
