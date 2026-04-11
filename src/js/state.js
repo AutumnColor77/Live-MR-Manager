@@ -12,6 +12,7 @@ export const state = {
   editingSongIndex: -1,
   selectedTrackIndex: -1, // Currently highlighted but not playing
   viewMode: localStorage.getItem("viewMode") || "grid",
+  masterVolume: parseFloat(localStorage.getItem("masterVolume") || "80"),
   isMuted: false,
   prevVolume: 80,
   activeTasks: {}, // path -> { title, percentage, status }

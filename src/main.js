@@ -3,7 +3,7 @@
  */
 
 import { state } from './js/state.js';
-import { elements, initDomReferences, renderLibrary, updateGenreDropdowns, updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, updateGpuStatus, setupGridResizeObserver } from './js/ui.js';
+import { elements, initDomReferences, renderLibrary, updateGenreDropdowns, updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, updateGpuStatus, setupGridResizeObserver, initSortable } from './js/ui.js';
 import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab } from './js/events.js';
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
@@ -12,6 +12,35 @@ const { invoke } = window.__TAURI__.core;
 
 async function initApp() {
   console.log("[App] Initializing...");
+  
+  // Fix manual input font/layout shift (fallback for locked CSS)
+  const style = document.createElement('style');
+  style.textContent = `
+    .val-input {
+      font-family: 'SUITE', sans-serif !important;
+      font-size: 0.65rem !important;
+      font-weight: 800 !important;
+      width: 100% !important;
+      height: 100% !important;
+      text-align: center !important;
+      border: none !important;
+      background: transparent !important;
+      color: #fff !important;
+      outline: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      -moz-appearance: textfield;
+      appearance: none;
+    }
+    
+    /* Chrome, Safari, Edge, Opera */
+    .val-input::-webkit-outer-spin-button,
+    .val-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+  `;
+  document.head.appendChild(style);
   
   // 1. Initialize DOM references
   initDomReferences();
@@ -70,6 +99,11 @@ async function initApp() {
   }
 
   // Initial volume sync
+  if (elements.volSlider) {
+    elements.volSlider.value = state.masterVolume;
+    if (elements.volSliderVal) elements.volSliderVal.textContent = state.masterVolume;
+  }
+  await invoke("set_master_volume", { volume: state.masterVolume });
   await invoke("set_volume", { volume: parseFloat(state.prevVolume) });
 
   // Setup custom titlebar
@@ -77,6 +111,9 @@ async function initApp() {
 
   // Setup Smooth Grid Resize
   setupGridResizeObserver();
+  
+  // Initialize Drag & Drop
+  initSortable();
 
   console.log("[App] Initialization Complete.");
 }

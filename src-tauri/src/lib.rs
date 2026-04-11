@@ -270,7 +270,8 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
 fn set_master_volume(volume: f32) -> Result<(), String> {
     if let Ok(handler) = &*AUDIO_HANDLER {
         let controller = handler.controller.lock();
-        controller.set_volume(volume / 100.0);
+        let ratio = volume / 100.0;
+        controller.set_volume(ratio * ratio);
     }
     Ok(())
 }

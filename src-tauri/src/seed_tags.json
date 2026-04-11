@@ -1,6 +1,11 @@
 {
   "genres": [
     { "name": "록", "priority": 10, "mappings": ["rock", "classic rock", "rocks", "rock music"] },
+    { "name": "팝 록", "parent": "록", "priority": 12, "mappings": ["pop rock"] },
+    { "name": "어쿠스틱 록", "parent": "록", "priority": 12, "mappings": ["acoustic rock"] },
+    { "name": "K-팝 록", "parent": "록", "priority": 12, "mappings": ["k-pop rock"] },
+    { "name": "매체스터", "parent": "록", "priority": 11, "mappings": ["madchester", "madchester scene"] },
+    { "name": "브릿 고스", "parent": "록", "priority": 11, "mappings": ["britgoth"] },
     { "name": "인디 록", "parent": "록", "priority": 15, "mappings": ["indie rock", "indie", "independent", "korean indie", "korean indie rock"] },
     { "name": "브릿팝", "parent": "록", "priority": 12, "mappings": ["britpop", "british pop"] },
     { "name": "얼터너티브 록", "parent": "록", "priority": 12, "mappings": ["alternative rock", "alternative"] },
@@ -68,7 +73,14 @@
     { "name": "세련된", "mappings": ["sophisticated", "modern", "polished"] },
     { "name": "귀여운", "mappings": ["cute"] },
     { "name": "감동적인", "mappings": ["makes me cry"] },
-    { "name": "한국", "mappings": ["korea"] },
+    { "name": "한국", "mappings": ["korea", "south korean"] },
+    { "name": "맨체스터", "mappings": ["manchester"] },
+    { "name": "인디", "mappings": ["indies"] },
+    { "name": "로맨틱 트리톤즈", "mappings": ["romantic tritones"] },
+    { "name": "비스티 보이즈", "mappings": ["beastie boys"] },
+    { "name": "델리스파이스", "mappings": ["dellispice"] },
+    { "name": "자우림", "mappings": ["jaurim"] },
+    { "name": "배드 브레인즈", "mappings": ["bad brains"] },
     { "name": "아이리시", "mappings": ["irish"] },
     { "name": "방송/유로비전", "mappings": ["mondiovision"] },
     { "name": "감상용", "mappings": ["por escuchar"] }

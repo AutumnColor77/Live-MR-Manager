@@ -160,13 +160,18 @@ fn load_context(app: &AppHandle) -> AppContext {
         }
     }
 
-    AppContext {
+    let ctx = AppContext {
         genre_map,
         genre_master,
         tag_map,
         tag_master,
         exclusions,
-    }
+    };
+    
+    crate::audio_player::sys_log(&format!("[Metadata] Loaded {} genres, {} tags, {} exclusions from seed_tags.json", 
+        ctx.genre_master.len(), ctx.tag_master.len(), ctx.exclusions.len()));
+    
+    ctx
 }
 
 pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (Option<String>, Option<Vec<String>>) {
@@ -177,20 +182,30 @@ pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (
     };
 
     let new_genre = genre.map(|g| {
-        let low = g.to_lowercase();
-        ctx.genre_map.get(&low)
+        let low = g.to_lowercase().trim().to_string();
+        let mapped = ctx.genre_map.get(&low)
             .and_then(|id| ctx.genre_master.get(id))
             .map(|entity| entity.name.clone())
-            .unwrap_or(g)
+            .unwrap_or(g.clone());
+        
+        if mapped != g {
+            crate::audio_player::sys_log(&format!("[Metadata] Translated Genre: {} -> {}", g, mapped));
+        }
+        mapped
     });
 
     let new_tags = tags.map(|t_list| {
         t_list.into_iter().map(|t| {
-            let low = t.to_lowercase();
-            ctx.tag_map.get(&low)
+            let low = t.to_lowercase().trim().to_string();
+            let mapped = ctx.tag_map.get(&low)
                 .and_then(|id| ctx.tag_master.get(id))
                 .cloned()
-                .unwrap_or(t)
+                .unwrap_or(t.clone());
+            
+            if mapped != t {
+                crate::audio_player::sys_log(&format!("[Metadata] Translated Tag: {} -> {}", t, mapped));
+            }
+            mapped
         }).collect()
     });
 

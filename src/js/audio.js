@@ -137,3 +137,11 @@ export async function toggleAiFeature(feature, enabled) {
     console.error("Toggle AI feature failed:", err);
   }
 }
+
+export async function setMasterVolume(volume) {
+  try {
+    await invoke("set_master_volume", { volume: parseFloat(volume) });
+  } catch (err) {
+    console.error("Failed to set master volume:", err);
+  }
+}

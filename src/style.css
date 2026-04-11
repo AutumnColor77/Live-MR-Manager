@@ -158,7 +158,7 @@ html, body {
   transition: all 0.2s;
   cursor: pointer;
   pointer-events: auto;
-  /* 드래그 영역 내에서도 클릭 가능하도록 명시 */
+  /* ?쒕옒洹??곸뿭 ?댁뿉?쒕룄 ?대┃ 媛?ν븯?꾨줉 紐낆떆 */
 }
 
 .titlebar-button:hover {
@@ -190,7 +190,7 @@ body {
   padding-top: var(--titlebar-height);
 }
 
-/* 諛곌꼍 ?μ떇 */
+/* 獄쏄퀗瑗??關??*/
 .bg-glow {
   position: fixed;
   top: -20%;
@@ -678,7 +678,7 @@ h1 {
     /* Contain overlay */
   }
 
-  /* Unified Status Badge (MR / 분리중 / 대기중) */
+  /* Unified Status Badge (MR / 遺꾨━以?/ ?湲곗쨷) */
   .song-card .status-badge {
     position: absolute;
     top: 10px;
@@ -906,7 +906,7 @@ h1 {
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 8px;
-    /* 장르 영역과의 시각적 간격을 맞추기 위한 보정 */
+    /* ?λⅤ ?곸뿭怨쇱쓽 ?쒓컖??媛꾧꺽??留욎텛湲??꾪븳 蹂댁젙 */
   }
 
   .tag-container.no-info {
@@ -921,7 +921,7 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    /* 리스트는 조금 더 촘촘하게 */
+    /* 由ъ뒪?몃뒗 議곌툑 ??珥섏킌?섍쾶 */
   }
 
   /* List View Card internal - Flattened 6-Column Grid */
@@ -1000,7 +1000,7 @@ h1 {
 
   .col-duration {
     align-items: flex-end;
-    /* 시간은 우측 정렬 */
+    /* ?쒓컙? ?곗륫 ?뺣젹 */
   }
 
   .category-list,
@@ -1705,7 +1705,7 @@ h1 {
     pointer-events: none;
     z-index: 1;
     width: 0%;
-    /* JS濡??낅뜲?댄듃 */
+    /* JS嚥???낅쑓??꾨뱜 */
   }
 
   .song-artist {
@@ -1767,31 +1767,29 @@ h1 {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 10px;
+    gap: 6px;
   }
 
   .btn-audio-reset {
-    width: 28px;
-    height: 54px;
-    /* Vertical button on the right */
+    width: 32px;
+    height: 32px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
     color: var(--text-dim);
-    border-radius: 6px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    margin-left: 4px;
+    flex-shrink: 0;
   }
 
   .btn-audio-reset:hover {
-    background: var(--accent-primary);
-    color: #fff;
-    transform: scale(1.05);
-    box-shadow: 0 0 15px var(--glow-primary);
-    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    
+    border-color: rgba(255, 255, 255, 0.2);
   }
 
   .btn-audio-reset svg {
@@ -1805,6 +1803,7 @@ h1 {
   .control-row {
     display: flex;
     gap: 16px;
+    align-items: flex-end;
   }
 
   .control-row.volume-row {
@@ -1816,6 +1815,33 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .volume-inline-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 32px;
+  }
+
+  .inline-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    width: 54px; /* Volume label width */
+    flex-shrink: 0;
+  }
+
+  .master-val-box {
+    width: 32px !important;
+    min-width: 32px !important;
+    padding: 2px 0 !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
   }
 
   .control-header {
@@ -1836,6 +1862,8 @@ h1 {
     text-align: right;
     transition: all 0.2s;
     background: rgba(59, 130, 246, 0.05);
+    font-size: 0.65rem;
+    font-weight: 800;
   }
 
   .val-display:hover {
@@ -2011,7 +2039,7 @@ h1 {
     padding: 60px 40px;
     background: var(--glass-bg);
     backdrop-filter: blur(20px);
-    /* 釉붾윭 ?④낵 紐낆떆???뺤씤 */
+    /* ?됰뗀????ｋ궢 筌뤿굞????類ㅼ뵥 */
     border: 2px dashed var(--glass-border);
     border-radius: 16px;
     display: flex;
@@ -2628,12 +2656,12 @@ h1 {
     display: flex;
   }
 
-  /* 확인 모달은 다른 모달보다 위에 표시되어야 하며, 시스템 전체에서도 상위 수준이어야 함 */
+  /* ?뺤씤 紐⑤떖? ?ㅻⅨ 紐⑤떖蹂대떎 ?꾩뿉 ?쒖떆?섏뼱???섎ŉ, ?쒖뒪???꾩껜?먯꽌???곸쐞 ?섏??댁뼱????*/
   #confirm-modal {
     z-index: 11510;
   }
 
-  /* AI 모델 다운로드 오버레이 역시 최상위 수준으로 유지 */
+  /* AI 紐⑤뜽 ?ㅼ슫濡쒕뱶 ?ㅻ쾭?덉씠 ??떆 理쒖긽???섏??쇰줈 ?좎? */
   #model-download-overlay {
     z-index: 11600;
   }
@@ -2647,6 +2675,16 @@ h1 {
     box-shadow: 0 30px 100px rgba(0, 0, 0, 0.8);
     overflow: hidden;
     animation: modalScale 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* 硫뷀??곗씠??紐⑤떖? ???볤쾶 */
+  #metadata-modal .modal-content {
+    max-width: 720px;
+  }
+
+  /* 硫뷀??곗씠??紐⑤떖? ???볤쾶 */
+  #metadata-modal .modal-content {
+    max-width: 720px;
   }
 
   @keyframes modalScale {
@@ -2696,6 +2734,42 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 24px;
+  }
+
+  /* 2??洹몃━??紐⑤떖 ?덉씠?꾩썐 */
+  .modal-body-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 30px;
+  }
+
+  .modal-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* 怨〓퀎 蹂쇰ⅷ ?щ씪?대뜑 */
+  .modal-col .volume-container {
+    margin-top: 2px;
+  }
+
+  /* 2??洹몃━??紐⑤떖 ?덉씠?꾩썐 */
+  .modal-body-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 30px;
+  }
+
+  .modal-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* 怨〓퀎 蹂쇰ⅷ ?щ씪?대뜑 */
+  .modal-col .volume-container {
+    margin-top: 2px;
   }
 
   .modal-footer {
@@ -3268,7 +3342,7 @@ h1 {
     cursor: not-allowed;
   }
 
-  /* ?몃씪???ъ깮諛??ㅽ???(?댁쟾 full-width ?ㅽ???理쒖쟻?? */
+  /* ?紐껋뵬????源?쳸??????(??곸읈 full-width ?????筌ㅼ뮇??? */
   .playback-container .progress-bar-wrapper:hover .progress-fill::after {
     opacity: 1;
   }
@@ -3793,7 +3867,7 @@ h1 {
   }
 
   .sort-indicator::after {
-    content: '↕';
+    content: '??;
   }
 
   #manager-table th[data-order="asc"] .sort-indicator {
@@ -3802,7 +3876,7 @@ h1 {
   }
 
   #manager-table th[data-order="asc"] .sort-indicator::after {
-    content: '↑';
+    content: '??;
   }
 
   #manager-table th[data-order="desc"] .sort-indicator {
@@ -3811,7 +3885,7 @@ h1 {
   }
 
   #manager-table th[data-order="desc"] .sort-indicator::after {
-    content: '↓';
+    content: '??;
   }
 
   .manager-footer {
@@ -4025,7 +4099,7 @@ h1 {
     padding: 20px;
     border: 1px solid rgba(255, 255, 255, 0.05);
     overflow-y: auto;
-    /* 내용이 길어질 경우 내부 스크롤 생성 */
+    /* ?댁슜??湲몄뼱吏?寃쎌슦 ?대? ?ㅽ겕濡??앹꽦 */
     max-height: 100%;
   }
 
@@ -4086,3 +4160,35 @@ h1 {
   .ai-bridge-section p {
     margin-bottom: 15px;
   }
+/* --- SortableJS Drag & Drop --- */
+.song-grid.reorder-mode .song-card {
+  cursor: grab;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s !important;
+  user-select: none;
+}
+.song-grid.reorder-mode .song-card:active { cursor: grabbing; }
+.song-grid.reorder-mode .song-card:hover { transform: none !important; }
+
+.sortable-ghost {
+  opacity: 0.15 !important;
+  border: 2px dashed var(--accent-primary) !important;
+  border-radius: 16px !important;
+  background: transparent !important;
+}
+
+.sortable-fallback {
+  opacity: 0.95 !important;
+  background: #1a1a24 !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6) !important;
+  border: 2px solid var(--accent-primary) !important;
+  border-radius: 16px !important;
+  z-index: 10000 !important;
+  cursor: grabbing !important;
+  transform: scale(1.05) !important;
+}
+
+.sortable-drag {
+  opacity: 0.9;
+  z-index: 1000;
+  transform: scale(1.02);
+}

@@ -8,7 +8,7 @@ import { formatTime, showNotification } from './utils.js';
 import { selectTrack, highlightTrack, handlePlaybackToggle, updateProgressBar, handleNextTrack, handlePrevTrack } from './player.js';
 import { 
   setVolume, setPitch, setTempo, seekTo, saveLibrary, 
-  loadLibrary as apiLoadLibrary, getAudioMetadata, getYoutubeMetadata, setVocalBalance 
+  loadLibrary as apiLoadLibrary, getAudioMetadata, getYoutubeMetadata, setVocalBalance, setMasterVolume 
 } from './audio.js';
 
 export function initNavigation() {
@@ -200,6 +200,23 @@ export function initGlobalListeners() {
     }, { passive: false });
   }
 
+  // Audio Reset (Pitch/Tempo Only)
+  if (elements.btnResetAudio) {
+    elements.btnResetAudio.onclick = () => {
+      if (elements.pitchSlider) {
+        elements.pitchSlider.value = 0;
+        elements.pitchVal.textContent = "0";
+        setPitch(0);
+      }
+      if (elements.tempoSlider) {
+        elements.tempoSlider.value = 1.0;
+        elements.tempoVal.textContent = "1.00x";
+        setTempo(1.0);
+      }
+      saveLibrary(state.songLibrary);
+    };
+  }
+
   if (elements.tempoVal) {
     setupDirectInput(elements.tempoVal, elements.tempoSlider);
   }
@@ -207,10 +224,11 @@ export function initGlobalListeners() {
   if (elements.volSlider) {
     elements.volSlider.oninput = (e) => {
       const val = e.target.value;
-      setVolume(val);
-      if (state.currentTrack) state.currentTrack.volume = parseFloat(val);
+      if (elements.volSliderVal) elements.volSliderVal.textContent = val;
+      setMasterVolume(val);
+      state.masterVolume = parseFloat(val);
+      localStorage.setItem("masterVolume", val);
     };
-    elements.volSlider.onchange = () => saveLibrary(state.songLibrary);
 
     // Middle-click to reset (80)
     elements.volSlider.addEventListener("auxclick", (e) => {
@@ -231,6 +249,39 @@ export function initGlobalListeners() {
       elements.volSlider.dispatchEvent(new Event("input"));
       elements.volSlider.dispatchEvent(new Event("change"));
     }, { passive: false });
+  }
+
+  if (elements.volSliderVal) {
+    setupDirectInput(elements.volSliderVal, elements.volSlider);
+  }
+
+  if (elements.editVolume) {
+    elements.editVolume.oninput = (e) => {
+      const val = e.target.value;
+      if (elements.editVolumeVal) elements.editVolumeVal.textContent = val;
+      
+      // Only apply real-time volume if we are editing the currently playing track
+      if (state.currentTrack && state.editingSongIndex !== -1) {
+        const songToEdit = state.songLibrary[state.editingSongIndex];
+        if (songToEdit && songToEdit.path === state.currentTrack.path) {
+          setVolume(val);
+        }
+      }
+    };
+    
+    // Wheel Interaction for Edit Modal Volume
+    elements.editVolume.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseInt(elements.editVolume.value);
+      if (e.deltaY < 0) val += 2; else val -= 2;
+      val = Math.max(0, Math.min(100, val));
+      elements.editVolume.value = val;
+      elements.editVolume.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+
+  if (elements.editVolumeVal) {
+    setupDirectInput(elements.editVolumeVal, elements.editVolume);
   }
 
   if (elements.vocalBalance) {
@@ -343,6 +394,12 @@ export function initGlobalListeners() {
       const mrCheckbox = document.getElementById("edit-is-mr");
       if (mrCheckbox) {
         song.isMr = mrCheckbox.checked;
+      }
+      
+      // 곡별 볼륨 저장
+      const editVolume = document.getElementById("edit-volume");
+      if (editVolume) {
+        song.volume = parseFloat(editVolume.value);
       }
       
       await saveLibrary(state.songLibrary);

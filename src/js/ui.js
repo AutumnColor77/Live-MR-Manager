@@ -4,7 +4,7 @@
 
 import { state, DEFAULT_CATEGORIES, SORT_OPTIONS } from './state.js';
 import { getThumbnailUrl, showNotification } from './utils.js';
-import { checkMrSeparated, saveLibrary, deleteSongFromDb } from './audio.js';
+import { checkMrSeparated, saveLibrary, deleteSongFromDb, setVolume } from './audio.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -67,6 +67,8 @@ export const elements = {
   btnMetadataSearch: null,
   metadataSearchResultsModal: null,
   searchResultsClose: null,
+  editVolume: null,
+  editVolumeVal: null,
 
   // Curation
   curationOriginal: null,
@@ -103,12 +105,14 @@ export function initDomReferences() {
   elements.tempoSlider = document.getElementById("tempo-slider");
   elements.pitchVal = document.getElementById("pitch-val");
   elements.tempoVal = document.getElementById("tempo-val");
+  elements.btnResetAudio = document.getElementById("btn-reset-audio");
 
   elements.contextMenu = document.getElementById("context-menu");
   elements.metadataModal = document.getElementById("metadata-modal");
   elements.confirmModal = document.getElementById("confirm-modal");
 
-  elements.volSlider = document.querySelector(".volume-slider");
+  elements.volSlider = document.getElementById("master-volume-slider");
+  elements.volSliderVal = document.getElementById("master-volume-val");
   elements.vocalBalance = document.getElementById("vocal-balance");
   elements.viewGridBtn = document.getElementById("view-grid");
   elements.viewListBtn = document.getElementById("view-list");
@@ -139,6 +143,8 @@ export function initDomReferences() {
   elements.metadataSearchResultsModal = document.getElementById("metadata-search-results-modal");
   elements.searchResultsList = document.getElementById("search-results-list");
   elements.searchResultsClose = document.getElementById("search-results-close");
+  elements.editVolume = document.getElementById("edit-volume");
+  elements.editVolumeVal = document.getElementById("edit-volume-val");
 
   elements.curationOriginal = document.getElementById("curation-original");
   elements.curationCategory = document.getElementById("curation-category");
@@ -775,6 +781,13 @@ function openEditModal(song, index) {
     });
   }
 
+  // 곡별 볼륨 슬라이더 초기화
+  if (elements.editVolume) {
+    const vol = song.volume ?? 80;
+    elements.editVolume.value = vol;
+    if (elements.editVolumeVal) elements.editVolumeVal.textContent = Math.round(vol);
+  }
+
   elements.metadataModal.classList.add("active");
 }
 
@@ -1329,4 +1342,79 @@ export async function updateCardStatusBadge(path, card = null) {
 
   parent.appendChild(badge);
 }
+
+let sortableInstance = null;
+
+/**
+ * Initializes SortableJS on the song grid
+ */
+export function initSortable() {
+  try {
+    if (!elements.songGrid || !window.Sortable) return;
+
+    if (sortableInstance) {
+      sortableInstance.destroy();
+      sortableInstance = null;
+    }
+
+    sortableInstance = new window.Sortable(elements.songGrid, {
+      animation: 200,
+      ghostClass: 'sortable-ghost',
+      forceFallback: true,
+      fallbackClass: 'sortable-fallback',
+      fallbackTolerance: 5,
+      scroll: true,
+      bubbleScroll: true,
+      swapThreshold: 0.65,
+      invertSwap: true,
+      disabled: true,
+      onStart: () => {
+        elements.songGrid.classList.add('is-dragging');
+      },
+      onEnd: async (evt) => {
+        elements.songGrid.classList.remove('is-dragging');
+        
+        const { oldIndex, newIndex } = evt;
+        if (oldIndex === newIndex) return;
+
+        const cards = elements.songGrid.querySelectorAll(".song-card");
+        cards.forEach((card, idx) => {
+          const path = card.dataset.path;
+          const song = state.songLibrary.find(s => s.path === path);
+          if (song) {
+            song.sortOrder = idx;
+          }
+        });
+
+        state.songLibrary.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+        try {
+          await saveLibrary(state.songLibrary);
+          showNotification("정렬 순서가 저장되었습니다.", "success");
+        } catch (err) {
+          console.error("Failed to save library order:", err);
+          showNotification("순서 저장 중 오류가 발생했습니다.", "error");
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Sortable initialization failed:", err);
+  }
+}
+
+export function updateSortableState() {
+  if (!sortableInstance) return;
+
+  const sortBy = elements.libSortSelect?.value || "dateNew";
+  const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
+  const genreFilter = elements.libGenreFilter?.value || "all";
+  const categoryFilter = elements.libCategoryFilter?.value || "all";
+  
+  const canDrag = sortBy === "custom" && !query && genreFilter === "all" && categoryFilter === "all";
+  sortableInstance.option("disabled", !canDrag);
+  elements.songGrid.classList.toggle("reorder-mode", canDrag);
+}
+
+
+
 

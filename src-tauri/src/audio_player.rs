@@ -103,7 +103,8 @@ impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
     fn next(&mut self) -> Option<Self::Item> {
         let s = self.input.next()?;
         let target_vol_bits = self.volume.load(Ordering::Relaxed);
-        let target_vol = f32::from_bits(target_vol_bits) / 100.0;
+        let target_vol_raw = f32::from_bits(target_vol_bits) / 100.0;
+        let target_vol = target_vol_raw * target_vol_raw; // Quadratic scaling for natural volume curve
         
         // Smoothly interpolate current_vol towards target_vol
 
@@ -146,6 +147,11 @@ pub struct StretchedSource<S> where S: Source<Item = f32> {
     pub pos: Arc<AtomicU64>,
     pub buffer: VecDeque<f32>,
     pub input_channels: usize,
+    pub remainder_frames: f32, // For precise tempo matching
+    pub remainder_pos: f32,    // For precise progress reporting
+    pub last_pitch: f32,       // For caching
+    pub last_tempo: f32,       // For caching
+    pub output_buffer: Vec<f32>, // Reusable buffer to avoid allocations
 }
 
 impl<S> StretchedSource<S> where S: Source<Item = f32> {
@@ -160,6 +166,11 @@ impl<S> StretchedSource<S> where S: Source<Item = f32> {
             pos,
             buffer: VecDeque::new(),
             input_channels: channels as usize,
+            remainder_frames: 0.0,
+            remainder_pos: 0.0,
+            last_pitch: 0.0,
+            last_tempo: 1.0,
+            output_buffer: Vec::with_capacity(2048 * channels as usize), // Pre-allocate enough space
         }
     }
 }
@@ -168,19 +179,25 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let pitch_semitones = f32::from_bits(self.pitch.load(Ordering::Relaxed));
+        let tempo_scale = f32::from_bits(self.tempo.load(Ordering::Relaxed)).max(0.1); // Prevent div by zero
+
         // 1. Pop from buffer if available
         if let Some(s) = self.buffer.pop_front() {
+            // Track progress relative to the output samples
+            // For every output sample, we've "traversed" tempo_scale worth of original samples
             if self.buffer.len() % self.input_channels == 0 {
-                self.pos.fetch_add(1, Ordering::Relaxed);
+                self.remainder_pos += tempo_scale;
+                let whole_samples = self.remainder_pos.floor();
+                if whole_samples >= 1.0 {
+                    self.pos.fetch_add(whole_samples as u64, Ordering::Relaxed);
+                    self.remainder_pos -= whole_samples;
+                }
             }
             return Some(s);
         }
 
-        // 2. Read parameters
-        let pitch_semitones = f32::from_bits(self.pitch.load(Ordering::Relaxed));
-        let tempo_scale = f32::from_bits(self.tempo.load(Ordering::Relaxed));
-
-        // 3. Read input block
+        // 2. Read input block
         let block_size = 1024;
         let mut input_interleaved: Vec<f32> = Vec::with_capacity(block_size * self.input_channels);
         for _ in 0..block_size {
@@ -192,43 +209,59 @@ impl<S> Iterator for StretchedSource<S> where S: Source<Item = f32> {
         }
 
         let frames_read = input_interleaved.len() / self.input_channels;
-        if frames_read == 0 { 
-            // println!("[AUDIO_DEBUG] EOF reached in StretchedSource");
-            return None; 
-        }
+        if frames_read == 0 { return None; }
 
-        if pitch_semitones != 0.0 || (tempo_scale - 1.0).abs() > 0.001 {
-            // println!("[AUDIO_DEBUG] Processing frames: {}, Pitch: {:.2}, Tempo: {:.2}", frames_read, pitch_semitones, tempo_scale);
-        }
-
-        // 4. Processing logic
+        // 3. Stretch or Bypass
         if pitch_semitones == 0.0 && (tempo_scale - 1.0).abs() < 0.001 {
-            // Bypass mode: 소리가 아예 안 난다면 이 루프가 문제일 수 있음
-            for s in &input_interleaved {
-                self.buffer.push_back(*s);
-            }
-            // println!("[AUDIO_DEBUG] Bypass mode: {} samples buffered", input_interleaved.len());
-        } else {
-            // Stretch mode
-            let pitch_factor = 2.0f32.powf(pitch_semitones / 12.0);
-            self.stretcher.set_transpose_factor(pitch_factor, None);
-            
-            // 안정적인 출력 버퍼 크기 계산 (충분한 공간 확보)
-            let output_frames_est = (frames_read as f32 / tempo_scale).ceil() as usize + 64;
-            let mut output_interleaved = vec![0.0; output_frames_est * self.input_channels];
-            
-            self.stretcher.process(&input_interleaved, &mut output_interleaved);
-            // println!("[AUDIO_DEBUG] Stretched block: {} -> {} frames", frames_read, output_frames_est);
-            
-            for s in output_interleaved {
+            // Bypass mode
+            for s in input_interleaved {
                 self.buffer.push_back(s);
             }
+            self.remainder_frames = 0.0; // Reset error
+            self.last_pitch = 0.0;
+            self.last_tempo = 1.0;
+        } else {
+            // Stretch mode
+            // Only update pitch if it changed significantly
+            if (pitch_semitones - self.last_pitch).abs() > 0.01 {
+                let pitch_factor = 2.0f32.powf(pitch_semitones / 12.0);
+                self.stretcher.set_transpose_factor(pitch_factor, None);
+                self.last_pitch = pitch_semitones;
+            }
+            self.last_tempo = tempo_scale;
+            
+            // Calculate precise output frames with error diffusion
+            let total_needed = (frames_read as f32 / tempo_scale) + self.remainder_frames;
+            let output_frames = total_needed.floor() as usize;
+            self.remainder_frames = total_needed - output_frames as f32;
+            
+            if output_frames > 0 {
+                // Resize internal buffer if needed (usually stays constant)
+                let needed_samples = output_frames * self.input_channels;
+                if self.output_buffer.len() < needed_samples {
+                    self.output_buffer.resize(needed_samples, 0.0);
+                }
+                
+                // Use slice of internal buffer directly
+                let target_slice = &mut self.output_buffer[0..needed_samples];
+                self.stretcher.process(&input_interleaved, target_slice);
+                
+                // Re-borrow for the loop
+                for &s in self.output_buffer[0..needed_samples].iter() {
+                    self.buffer.push_back(s);
+                }
+            }
         }
 
-        // 5. Return first sample from new buffer
+        // 4. Return first sample from new buffer
         self.buffer.pop_front().map(|s| {
             if self.buffer.len() % self.input_channels == 0 {
-                self.pos.fetch_add(1, Ordering::Relaxed);
+                self.remainder_pos += tempo_scale;
+                let whole_samples = self.remainder_pos.floor();
+                if whole_samples >= 1.0 {
+                    self.pos.fetch_add(whole_samples as u64, Ordering::Relaxed);
+                    self.remainder_pos -= whole_samples;
+                }
             }
             s
         })
@@ -245,6 +278,8 @@ impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
         self.input.try_seek(pos)?;
         self.buffer.clear();
         self.stretcher.reset();
+        self.remainder_frames = 0.0;
+        self.remainder_pos = 0.0;
         Ok(())
     }
 }
