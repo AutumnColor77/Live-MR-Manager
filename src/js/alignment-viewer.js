@@ -70,7 +70,36 @@ export class ForcedAlignmentViewer {
                             </div>
                         </section>
 
-                        <textarea id="lyrics-input" class="lyrics-textarea" placeholder="이곳에 노래 가사를 입력하세요..."></textarea>
+                        <textarea id="lyrics-input" class="lyrics-textarea" placeholder="이곳에 노래 가사를 입력하세요...">한 낮에 내리는 햇살.
+머리는 어지럽고
+어제의 내가 난 기억이 나질 않네
+
+담배를 피워물고 거울앞에 서면
+유령처럼 낯선 거울속의 나
+
+희미하게 기억나는건
+술잔속에 비치는 어여쁜 너의 미소
+
+빗속을 뛰었던것 같고 
+울었던것 같고 소리친것 같은데
+너에게 애원한것 같고 
+울었던것 같고 소리친것 같은데 
+난 아무도 아무것도 기억이 없네
+
+희미하게 기억나는건
+술잔속에 비치는 어여쁜 너의 미소
+
+빗속을 뛰었던것 같고 
+울었던것 같고 소리친것 같은데
+너에게 애원한것 같고 
+울었던것 같고 소리친것 같은데 
+난 아무도 아무것도 기억이 없네
+
+빗속을 뛰었던것 같고 
+울었던것 같고 
+너에게 애원한것 같고 
+울었던것 같고 
+난 아무도 아무것도 기억이 없네</textarea>
 
                         <button id="run-alignment-btn" class="run-btn primary-btn" style="height: 40px; font-size: 1rem;">
                             AI 가사 정렬 시작
@@ -224,6 +253,11 @@ export class ForcedAlignmentViewer {
             for (const t of tracks) {
                 if (!t.has_vocal) continue;
                 const opt = new Option(t.name, t.folder_path + '/vocal.wav');
+                // '07 숙취' 자동 선택 로직 추가
+                if (t.name.includes('07 숙취')) {
+                    opt.selected = true;
+                    this.loadAudio(opt.value);
+                }
                 select.appendChild(opt);
             }
             if (select.options.length === 1) {

@@ -199,27 +199,36 @@ pub async fn run_forced_alignment(
         else                               { "encoder_model_q4.onnx".to_string() }
     };
 
-    let dec_name = if enc_name.contains("fp16") {
+    let dec_main_name = if enc_name.contains("q4") && dev_models.join("decoder_with_past_model_q4.onnx").exists() {
+        "decoder_with_past_model_q4.onnx"
+    } else if enc_name.contains("q4") {
+        "decoder_model_q4.onnx"
+    } else if enc_name.contains("fp16") {
         "decoder_model_fp16.onnx"
-    } else if enc_name == "encoder_model.onnx" {
-        "decoder_model.onnx"
     } else {
-        "decoder_model_merged_q4.onnx"
+        "decoder_model.onnx"
+    };
+
+    let dec_init_name = if dec_main_name.contains("with_past") {
+        "decoder_model_q4.onnx"
+    } else {
+        dec_main_name
     };
 
     let enc_path = if dev_models.join(&enc_name).exists() { dev_models.join(&enc_name) } else { app_models.join(&enc_name) };
-    let dec_path = if dev_models.join(dec_name).exists() { dev_models.join(dec_name) } else { app_models.join(dec_name) };
+    let dec_main_path = if dev_models.join(dec_main_name).exists() { dev_models.join(dec_main_name) } else { app_models.join(dec_main_name) };
+    let dec_init_path = if dev_models.join(dec_init_name).exists() { dev_models.join(dec_init_name) } else { app_models.join(dec_init_name) };
     let tok_path = if dev_models.join("tokenizer.json").exists() { dev_models.join("tokenizer.json") } else { app_models.join("tokenizer.json") };
 
-    sys_log(&format!("[Alignment] enc={:?}, dec={:?}, tok={:?}", enc_path, dec_path, tok_path));
+    sys_log(&format!("[Alignment] Dual Model Paths: enc={:?}, init={:?}, main={:?}, tok={:?}", enc_path, dec_init_path, dec_main_path, tok_path));
 
-    if !enc_path.exists() || !dec_path.exists() || !tok_path.exists() {
-        return Err(format!("Model files not found. enc={:?}, dec={:?}, tok={:?}", enc_path, dec_path, tok_path));
+    if !enc_path.exists() || !dec_init_path.exists() || !dec_main_path.exists() || !tok_path.exists() {
+        return Err(format!("Model files not found. enc={:?}, init={:?}, main={:?}, tok={:?}", enc_path, dec_init_path, dec_main_path, tok_path));
     }
 
     let samples = load_audio_as_16khz(&audio_path).map_err(|e| format!("Audio load error: {}", e))?;
 
-    let mut engine = crate::whisper::WhisperEngine::new(&enc_path, &dec_path, &tok_path)
+    let mut engine = crate::whisper::WhisperEngine::new(&enc_path, &dec_init_path, &dec_main_path, &tok_path)
         .map_err(|e| format!("AI Engine init failed: {}", e))?;
 
     let segments = engine.transcribe_with_timestamps(&samples, &language, vads_threshold, Some(&_handle))

@@ -1,8 +1,11 @@
 use std::path::Path;
 use tauri::Emitter;
 use ndarray::{Array2, Array3};
-use ort::{session::Session, value::Value};
-use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
+use ort::{
+    execution_providers::{CPUExecutionProvider, CUDAExecutionProvider, DirectMLExecutionProvider},
+    session::Session,
+    value::Value,
+};
 use ort::ep::ExecutionProvider;
 use tokenizers::Tokenizer;
 use anyhow::{Result, anyhow};
@@ -39,98 +42,153 @@ const FRAMES_PER_CHUNK: usize = SAMPLES_PER_CHUNK / HOP_LENGTH; // 3000
 
 pub struct WhisperEngine {
     encoder: Session,
-    decoder: Session,
+    decoder_init: Session,
+    decoder_main: Session,
     tokenizer: Tokenizer,
     mel_filters: Array2<f32>,
+    encoder_input_init_name: String,
+    encoder_input_main_name: String,
     decoder_has_cache_branch: bool,
     decoder_has_past_key_values: bool,
     past_key_value_names: Vec<String>,
     present_value_names: Vec<String>,
-    banned_tokens: Vec<usize>, // Tokens to suppress (hallucinations)
+    init_present_names: Vec<String>,
+    banned_tokens: Vec<usize>,
 }
 
 impl WhisperEngine {
-    pub fn new(encoder_path: &Path, decoder_path: &Path, tokenizer_path: &Path) -> Result<Self> {
-        sys_log(&format!("[Whisper] Loading models: Encoder={:?}, Decoder={:?}", encoder_path, decoder_path));
+    pub fn new(encoder_path: &Path, decoder_init_path: &Path, decoder_main_path: &Path, tokenizer_path: &Path) -> Result<Self> {
+        sys_log(&format!("[Whisper] Loading models: Encoder={:?}, Init={:?}, Main={:?}", encoder_path, decoder_init_path, decoder_main_path));
         
-        // Try providers in order of preference: CUDA -> CPU (Skip DML for Whisper due to Reshape node crashes)
-        let mut providers = Vec::new();
+        let mut gpu_providers = Vec::new();
         if CUDAExecutionProvider::default().is_available().unwrap_or(false) {
-            providers.push(CUDAExecutionProvider::default().build());
+            gpu_providers.push(CUDAExecutionProvider::default().build());
+        } else if DirectMLExecutionProvider::default().is_available().unwrap_or(false) {
+            gpu_providers.push(DirectMLExecutionProvider::default().build());
         }
-        // DirectML is prone to Reshape node errors with Whisper models on some hardware (like RTX 2060).
-        // Since Whisper Base Q4 is lightweight, we prefer CPU for stability.
-        providers.push(CPUExecutionProvider::default().build());
+        gpu_providers.push(CPUExecutionProvider::default().build());
+
+        let mut cpu_providers = Vec::new();
+        cpu_providers.push(CPUExecutionProvider::default().build());
 
         let encoder = Session::builder()
-            .map_err(|e| anyhow!("Failed to create session builder: {}", e))?
-            .with_execution_providers(providers.clone())
-            .map_err(|e| anyhow!("Failed to set execution provider: {}", e))?
+            .map_err(|e| anyhow!("Failed to create encoder builder: {}", e))?
+            .with_execution_providers(gpu_providers)
+            .map_err(|e| anyhow!("Failed to set encoder providers: {}", e))?
+            .with_intra_threads(num_cpus::get())
+            .map_err(|e| anyhow!("Failed to set encoder threads: {}", e))?
             .commit_from_file(encoder_path)
-            .map_err(|e| anyhow!("Failed to load encoder: {}", e))?;
-            
-        for input in encoder.inputs() {
-            sys_log(&format!("[Whisper] Encoder Input: {}", input.name()));
-        }
+            .map_err(|e| anyhow!("Failed to load encoder model: {}", e))?;
 
-        let decoder = Session::builder()
-            .map_err(|e| anyhow!("Failed to create session builder: {}", e))?
-            .with_execution_providers(providers)
-            .map_err(|e| anyhow!("Failed to set execution provider: {}", e))?
-            .commit_from_file(decoder_path)
-            .map_err(|e| anyhow!("Failed to load decoder: {}", e))?;
-            
-        for input in decoder.inputs() {
-            sys_log(&format!("[Whisper] Decoder Input: {:?}", input));
-        }
-            
+        let decoder_init = Session::builder()
+            .map_err(|e| anyhow!("Failed to create decoder_init builder: {}", e))?
+            .with_execution_providers(cpu_providers.clone())
+            .map_err(|e| anyhow!("Failed to set decoder_init providers: {}", e))?
+            .with_intra_threads(num_cpus::get())
+            .map_err(|e| anyhow!("Failed to set decoder_init threads: {}", e))?
+            .commit_from_file(decoder_init_path)
+            .map_err(|e| anyhow!("Failed to load decoder_init model: {}", e))?;
+
+        let decoder_main = Session::builder()
+            .map_err(|e| anyhow!("Failed to create decoder_main builder: {}", e))?
+            .with_execution_providers(cpu_providers)
+            .map_err(|e| anyhow!("Failed to set decoder_main providers: {}", e))?
+            .with_intra_threads(num_cpus::get())
+            .map_err(|e| anyhow!("Failed to set decoder_main threads: {}", e))?
+            .commit_from_file(decoder_main_path)
+            .map_err(|e| anyhow!("Failed to load decoder_main model: {}", e))?;
+
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
 
         let mel_filters = Self::get_mel_filters(SAMPLE_RATE, N_FFT, N_MELS);
 
-        let decoder_has_cache_branch = decoder.inputs().iter().any(|input| input.name() == "use_cache_branch");
-        let decoder_has_past_key_values = decoder.inputs().iter().any(|input| input.name().starts_with("past_key_values"));
+        let mut encoder_input_init_name = "encoder_hidden_states".to_string();
+        for input in decoder_init.inputs() {
+            let name = input.name();
+            if (name.contains("encoder_hidden_states") || name.contains("encoder")) && !name.contains("past_key_values") {
+                encoder_input_init_name = name.to_string();
+                break;
+            }
+        }
+
+        let mut encoder_input_main_name = String::new(); // May be empty for some specialized models
+        let main_input_names: Vec<String> = decoder_main.inputs().iter().map(|i| i.name().to_string()).collect();
+        sys_log(&format!("[Whisper-Debug] Main Decoder Inputs: {:?}", main_input_names));
+
+        for name in &main_input_names {
+            if (name.contains("encoder_hidden_states") || name.contains("encoder")) && !name.contains("past_key_values") {
+                encoder_input_main_name = name.clone();
+                break;
+            }
+        }
+
+        let init_output_names: Vec<String> = decoder_init.outputs().iter().map(|o| o.name().to_string()).collect();
+        sys_log(&format!("[Whisper-Debug] Init Decoder Outputs: {:?}", init_output_names));
+        sys_log(&format!("[Whisper] Using Encoder Input Name: (Init={}, Main='{}')", encoder_input_init_name, encoder_input_main_name));
+
+        let decoder_has_cache_branch = decoder_main.inputs().iter().any(|input| input.name() == "use_cache_branch");
+        let decoder_has_past_key_values = decoder_main.inputs().iter().any(|input| input.name().starts_with("past_key_values"));
 
         let mut past_key_value_names = Vec::new();
-        for input in decoder.inputs() {
+        for input in decoder_main.inputs() {
             if input.name().starts_with("past_key_values") {
                 past_key_value_names.push(input.name().to_string());
             }
         }
-        // Sort to ensure consistent ordering if needed, though HashMap access is name-based
         past_key_value_names.sort();
 
         let mut present_value_names = Vec::new();
-        for output in decoder.outputs() {
-            if output.name().starts_with("present") {
-                present_value_names.push(output.name().to_string());
+        for output in decoder_main.outputs() {
+            let name = output.name();
+            if name.starts_with("present") || name.contains("present") {
+                present_value_names.push(name.to_string());
             }
         }
         present_value_names.sort();
 
+        let mut init_present_names = Vec::new();
+        for output in decoder_init.outputs() {
+            let name = output.name();
+            if name.starts_with("present") || name.contains("present") {
+                init_present_names.push(name.to_string());
+            }
+        }
+        init_present_names.sort();
+
         let mut banned_tokens = Vec::new();
-        // Specifically ban tokens that lead to hallucinations like [Sound], (Surprise), and the reported "Lid" patterns
-        let hallucination_chars = ['(', ')', '[', ']', '{', '}', '뚜', '껑', '놀', '람'];
+        let hallucination_chars = ['(', ')', '[', ']', '{', '}', '뚜', '껑', '놀', '람', '지', '은', '아', '주', '시', '청'];
         for (token_str, id) in tokenizer.get_vocab(true) {
             if hallucination_chars.iter().any(|&c| token_str.contains(c)) {
                 banned_tokens.push(id as usize);
             }
         }
+
+        sys_log(&format!("[Whisper-Debug] Init Present Outputs: {:?}", init_present_names));
+        sys_log(&format!("[Whisper-Debug] Main Past Inputs: {:?}", past_key_value_names));
+        sys_log(&format!("[Whisper-Debug] Main Present Outputs: {:?}", present_value_names));
+
+        let model_type = if decoder_has_cache_branch { "Merged" } else { "Split (Dual)" };
+        sys_log(&format!("[Whisper] Detected Decoder Configuration: {}", model_type));
         sys_log(&format!("[Whisper] Banned {} hallucination-prone tokens.", banned_tokens.len()));
 
         Ok(Self {
             encoder,
-            decoder,
+            decoder_init,
+            decoder_main,
             tokenizer,
             mel_filters,
+            encoder_input_init_name,
+            encoder_input_main_name,
             decoder_has_cache_branch,
             decoder_has_past_key_values,
             past_key_value_names,
             present_value_names,
+            init_present_names,
             banned_tokens,
         })
     }
+
 
     fn get_mel_filters(sr: u32, n_fft: usize, n_mels: usize) -> Array2<f32> {
         // Mel scale constants
@@ -380,40 +438,39 @@ impl WhisperEngine {
                         .as_standard_layout().to_owned();
                     let tokens_value = Value::from_array(tokens_array.clone())?;
                     
-                    if _step == 0 {
-                        sys_log(&format!("[Whisper-Debug] Init Step - input_ids shape: {:?}, hidden_states shape: {:?}", tokens_array.shape(), hidden_states.shape()));
-                    }
-
-                    let mut decoder_inputs = ort::inputs![
-                        "input_ids" => tokens_value,
-                        "encoder_hidden_states" => Value::from_array(hidden_states.as_standard_layout().to_owned())?
+                    // 1. Core Inputs
+                    let mut decoder_inputs: Vec<(String, Value)> = vec![
+                        ("input_ids".to_string(), tokens_value.into())
                     ];
 
-                    if self.decoder_has_cache_branch {
-                        let use_cache = !cache_map.is_empty();
-                        let use_cache_arr = ndarray::Array1::from_elem(1, use_cache);
-                        decoder_inputs.push(("use_cache_branch".into(), Value::from_array(use_cache_arr)?.into()));
+                    let enc_input_name = if _step == 0 { &self.encoder_input_init_name } else { &self.encoder_input_main_name };
+                    if !enc_input_name.is_empty() {
+                        decoder_inputs.push((enc_input_name.clone(), Value::from_array(hidden_states.as_standard_layout().to_owned())?.into()));
                     }
-
-                    if self.decoder_has_past_key_values {
+                    
+                    // 3. Selective Past Key Values Injection
+                    if _step > 0 && self.decoder_has_past_key_values {
                         for name in &self.past_key_value_names {
                             if let Some(arr) = cache_map.get(name) {
-                                decoder_inputs.push((name.clone().into(), Value::from_array(arr.clone())?.into()));
-                            } else if name.contains("encoder") {
-                                // For Merged models, encoder PKV is often required even in init step
-                                let dummy = ndarray::Array4::<f32>::zeros((1, 8, 1500, 64));
-                                decoder_inputs.push((name.clone().into(), Value::from_array(dummy)?.into()));
+                                let val = arr.as_standard_layout().to_owned();
+                                decoder_inputs.push((name.clone(), Value::from_array(val)?.into()));
                             }
-                            // Note: decoder PKVs are omitted in step 0 to see if it bypasses Reshape_4
                         }
                     }
 
-                    let decoder_outputs = self.decoder.run(decoder_inputs)
-                        .map_err(|e| {
-                            let err_msg = format!("[Whisper-Error] Decoder run failed: {}", e);
-                            let _ = crate::audio_player::sys_log(&err_msg);
-                            anyhow!(err_msg)
-                        })?;
+                    if _step % 20 == 0 {
+                         sys_log(&format!("[Whisper-Debug] Steps: {} ...", _step));
+                    }
+
+                    let decoder_outputs = if _step == 0 {
+                        self.decoder_init.run(decoder_inputs)
+                    } else {
+                        self.decoder_main.run(decoder_inputs)
+                    }.map_err(|e| {
+                        let err = format!("[Whisper-Error] Decoder run failed at step {}: {}", _step, e);
+                        sys_log(&err);
+                        anyhow!(err)
+                    })?;
                     
                     let logits_output = decoder_outputs.get("logits").ok_or_else(|| anyhow!("Logits not found"))?;
                     let (_logits_shape, logits_data) = logits_output.try_extract_tensor::<f32>()?;
@@ -423,9 +480,9 @@ impl WhisperEngine {
                     
                     // --- REPETITION PENALTY & TRASH FILTERING ---
                     // 1. Aggressive repetition penalty: subtract more for recently seen tokens
-                    for (i, &t) in recent_tokens.iter().rev().enumerate().take(20) {
+                    for (i, &t) in recent_tokens.iter().rev().enumerate().take(30) {
                         if (t as usize) < 51865 {
-                            let penalty = 2.0 + (i as f32 * 0.1);
+                            let penalty = 5.0 + (i as f32 * 0.2);
                             last_logits[t as usize] -= penalty;
                         }
                     }
@@ -437,12 +494,16 @@ impl WhisperEngine {
                         }
                     }
 
+                    // 4. Update Cache Map for the next step using positional mapping
                     if self.decoder_has_past_key_values {
-                        for (i, out_name) in self.present_value_names.iter().enumerate() {
+                        let active_present_names = if _step == 0 { &self.init_present_names } else { &self.present_value_names };
+                        
+                        for (i, out_name) in active_present_names.iter().enumerate() {
                             if let Some(pkv_val) = decoder_outputs.get(out_name) {
                                 let (shape, data) = pkv_val.try_extract_tensor::<f32>()?;
-                                let dims: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
+                                let dims: Vec<usize> = (0..shape.len()).map(|idx| shape[idx] as usize).collect();
                                 let arr = ndarray::ArrayView::from_shape(ndarray::IxDyn(&dims), data)?.to_owned();
+                                
                                 if i < self.past_key_value_names.len() {
                                     let target_name = self.past_key_value_names[i].clone();
                                     cache_map.insert(target_name, arr);
@@ -454,9 +515,17 @@ impl WhisperEngine {
                     let next_token = last_logits.iter().enumerate()
                         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                         .map(|(i, _)| i as i64)
-                        .unwrap_or(50257); // Fallback to EOT if failed
+                        .unwrap_or(50257);
                     
+                    // --- SAFETY BREAKS ---
+                    // 1. End of Transcription or No Speech tokens
                     if next_token == 50257 || next_token == 50362 { break; } 
+
+                    // 2. Continuous Hallucination Detection (If we see too many banned/repeated tokens)
+                    if tokens.len() > 100 { 
+                        sys_log("[Whisper-Safety] Breaking long loop (potential hallucination)");
+                        break; 
+                    }
 
                     if next_token >= 50364 {
                         let timestamp = (next_token - 50364) as f32 * 0.02;
