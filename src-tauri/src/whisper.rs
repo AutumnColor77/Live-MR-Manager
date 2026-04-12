@@ -282,7 +282,11 @@ impl WhisperEngine {
 
         let log_mel = mel_spectrogram.mapv(|val| val.max(1e-10).log10());
         let max_val = log_mel.fold(f32::MIN, |a, &b| a.max(b));
-        let norm_mel = log_mel.mapv(|v| (v - max_val + 8.0) / 8.0);
+        // Official Whisper normalization (whisper/audio.py):
+        //   log_spec = max(log_spec, log_spec.max() - 8.0)   <- clamp floor
+        //   log_spec = (log_spec + 4.0) / 4.0                <- shift to [-1, 1]
+        // Our previous (v - max + 8.0) / 8.0 produced [0, 1] — wrong range for the model.
+        let norm_mel = log_mel.mapv(|v| ((v.max(max_val - 8.0)) + 4.0) / 4.0);
 
         // norm_mel is already (N_MELS, FRAMES_PER_CHUNK) — no Mel-level zero-padding needed.
         let final_mel = norm_mel
