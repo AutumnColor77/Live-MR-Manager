@@ -786,7 +786,7 @@ function openEditModal(song, index) {
 
   // 곡별 볼륨 슬라이더 초기화
   if (elements.editVolume) {
-    const vol = song.volume ?? 80;
+    const vol = song.volume ?? 100;
     elements.editVolume.value = vol;
     if (elements.editVolumeVal) elements.editVolumeVal.textContent = Math.round(vol);
   }

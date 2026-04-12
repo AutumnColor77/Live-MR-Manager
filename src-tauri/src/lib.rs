@@ -273,7 +273,7 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
 fn set_master_volume(volume: f32) -> Result<(), String> {
     if let Ok(handler) = &*AUDIO_HANDLER {
         let controller = handler.controller.lock();
-        let ratio = volume / 100.0;
+        let ratio = volume / 125.0;
         controller.set_volume(ratio * ratio);
     }
     Ok(())
@@ -449,7 +449,7 @@ async fn get_youtube_metadata(url: String) -> Result<SongMetadata, String> {
 
     Ok(SongMetadata {
         id: None, title, thumbnail, duration, source: "youtube".into(), path: url,
-        pitch: Some(0.0), tempo: Some(1.0), volume: Some(80.0), artist,
+        pitch: Some(0.0), tempo: Some(1.0), volume: Some(100.0), artist,
         tags: None, genre: None, categories: None, play_count: Some(0),
         date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()), is_mr: Some(false),
     })
@@ -482,14 +482,14 @@ async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
         "INSERT INTO Tracks (path, title, thumbnail, duration, source, pitch, tempo, volume, artist, date_added, is_mr, genre_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET title=excluded.title, duration=excluded.duration, artist=excluded.artist, genre_id=excluded.genre_id",
-        params![path, final_title, "", duration_str, "local", 0.0, 1.0, 80.0, artist_id3, now, 0, genre_id]
+        params![path, final_title, "", duration_str, "local", 0.0, 1.0, 100.0, artist_id3, now, 0, genre_id]
     ).map_err(to_sqlite_err)?;
 
     let track_id: i64 = db.query_row("SELECT id FROM Tracks WHERE path = ?", params![path], |row| row.get(0)).map_err(to_sqlite_err)?;
 
     Ok(SongMetadata {
         id: Some(track_id), title: final_title, thumbnail: "".into(), duration: duration_str,
-        source: "local".into(), path, pitch: Some(0.0), tempo: Some(1.0), volume: Some(80.0),
+        source: "local".into(), path, pitch: Some(0.0), tempo: Some(1.0), volume: Some(100.0),
         artist: artist_id3, tags: None, genre: Some(genre), categories: None, play_count: Some(0),
         date_added: Some(now), is_mr: Some(false),
     })
@@ -728,7 +728,7 @@ fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String>
             "INSERT OR REPLACE INTO Tracks (path, title, thumbnail, duration, source, pitch, tempo, volume, artist, play_count, date_added, is_mr, genre_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![song.path, song.title, song.thumbnail, song.duration, song.source, song.pitch.unwrap_or(0.0), song.tempo.unwrap_or(1.0),
-                    song.volume.unwrap_or(80.0), song.artist, song.play_count.unwrap_or(0), song.date_added, if song.is_mr.unwrap_or(false) { 1 } else { 0 }, genre_id]
+                    song.volume.unwrap_or(100.0), song.artist, song.play_count.unwrap_or(0), song.date_added, if song.is_mr.unwrap_or(false) { 1 } else { 0 }, genre_id]
         ).ok();
 
         let track_id: Option<i64> = tx.query_row("SELECT id FROM Tracks WHERE path = ?", params![song.path], |row| row.get(0)).ok();

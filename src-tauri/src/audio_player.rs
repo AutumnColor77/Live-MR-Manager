@@ -103,7 +103,7 @@ impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
     fn next(&mut self) -> Option<Self::Item> {
         let s = self.input.next()?;
         let target_vol_bits = self.volume.load(Ordering::Relaxed);
-        let target_vol_raw = f32::from_bits(target_vol_bits) / 100.0;
+        let target_vol_raw = f32::from_bits(target_vol_bits) / 125.0;
         let target_vol = target_vol_raw * target_vol_raw; // Quadratic scaling for natural volume curve
         
         // Smoothly interpolate current_vol towards target_vol

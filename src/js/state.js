@@ -12,9 +12,9 @@ export const state = {
   editingSongIndex: -1,
   selectedTrackIndex: -1, // Currently highlighted but not playing
   viewMode: localStorage.getItem("viewMode") || "grid",
-  masterVolume: parseFloat(localStorage.getItem("masterVolume") || "80"),
+  masterVolume: parseFloat(localStorage.getItem("masterVolume") || "100"),
   isMuted: false,
-  prevVolume: 80,
+  prevVolume: 100,
   activeTasks: {}, // path -> { title, percentage, status }
   cancelledPaths: new Set(), // path blacklist for UI updates
   
