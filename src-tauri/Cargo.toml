@@ -49,6 +49,8 @@ id3 = "1.16.2"
 rfd = "0.14"
 regex = "1.11"
 dotenvy = "0.15"
+tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
+
 
 # Enable optimizations in dev mode for AI/DSP performance
 [profile.dev]

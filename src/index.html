@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="styles/alignment.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live MR Manager | Performer Dash</title>
@@ -61,6 +62,10 @@
       <div class="nav-item" id="nav-local">
         <i class="icon-folder"></i>
         <span>My Files</span>
+      </div>
+      <div class="nav-item" id="nav-alignment">
+        <i class="icon-sync"></i>
+        <span>가사 정렬</span>
       </div>
     </div>
 
@@ -314,6 +319,11 @@
             <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
           </div>
         </div>
+      </div>
+
+      <!-- 가사 정렬 모듈 섹션 -->
+      <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
+        <div id="alignment-viewer-root" style="height: 100%;"></div>
       </div>
     </div>
   </main>

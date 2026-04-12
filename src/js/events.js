@@ -10,6 +10,9 @@ import {
   setVolume, setPitch, setTempo, seekTo, saveLibrary, 
   loadLibrary as apiLoadLibrary, getAudioMetadata, getYoutubeMetadata, setVocalBalance, setMasterVolume 
 } from './audio.js';
+import { ForcedAlignmentViewer } from './alignment-viewer.js';
+
+let alignmentViewer = null;
 
 export function initNavigation() {
   document.querySelectorAll(".nav-item").forEach(item => {
@@ -22,6 +25,11 @@ export function initNavigation() {
 
 export function switchTab(tabId) {
   if (elements.viewTitle) elements.viewTitle.textContent = getTabTitle(tabId);
+  
+  // Sync viewport data-view attribute for CSS selectors
+  if (elements.viewport) {
+    elements.viewport.setAttribute("data-view", tabId === "alignment" ? "alignment-viewer" : tabId);
+  }
   
   if (elements.viewSubtitle) {
     elements.viewSubtitle.textContent = tabId === "tasks" ? "Broadcast Safe 기능을 켜두면 AI 분리 중 연산 속도를 조절하여 방송(OBS) 프레임 드랍을 방지합니다." : "";
@@ -50,6 +58,19 @@ export function switchTab(tabId) {
     if (isMusicTab) renderLibrary();
   }
 
+  if (tabId === "alignment") {
+    elements.viewport?.classList.add("alignment-mode");
+    const alignmentPage = document.getElementById("alignment-page");
+    if (alignmentPage) alignmentPage.style.display = "block";
+    if (!alignmentViewer) {
+      alignmentViewer = new ForcedAlignmentViewer("alignment-viewer-root");
+    }
+  } else {
+    elements.viewport?.classList.remove("alignment-mode");
+    const alignmentPage = document.getElementById("alignment-page");
+    if (alignmentPage) alignmentPage.style.display = "none";
+  }
+
   if (tabId === "tasks") {
     updateTaskUI();
   }
@@ -66,7 +87,8 @@ function getTabTitle(tabId) {
     youtube: "YouTube",
     local: "My Files",
     settings: "Settings",
-    tasks: "Active Tasks"
+    tasks: "Active Tasks",
+    alignment: "Lyric Alignment"
   };
   return titles[tabId] || "Live MR Manager";
 }

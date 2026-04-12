@@ -17,7 +17,10 @@ pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
 pub mod state;
+mod alignment;
 mod metadata_fetcher;
+pub mod whisper;
+mod diagnostics;
 
 use crate::youtube::YoutubeManager;
 use crate::model_manager::ModelManager;
@@ -823,6 +826,7 @@ fn probe_audio_duration(path: &str) -> Option<String> {
     None
 }
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -868,6 +872,9 @@ pub fn run() {
             load_library, get_songs, get_categories, get_genres, get_track_count, cancel_separation, set_broadcast_mode,
             get_audio_devices, open_cache_folder, delete_ai_model, get_gpu_recommendation, add_category, delete_category,
             delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup, get_active_separations,
+            alignment::get_separated_audio_list, alignment::run_forced_alignment, alignment::read_audio_file,
+            alignment::get_waveform_summary, alignment::get_model_list,
+            diagnostics::remote_js_log,
             metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
             metadata_fetcher::update_custom_dictionary

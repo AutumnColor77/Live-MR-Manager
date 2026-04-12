@@ -69,6 +69,8 @@ export const elements = {
   searchResultsClose: null,
   editVolume: null,
   editVolumeVal: null,
+  viewport: null,
+  scrollArea: null,
 
   // Curation
   curationOriginal: null,
@@ -151,6 +153,7 @@ export function initDomReferences() {
   elements.curationTranslated = document.getElementById("curation-translated");
   elements.unclassifiedTagsList = document.getElementById("unclassified-tags-list");
   elements.scrollArea = document.querySelector(".scroll-area");
+  elements.viewport = document.querySelector(".viewport");
 
   // Active Tasks UI
   elements.taskBadge = document.getElementById("task-badge");
