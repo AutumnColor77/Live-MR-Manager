@@ -226,35 +226,55 @@ impl WhisperEngine {
     }
 
     pub fn audio_to_mel(&self, samples: &[f32]) -> (Array3<f32>, f32) {
-        // ... (existing audio_to_mel logic) ...
-        // Keeping as is for now, but will use max_val locally in transcribe.
-        // Wait, I should just keep the function signature fixed for now to avoid breaking too much.
+        // Step 1: Pad waveform to exactly SAMPLES_PER_CHUNK (480,000 / 30s) before STFT.
+        // Whisper's encoder expects a fixed-length context window. Trailing silence is safe.
+        let mut padded_waveform = vec![0.0f32; SAMPLES_PER_CHUNK];
+        let copy_len = samples.len().min(SAMPLES_PER_CHUNK);
+        padded_waveform[..copy_len].copy_from_slice(&samples[..copy_len]);
+
+        // Step 2: Apply reflection padding of n_fft // 2 on each side (PyTorch center=True).
+        // This centers each STFT frame on the target sample, preventing edge phase distortion.
+        let reflect_len = N_FFT / 2; // 200 samples
+        let total_len = SAMPLES_PER_CHUNK + 2 * reflect_len;
+        let mut reflected = vec![0.0f32; total_len];
+
+        // Left: reflect signal[reflect_len-1..0]
+        for i in 0..reflect_len {
+            reflected[i] = padded_waveform[reflect_len - 1 - i];
+        }
+        // Center: original padded waveform
+        reflected[reflect_len..reflect_len + SAMPLES_PER_CHUNK]
+            .copy_from_slice(&padded_waveform);
+        // Right: reflect signal[N-2..N-2-reflect_len]
+        for i in 0..reflect_len {
+            reflected[reflect_len + SAMPLES_PER_CHUNK + i] =
+                padded_waveform[SAMPLES_PER_CHUNK - 2 - i];
+        }
+
+        // Step 3: Compute STFT with Hann window over exactly FRAMES_PER_CHUNK (3000) frames.
+        // Frame k starts at index k*HOP_LENGTH in the reflected signal,
+        // which is centered at sample k*HOP_LENGTH of the original waveform.
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_forward(N_FFT);
         let window: Vec<f32> = (0..N_FFT)
             .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (N_FFT - 1) as f32).cos()))
             .collect();
 
-        let num_frames = (samples.len() as f32 / HOP_LENGTH as f32).ceil() as usize;
-        let mut mel_spectrogram = Array2::<f32>::zeros((N_MELS, num_frames));
-
-        for f in 0..num_frames {
+        let mut mel_spectrogram = Array2::<f32>::zeros((N_MELS, FRAMES_PER_CHUNK));
+        for f in 0..FRAMES_PER_CHUNK {
             let start = f * HOP_LENGTH;
             let mut buffer = vec![Complex::new(0.0f32, 0.0f32); N_FFT];
             for i in 0..N_FFT {
-                if start + i < samples.len() {
-                    buffer[i] = Complex::new(samples[start + i] * window[i], 0.0);
+                let idx = start + i;
+                if idx < reflected.len() {
+                    buffer[i] = Complex::new(reflected[idx] * window[i], 0.0);
                 }
             }
             fft.process(&mut buffer);
-            let mut power_spec = Vec::with_capacity(N_FFT / 2 + 1);
-            for i in 0..(N_FFT / 2 + 1) {
-                power_spec.push(buffer[i].norm_sqr());
-            }
             for m in 0..N_MELS {
-                let mut mel_sum = 0.0;
+                let mut mel_sum = 0.0f32;
                 for j in 0..(N_FFT / 2 + 1) {
-                    mel_sum += power_spec[j] * self.mel_filters[[m, j]];
+                    mel_sum += buffer[j].norm_sqr() * self.mel_filters[[m, j]];
                 }
                 mel_spectrogram[[m, f]] = mel_sum;
             }
@@ -263,14 +283,11 @@ impl WhisperEngine {
         let log_mel = mel_spectrogram.mapv(|val| val.max(1e-10).log10());
         let max_val = log_mel.fold(f32::MIN, |a, &b| a.max(b));
         let norm_mel = log_mel.mapv(|v| (v - max_val + 8.0) / 8.0);
-        
-        let mut final_mel = Array3::<f32>::zeros((1, N_MELS, FRAMES_PER_CHUNK));
-        let copy_frames = num_frames.min(FRAMES_PER_CHUNK);
-        for m in 0..N_MELS {
-            for f in 0..copy_frames {
-                final_mel[[0, m, f]] = norm_mel[[m, f]];
-            }
-        }
+
+        // norm_mel is already (N_MELS, FRAMES_PER_CHUNK) — no Mel-level zero-padding needed.
+        let final_mel = norm_mel
+            .into_shape_with_order(((1, N_MELS, FRAMES_PER_CHUNK), ndarray::Order::C))
+            .unwrap();
         (final_mel, max_val)
     }
 
