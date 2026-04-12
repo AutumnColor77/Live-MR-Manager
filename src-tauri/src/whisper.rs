@@ -494,20 +494,23 @@ impl WhisperEngine {
                         }
                     }
 
-                    // 4. Update Cache Map for the next step using positional mapping
+                    // 4. Update Cache Map for the next step using name-based string replacement.
+                    // CRITICAL FIX: Do NOT use index-based mapping (self.past_key_value_names[i]).
+                    // Init decoder outputs 24 tensors (encoder + decoder cache), but Main decoder
+                    // only inputs 12 (decoder-only). Index mapping would corrupt encoder cache slots
+                    // by overwriting them with decoder-only tensors from the main loop.
+                    // Instead, replace "present" -> "past_key_values" to safely target only the
+                    // correct decoder cache entries, leaving encoder cache intact.
                     if self.decoder_has_past_key_values {
                         let active_present_names = if _step == 0 { &self.init_present_names } else { &self.present_value_names };
                         
-                        for (i, out_name) in active_present_names.iter().enumerate() {
-                            if let Some(pkv_val) = decoder_outputs.get(out_name) {
+                        for out_name in active_present_names.iter() {
+                            if let Some(pkv_val) = decoder_outputs.get(out_name.as_str()) {
                                 let (shape, data) = pkv_val.try_extract_tensor::<f32>()?;
                                 let dims: Vec<usize> = (0..shape.len()).map(|idx| shape[idx] as usize).collect();
                                 let arr = ndarray::ArrayView::from_shape(ndarray::IxDyn(&dims), data)?.to_owned();
-                                
-                                if i < self.past_key_value_names.len() {
-                                    let target_name = self.past_key_value_names[i].clone();
-                                    cache_map.insert(target_name, arr);
-                                }
+                                let target_name = out_name.replace("present", "past_key_values");
+                                cache_map.insert(target_name, arr);
                             }
                         }
                     }
