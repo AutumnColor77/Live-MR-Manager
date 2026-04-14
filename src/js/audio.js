@@ -2,7 +2,7 @@
  * audio.js - Backend command wrappers for Audio Engine
  */
 
-const { invoke } = window.__TAURI__.core;
+import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
 
 export async function setVolume(volume) {

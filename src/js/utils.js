@@ -2,7 +2,7 @@
  * utils.js - Formatting and common utility functions
  */
 
-const { convertFileSrc } = window.__TAURI__.core;
+import { convertFileSrc } from './tauri-bridge.js';
 
 export function formatTime(sec) {
   if (isNaN(sec) || sec < 0) return "0:00";

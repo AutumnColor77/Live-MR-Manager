@@ -6,7 +6,7 @@ import { state, DEFAULT_CATEGORIES, SORT_OPTIONS } from './state.js';
 import { getThumbnailUrl, showNotification } from './utils.js';
 import { checkMrSeparated, saveLibrary, deleteSongFromDb, setVolume } from './audio.js';
 
-const { invoke } = window.__TAURI__.core;
+import { invoke } from './tauri-bridge.js';
 
 // DOM Cache
 export const elements = {
@@ -630,7 +630,6 @@ function showSongContextMenu(e, song, originalIndex) {
       menuDeleteMr.onclick = async () => {
         elements.contextMenu.classList.remove("active");
         try {
-          const { invoke } = window.__TAURI__.core;
           
           // 1. 백엔드에서 안전하게 중단 및 삭제 수행 (백엔드 내부에서 stop_playback 로직 포함됨)
           await invoke("delete_mr", { path: song.path });
@@ -1079,7 +1078,7 @@ export async function renderCurationTab() {
   elements.unclassifiedTagsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">데이터 분석 중...</div>';
 
   try {
-    const { invoke } = window.__TAURI__.core;
+    // invoke is already imported at the top of the file
     const tags = await invoke("get_unclassified_tags");
     console.log("[DEBUG] Unclassified Tags received:", tags);
     const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
@@ -1130,7 +1129,7 @@ export function setupGridResizeObserver() {
       const width = entry.contentRect.width;
       if (width <= 0) continue;
       
-      const columns = Math.floor((width + 24) / (200 + 24));
+      const columns = Math.floor((width + 24 + 20) / (200 + 24));
       
       if (columns > 0 && state.lastColumns !== columns) {
         // 1. [First] Capture current positions
@@ -1143,6 +1142,10 @@ export function setupGridResizeObserver() {
         // 2. [Last] Apply new layout
         state.lastColumns = columns;
         elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, 200px)`;
+
+        // Update the global CSS variable for other components to align with the grid
+        const actualWidth = (columns * 200) + ((columns - 1) * 24);
+        document.documentElement.style.setProperty('--grid-actual-width', `${actualWidth}px`);
 
         // 3. [Invert & Play] Trigger animation in next frame to allow layout shift
         requestAnimationFrame(() => {

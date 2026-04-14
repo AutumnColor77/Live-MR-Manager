@@ -1,4 +1,5 @@
 import { showNotification } from './utils.js';
+import { invoke, listen } from './tauri-bridge.js';
 
 /**
  * ForcedAlignmentViewer (v15 Refactored)
@@ -23,8 +24,9 @@ export class ForcedAlignmentViewer {
         };
 
         this.tuningParams = {
-            conf: 0.3,
-            noise: 0.2
+            blank: 0.0,
+            rep: 0.0,
+            penalty: -0.05
         };
 
         this.animationId = null;
@@ -32,13 +34,12 @@ export class ForcedAlignmentViewer {
         // --- Initialize ---
         this.initUI();
         
-        if (window.__TAURI__) {
-            this.invoke = window.__TAURI__.core.invoke;
-            this.setupListeners();
-            this.setupCanvasListeners();
-            this.loadTrackList();
-            this.loadModelList();
-        }
+        // Using safe bridge
+        this.invoke = invoke;
+        this.setupListeners();
+        this.setupCanvasListeners();
+        this.loadTrackList();
+        this.loadModelList();
 
         window.addEventListener('resize', () => this.resizeCanvas());
     }
@@ -101,9 +102,11 @@ export class ForcedAlignmentViewer {
 울었던것 같고 
 난 아무도 아무것도 기억이 없네</textarea>
 
-                        <button id="run-alignment-btn" class="run-btn primary-btn" style="height: 40px; font-size: 1rem;">
-                            AI 가사 정렬 시작
-                        </button>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button id="run-alignment-btn" class="run-btn primary-btn" style="flex: 1; height: 40px; font-size: 1rem;">
+                                AI 가사 정렬 시작
+                            </button>
+                        </div>
 
                         <div class="alignment-status-card">
                             <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700;">
@@ -143,16 +146,46 @@ export class ForcedAlignmentViewer {
                             </div>
                         </div>
 
-                        <!-- VAD Tuning Section -->
+                        <!-- New Tuning Section -->
                         <div class="vad-tuning-section">
                             <div class="tuning-group">
-                                <span class="alignment-sub-label">음성 신뢰도 (VAD): <b id="conf-val">0.30</b></span>
-                                <input type="range" id="conf-slider" class="mini-seekbar" min="0" max="1" step="0.05" value="0.30">
+                                <span class="alignment-sub-label">공백(Blank) 패널티: <b id="blank-val">0.00</b></span>
+                                <input type="range" id="blank-slider" class="mini-seekbar" min="-10.0" max="10.0" step="0.5" value="0.00">
                             </div>
                             <div class="tuning-group">
-                                <span class="alignment-sub-label">노이즈 억제: <b id="noise-val">0.20</b></span>
-                                <input type="range" id="noise-slider" class="mini-seekbar" min="0" max="1" step="0.05" value="0.20">
+                                <span class="alignment-sub-label">반복(Rep) 억제: <b id="rep-val">0.00</b></span>
+                                <input type="range" id="rep-slider" class="mini-seekbar" min="-20.0" max="0.0" step="0.5" value="0.00">
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Detail Analysis Panel (Integrated below waveform) -->
+                    <div id="analysis-panel" class="alignment-card analysis-card" style="margin-top: 16px;">
+                        <div class="card-header" style="flex-direction: row; justify-content: space-between; padding-bottom: 20px;">
+                            <h3 style="font-size: 1rem;">AI 정밀 분석 및 보정</h3>
+                            <div class="analysis-controls" style="display: flex; gap: 20px; align-items: center;">
+                                <div class="tuning-group" style="min-width: 160px;">
+                                    <span class="alignment-sub-label">전이 패널티: <b id="penalty-val">-0.05</b></span>
+                                    <input type="range" id="penalty-slider" class="mini-seekbar" min="-50.0" max="0" step="0.1" value="-0.05">
+                                </div>
+                                <button id="re-align-btn" class="run-btn" style="height: 32px; padding: 0 12px; font-size: 0.75rem; background: rgba(79, 70, 229, 0.2); border: 1px solid rgba(79, 70, 229, 0.4);">
+                                    재정렬
+                                </button>
+                            </div>
+                        </div>
+                        <div class="analysis-table-container">
+                            <table class="comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th>원본</th>
+                                        <th>AI 인식</th>
+                                        <th>상태</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analysis-table-body">
+                                    <!-- Comparison data injected here -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </main>
@@ -196,20 +229,35 @@ export class ForcedAlignmentViewer {
         };
 
         // Tuning sliders
-        document.getElementById('conf-slider').oninput = (e) => {
-            this.tuningParams.conf = parseFloat(e.target.value);
-            document.getElementById('conf-val').innerText = this.tuningParams.conf.toFixed(2);
+        document.getElementById('blank-slider').oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.tuningParams.blank = val;
+            document.getElementById('blank-val').innerText = val.toFixed(2);
+            this.handlePenaltyChange();
         };
-        document.getElementById('noise-slider').oninput = (e) => {
-            this.tuningParams.noise = parseFloat(e.target.value);
-            document.getElementById('noise-val').innerText = this.tuningParams.noise.toFixed(2);
+        document.getElementById('rep-slider').oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.tuningParams.rep = val;
+            document.getElementById('rep-val').innerText = val.toFixed(2);
+            this.handlePenaltyChange();
         };
 
         // Tauri Backend Listeners
-        window.__TAURI__.event.listen('alignment-progress', (event) => {
+        listen('alignment-progress', (event) => {
             const val = typeof event.payload === 'number' ? event.payload : (event.payload?.progress ?? 0);
             this.updateProgress(val);
         });
+
+        // Penalty slider (Real-time update with debounce)
+        document.getElementById('penalty-slider').oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.tuningParams.penalty = val;
+            document.getElementById('penalty-val').innerText = val.toFixed(2);
+            this.handlePenaltyChange();
+        };
+
+        // Re-align button in panel
+        document.getElementById('re-align-btn').onclick = () => this.handleRunAlignment();
     }
 
     /**
@@ -237,6 +285,42 @@ export class ForcedAlignmentViewer {
             console.error('[Alignment] loadModelList error:', err);
             select.innerHTML = `<option value="">오류: ${err}</option>`;
         }
+    }
+
+    // Debounce timer for slider
+    penaltyTimer = null;
+
+    async handlePenaltyChange() {
+        if (this.penaltyTimer) clearTimeout(this.penaltyTimer);
+        
+        this.penaltyTimer = setTimeout(async () => {
+            if (!this.state.alignmentData) return; // Need at least one run first
+            
+            try {
+                console.log(`[Alignment] Requesting real-time tuning: penalty=\${this.tuningParams.penalty}, blank=\${this.tuningParams.blank}, rep=\${this.tuningParams.rep}`);
+                // Use the fast tuning command
+                const result = await this.invoke('apply_alignment_tuning', { 
+                    penalty: parseFloat(this.tuningParams.penalty),
+                    blankPenalty: parseFloat(this.tuningParams.blank),
+                    repPenalty: parseFloat(this.tuningParams.rep)
+                });
+                
+                // Update internal state and UI results (but NOT progress or loading state)
+                this.state.alignmentData = result;
+                this.state.segments = (result.lines || []).map(l => ({
+                    start: l.start_ms / 1000.0,
+                    end: l.end_ms / 1000.0,
+                    text: l.text
+                }));
+                
+                this.renderLyricList();
+                this.renderAnalysisTable();
+                this.drawWaveform();
+            } catch (err) {
+                console.error('[Alignment] Tuning failed:', err);
+                // Silent fail for real-time slider to avoid notification spam
+            }
+        }, 80); // 80ms debounce for smoothness
     }
 
     async loadTrackList() {
@@ -270,6 +354,17 @@ export class ForcedAlignmentViewer {
     }
 
     async handleRunAlignment() {
+        // --- Cancellation Handling ---
+        if (this.state.isProcessing) {
+            try {
+                await this.invoke('cancel_forced_alignment');
+                showNotification('정렬 작업 중단 중...', 'info');
+            } catch (err) {
+                console.error('Cancel failed:', err);
+            }
+            return;
+        }
+
         const trackPath = document.getElementById('track-select').value;
         const lyrics = document.getElementById('lyrics-input').value;
         const modelName = document.getElementById('model-select').value;
@@ -281,6 +376,7 @@ export class ForcedAlignmentViewer {
 
         try {
             this.state.isProcessing = true;
+            this.updateButtonState();
             this.updateProgress(0);
             
             // Sync argument names with Rust alignment.rs:run_forced_alignment
@@ -289,8 +385,9 @@ export class ForcedAlignmentViewer {
                 lyrics: lyrics,
                 modelName: modelName,
                 language: "ko",
-                vadsThreshold: parseFloat(this.tuningParams.conf),
-                noiseReduction: parseFloat(this.tuningParams.noise)
+                blankPenalty: parseFloat(this.tuningParams.blank),
+                repPenalty: parseFloat(this.tuningParams.rep),
+                transPenalty: parseFloat(this.tuningParams.penalty)
             });
 
             this.state.alignmentData = result;
@@ -300,12 +397,74 @@ export class ForcedAlignmentViewer {
                 text: l.text
             }));
             
+            this.updateProgress(100);
             this.renderLyricList();
+            this.renderAnalysisTable();
             showNotification('가사 정렬이 완료되었습니다.', 'success');
         } catch (err) {
-            showNotification(`정렬 실패: ${err}`, 'error');
+            console.error('[Alignment Error] run_forced_alignment failed:', err);
+            if (typeof err === 'string' && err.includes('취소')) {
+                showNotification('정렬 작업이 중단되었습니다.', 'info');
+            } else {
+                showNotification(`정렬 실패: ${err}`, 'error');
+            }
         } finally {
             this.state.isProcessing = false;
+            this.updateButtonState();
+        }
+    }
+
+    renderAnalysisTable() {
+        const panel = document.getElementById('analysis-panel');
+        const body = document.getElementById('analysis-table-body');
+        if (!panel || !body || !this.state.alignmentData) return;
+
+        panel.style.display = 'block';
+        body.innerHTML = '';
+
+        (this.state.alignmentData.lines || []).forEach(line => {
+            const tr = document.createElement('tr');
+            const original = line.text;
+            const extracted = line.extracted_text || '(인식 불가)';
+            const startSec = (line.start_ms / 1000).toFixed(2);
+            const endSec = (line.end_ms / 1000).toFixed(2);
+            
+            let statusBadge = '<span class="badge badge-match">MATCH</span>';
+            if (original.replace(/\s/g, '') !== extracted.replace(/\s/g, '')) {
+                statusBadge = '<span class="badge badge-diff">DIFF</span>';
+            }
+            if (line.end_ms - line.start_ms > 10000) {
+                statusBadge = '<span class="badge badge-error">LONG</span>';
+            }
+
+            tr.innerHTML = `
+                <td style="color: white; font-weight: 500;">${original}</td>
+                <td style="color: #94a3b8;">${extracted}</td>
+                <td style="font-family: monospace; color: #818cf8;">${startSec}s - ${endSec}s</td>
+                <td>${statusBadge}</td>
+            `;
+
+            tr.style.cursor = 'pointer';
+            tr.onclick = () => this.seekToMs(line.start_ms);
+            body.appendChild(tr);
+        });
+    }
+
+    async seekToMs(ms) {
+        if (!window.__TAURI__) return;
+        try {
+            await this.invoke('seek_to', { positionMs: BigInt(ms) });
+        } catch (e) {
+            console.error('Seek failed:', e);
+        }
+    }
+
+    handleOpenCalibration() {
+        showNotification('이제 하단 [AI 정밀 분석] 패널을 사용하세요.', 'info');
+        const panel = document.getElementById('analysis-panel');
+        if (panel) {
+            panel.style.display = 'block';
+            panel.scrollIntoView({ behavior: 'smooth' });
         }
     }
 
@@ -611,11 +770,37 @@ export class ForcedAlignmentViewer {
         }
     }
 
-    updateProgress(val) {
-        const valEl = document.getElementById('progress-val');
-        const barEl = document.getElementById('scan-progress-bar');
-        if (valEl) valEl.innerText = `${Math.round(val)}%`;
-        if (barEl) barEl.style.width = `${val}%`;
+    updateProgress(percent) {
+        const fill = document.getElementById('align-ai-progress-fill');
+        const text = document.getElementById('align-ai-progress-text');
+        
+        if (fill) fill.style.width = `${percent}%`;
+        if (text) text.innerText = `${Math.round(percent)}%`;
+    }
+
+    updateButtonState() {
+        const btn = document.getElementById('run-alignment-btn');
+        const wrapper = document.getElementById('align-progress-wrapper');
+        
+        if (this.state.isProcessing) {
+            if (btn) {
+                btn.innerText = '정렬 중단 (Cancel)';
+                btn.classList.add('cancel-state');
+                btn.style.background = 'rgba(239, 68, 68, 0.2)';
+                btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                btn.style.color = '#f87171';
+            }
+            if (wrapper) wrapper.style.display = 'block';
+        } else {
+            if (btn) {
+                btn.innerText = 'AI 가사 정렬 시작';
+                btn.classList.remove('cancel-state');
+                btn.style.background = '';
+                btn.style.borderColor = '';
+                btn.style.color = '';
+            }
+            if (wrapper) wrapper.style.display = 'none';
+        }
     }
 
     // --- Helpers ---

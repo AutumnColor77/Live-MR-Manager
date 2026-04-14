@@ -5,6 +5,7 @@
 import { state } from './state.js';
 import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus, updateTaskUI, updateCardStatusBadge } from './ui.js';
 import { formatTime, showNotification } from './utils.js';
+import { invoke, listen } from './tauri-bridge.js';
 import { selectTrack, highlightTrack, handlePlaybackToggle, updateProgressBar, handleNextTrack, handlePrevTrack } from './player.js';
 import { 
   setVolume, setPitch, setTempo, seekTo, saveLibrary, 
@@ -64,6 +65,12 @@ export function switchTab(tabId) {
     if (alignmentPage) alignmentPage.style.display = "block";
     if (!alignmentViewer) {
       alignmentViewer = new ForcedAlignmentViewer("alignment-viewer-root");
+      // Using safe bridge
+      alignmentViewer.invoke = invoke;
+      alignmentViewer.setupListeners();
+      alignmentViewer.setupCanvasListeners();
+      alignmentViewer.loadTrackList();
+      alignmentViewer.loadModelList();
     }
   } else {
     elements.viewport?.classList.remove("alignment-mode");
@@ -480,7 +487,7 @@ export function initGlobalListeners() {
       `;
 
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         const results = await invoke("search_track_metadata", { query });
         
         elements.searchResultsList.innerHTML = "";
@@ -524,7 +531,6 @@ export function initGlobalListeners() {
   async function finalizeMetadataSelection(artist, track) {
     elements.btnMetadataSearch.classList.add("loading-btn");
     try {
-      const { invoke } = window.__TAURI__.core;
       const metadata = await invoke("fetch_and_process_tags", { artist, track });
       
       document.getElementById("edit-title").value = track;
@@ -653,7 +659,7 @@ export function initGlobalListeners() {
     syncBroadcastToggles();
     console.log(`[STATE] Broadcast Mode: ${state.broadcastMode}`);
     try {
-      await window.__TAURI__.core.invoke("set_broadcast_mode", { enabled: state.broadcastMode });
+      await invoke("set_broadcast_mode", { enabled: state.broadcastMode });
       showNotification(state.broadcastMode ? "방송 보호 모드가 활성화되었습니다." : "방송 보호 모드가 해제되었습니다.", "info");
     } catch (err) {
       console.error("Failed to set broadcast mode:", err);
@@ -670,7 +676,7 @@ export function initGlobalListeners() {
   }
   
   // Initial Sync to Backend
-  window.__TAURI__.core.invoke("set_broadcast_mode", { enabled: state.broadcastMode }).catch(console.error);
+  invoke("set_broadcast_mode", { enabled: state.broadcastMode }).catch(console.error);
 
   // Settings Events
   const btnExportBackup = document.getElementById("btn-export-backup");
@@ -679,7 +685,7 @@ export function initGlobalListeners() {
   if (btnExportBackup) {
     btnExportBackup.onclick = async () => {
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         btnExportBackup.disabled = true;
         btnExportBackup.textContent = "백업 중...";
         await invoke("export_backup");
@@ -698,7 +704,7 @@ export function initGlobalListeners() {
   if (btnImportBackup) {
     btnImportBackup.onclick = async () => {
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         btnImportBackup.disabled = true;
         btnImportBackup.textContent = "복원 중...";
         await invoke("import_backup");
@@ -726,7 +732,7 @@ export function initGlobalListeners() {
   if (btnDownloadModel) {
     btnDownloadModel.onclick = async () => {
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         const { updateAiModelStatus } = await import('./ui.js');
         await invoke("download_ai_model");
         state.isAiModelReady = true;
@@ -741,7 +747,7 @@ export function initGlobalListeners() {
   if (btnOpenCache) {
     btnOpenCache.onclick = async () => {
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         await invoke("open_cache_folder");
       } catch (err) {
         showNotification("폴더 열기 실패: " + err, "error");
@@ -762,7 +768,7 @@ export function initGlobalListeners() {
       if (confirmOk) {
         confirmOk.onclick = async () => {
           try {
-            const { invoke } = window.__TAURI__.core;
+            // Access invoke from bridge
             await invoke("delete_ai_model");
             showNotification("AI 모델이 삭제되었습니다.", "success");
             
@@ -949,7 +955,7 @@ export function initGlobalListeners() {
       btnSaveMapping.disabled = true;
       btnSaveMapping.textContent = "저장 중...";
       try {
-        const { invoke } = window.__TAURI__.core;
+        // Access invoke from bridge
         await invoke("update_custom_dictionary", { category, original, translated });
         showNotification("사전이 업데이트되었습니다.", "success");
         
@@ -989,7 +995,6 @@ export function initGlobalListeners() {
 
   if (btnCopyUnmapped) {
     btnCopyUnmapped.onclick = async () => {
-      const { invoke } = window.__TAURI__.core;
       try {
         const tagsMap = await invoke("get_unclassified_tags");
         const tags = Object.keys(tagsMap);
@@ -1010,7 +1015,7 @@ export function initGlobalListeners() {
 
 
 export function setupBackendListeners() {
-  const { listen } = window.__TAURI__.event;
+  // listen is imported from tauri-bridge.js
   
   listen("playback-progress", (event) => {
     if (!state.isSeeking) {
@@ -1161,7 +1166,7 @@ export function setupBackendListeners() {
   // Restore active tasks from backend (survives page reload / HMR)
   (async () => {
     try {
-      const { invoke } = window.__TAURI__.core;
+      // invoke is imported from tauri-bridge.js
       const activePaths = await invoke("get_active_separations");
       if (activePaths && activePaths.length > 0) {
         activePaths.forEach(path => {
@@ -1185,7 +1190,7 @@ function tempFix_removeOldUpdateTaskUI() {
 
 
 window.cancelTask = (el) => {
-  const { invoke } = window.__TAURI__.core;
+  // invoke is imported from tauri-bridge.js
   // Get path from data attribute (prevents backslash mangling in HTML)
   const path = typeof el === 'string' ? el : el.dataset.taskPath;
   

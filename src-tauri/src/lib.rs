@@ -19,7 +19,8 @@ mod separation;
 pub mod state;
 mod alignment;
 mod metadata_fetcher;
-pub mod whisper;
+pub mod audio;
+pub mod onnx_engine;
 mod diagnostics;
 
 use crate::youtube::YoutubeManager;
@@ -801,6 +802,7 @@ async fn import_backup(app: AppHandle) -> Result<(), String> {
     }
 }
 
+
 #[tauri::command]
 async fn get_track_count() -> Result<i64, String> {
     let db = DB.lock();
@@ -872,7 +874,9 @@ pub fn run() {
             load_library, get_songs, get_categories, get_genres, get_track_count, cancel_separation, set_broadcast_mode,
             get_audio_devices, open_cache_folder, delete_ai_model, get_gpu_recommendation, add_category, delete_category,
             delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup, get_active_separations,
-            alignment::get_separated_audio_list, alignment::run_forced_alignment, alignment::read_audio_file,
+            alignment::get_separated_audio_list, alignment::run_forced_alignment, 
+            alignment::cancel_forced_alignment, alignment::read_audio_file,
+            alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
             diagnostics::remote_js_log,
             metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,

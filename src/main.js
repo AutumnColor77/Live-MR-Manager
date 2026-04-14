@@ -8,7 +8,7 @@ import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab }
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
 
-const { invoke } = window.__TAURI__.core;
+import { invoke, appWindow } from './js/tauri-bridge.js';
 
 async function initApp() {
   console.log("[App] Initializing...");
@@ -119,8 +119,7 @@ async function initApp() {
 }
 
 function setupTitlebar() {
-  const { getCurrentWindow } = window.__TAURI__.window;
-  const appWindow = getCurrentWindow();
+  // appWindow is imported from tauri-bridge.js
 
   document.getElementById('titlebar-minimize')?.addEventListener('click', async () => {
     try { await appWindow.minimize(); } catch (e) { console.error(e); }
