@@ -54,11 +54,8 @@ export async function handlePlaybackToggle() {
 }
 
 export async function selectTrack(index) {
-  // Prevent duplicate requests while already loading
-  if (state.isLoading) {
-    console.warn("Playback request ignored: already loading.");
-    return;
-  }
+  // Increment sequence for every new request
+  const mySequence = ++state.playbackSequence;
 
   // Guard against invalid index or empty library
   if (typeof index !== 'number' || index < 0 || index >= state.songLibrary.length) {
@@ -179,9 +176,12 @@ export async function selectTrack(index) {
     showNotification("재생에 실패했습니다.", "error");
   } finally {
     clearTimeout(loadingTimeout);
-    state.isLoading = false;
-    updateThumbnailOverlay();
-    updatePlayButton();
+    // Only reset isLoading if this is still the latest request
+    if (mySequence === state.playbackSequence) {
+      state.isLoading = false;
+      updateThumbnailOverlay();
+      updatePlayButton();
+    }
   }
 }
 

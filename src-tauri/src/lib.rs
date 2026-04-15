@@ -195,6 +195,9 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         std::path::PathBuf::from(&path)
     };
 
+    // Check version after potentially long IO/Download
+    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+
     if !play_path.exists() && !path.starts_with("http") {
         return Err("File not found".into());
     }
@@ -224,6 +227,9 @@ async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hi
         }
         match d { Some(res) => res, None => return Err(format!("Failed to decode audio: {}", first_error_msg)) }
     };
+    
+    // Check version again after decoding attempts
+    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
     
     handler.track_sample_rate.store(decoder.sample_rate().into(), Ordering::Relaxed);
     if let Some(ms) = start_pos_ms { let _ = decoder.try_seek(Duration::from_millis(ms)); }
@@ -387,6 +393,8 @@ async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String>
     Ok(())
 }
 
+
+
 #[tauri::command]
 async fn check_mr_separated(window: WebviewWindow, path: String) -> Result<bool, String> {
     let paths = window.state::<crate::state::AppPaths>();
@@ -531,7 +539,15 @@ async fn get_songs() -> Result<Vec<SongMetadata>, String> {
 }
 
 #[tauri::command]
-async fn load_library() -> Result<Vec<SongMetadata>, String> { get_songs().await }
+async fn load_library() -> Result<Vec<SongMetadata>, String> { 
+    match get_songs().await {
+        Ok(songs) => Ok(songs),
+        Err(e) => {
+            let _ = crate::audio_player::sys_log(&format!("[Command] [Error] load_library failed: {}", e));
+            Err(e)
+        }
+    }
+}
 
 #[tauri::command]
 async fn get_categories() -> Result<Vec<crate::types::Category>, String> {
@@ -616,31 +632,88 @@ async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
     Ok(GpuStatus { has_nvidia, is_cuda_available: cuda, is_directml_available: dml, recommend_cuda: has_nvidia && !cuda && !dml })
 }
 
-#[tauri::command]
-async fn check_model_ready(handle: AppHandle) -> bool {
-    ModelManager::new(&handle).get_model_path("Kim_Vocal_2.onnx").exists()
+#[derive(Debug, serde::Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub url: String,
 }
 
 #[tauri::command]
-async fn download_ai_model(window: WebviewWindow) -> Result<(), String> {
-    let app = window.app_handle();
-    let manager = ModelManager::new(app);
-    window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "AI 모델 다운로드...".into() }).ok();
-    manager.ensure_model(app, "Kim_Vocal_2.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx").await?;
-    window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: "AI 모델 준비됨".into() }).ok();
+async fn get_model_settings() -> Result<String, String> {
+    let db = DB.lock();
+    let res = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0));
+    Ok(res.unwrap_or_else(|_| "kim".to_string()))
+}
+
+#[tauri::command]
+async fn get_ai_engine_status() -> String {
+    let engine = crate::separation::ROFORMER_ENGINE.lock();
+    if let Some(engine) = engine.as_ref() {
+        engine.get_provider()
+    } else {
+        "None (Idle)".to_string()
+    }
+}
+
+#[tauri::command]
+async fn update_model_settings(model_id: String) -> Result<(), String> {
+    let db = DB.lock();
+    db.execute("INSERT OR REPLACE INTO Settings (key, value) VALUES ('active_model_id', ?)", params![model_id]).map_err(|e| e.to_string())?;
+    let mut engine = crate::separation::ROFORMER_ENGINE.lock();
+    *engine = None;
     Ok(())
 }
 
 #[tauri::command]
-async fn delete_ai_model(window: WebviewWindow) -> Result<(), String> {
+async fn check_model_ready(handle: AppHandle, model_id: String) -> bool {
+    if let Some((_, name, _)) = crate::state::MODELS.iter().find(|(id, _, _)| *id == model_id) {
+        ModelManager::new(&handle).get_model_path(name).exists()
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+async fn download_ai_model(window: WebviewWindow, model_id: String) -> Result<(), String> {
+    let app = window.app_handle();
+    let manager = ModelManager::new(app);
+    
+    let (_, name, url) = crate::state::MODELS.iter()
+        .find(|(id, _, _)| *id == model_id)
+        .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
+
+    window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: format!("{} 모델 다운로드...", name) }).ok();
+    
+    match manager.ensure_model(app, name, url).await {
+        Ok(_) => {
+            window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: format!("{} 모델 준비됨", name) }).ok();
+            Ok(())
+        }
+        Err(e) => {
+            let _ = crate::audio_player::sys_log(&format!("[Command] [Error] download_ai_model failed: {}", e));
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+async fn delete_ai_model(window: WebviewWindow, model_id: String) -> Result<(), String> {
     let manager = ModelManager::new(window.app_handle());
-    let path = manager.get_model_path("Kim_Vocal_2.onnx");
+    let (_, name, _) = crate::state::MODELS.iter()
+        .find(|(id, _, _)| *id == model_id)
+        .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
+        
+    let path = manager.get_model_path(name);
     if path.exists() {
         std::fs::remove_file(path).ok();
-        *crate::separation::ROFORMER_ENGINE.lock() = None;
+        // Clear cached engine only if it was using this model
+        let mut engine = crate::separation::ROFORMER_ENGINE.lock();
+        *engine = None;
     }
     Ok(())
 }
+
 
 #[tauri::command]
 async fn set_broadcast_mode(enabled: bool) -> Result<(), String> {
@@ -688,7 +761,11 @@ async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
     let norm = path.replace("\\", "/").to_lowercase();
-    if crate::separation::ACTIVE_SEPARATIONS.lock().contains_key(&norm) { return Err("ALREADY_PROCESSING".into()); }
+    if crate::separation::ACTIVE_SEPARATIONS.lock().contains_key(&norm) {
+        let _ = crate::audio_player::sys_log(&format!("[Command] [Error] start_mr_separation failed: ALREADY_PROCESSING for {}", path));
+        return Err("ALREADY_PROCESSING".into()); 
+    }
+    
     let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&path).to_string());
     let task = crate::separation::task::SeparationTask::new(window, path, cache);
     tauri::async_runtime::spawn(async move { task.run().await; });
@@ -705,12 +782,25 @@ fn cancel_separation(path: String) -> Result<(), String> {
 #[tauri::command]
 async fn delete_song(path: String) -> Result<(), String> {
     let db = DB.lock();
-    db.execute("DELETE FROM Tracks WHERE path = ?", params![path]).map_err(to_sqlite_err)?;
+    db.execute("DELETE FROM Tracks WHERE path = ?", params![path]).map_err(|e| {
+        let _ = crate::audio_player::sys_log(&format!("[Command] [Error] delete_song failed: {}", e));
+        to_sqlite_err(e)
+    })?;
     Ok(())
 }
 
 #[tauri::command]
-fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
+async fn save_library(_app: AppHandle, songs: Vec<SongMetadata>) -> Result<(), String> {
+    match save_library_internal(songs).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            let _ = crate::audio_player::sys_log(&format!("[Command] [Error] save_library failed: {}", e));
+            Err(e)
+        }
+    }
+}
+
+async fn save_library_internal(songs: Vec<SongMetadata>) -> Result<(), String> {
     let mut db = DB.lock();
     let tx = db.transaction().map_err(to_sqlite_err)?;
     
@@ -795,7 +885,7 @@ async fn import_backup(app: AppHandle) -> Result<(), String> {
             }
         }
         
-        save_library(app, current_songs)?;
+        save_library(app, current_songs).await?;
         Ok(())
     } else {
         Err("CANCELLED".into())
@@ -868,12 +958,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_model_settings, update_model_settings,
             play_track, toggle_playback, stop_playback, seek_to, set_pitch, set_tempo, set_volume, set_master_volume,
             set_vocal_balance, toggle_ai_feature, check_mr_separated, delete_mr, start_mr_separation, get_youtube_metadata,
             get_audio_metadata, get_playback_state, check_ai_runtime, check_model_ready, download_ai_model, save_library,
             load_library, get_songs, get_categories, get_genres, get_track_count, cancel_separation, set_broadcast_mode,
             get_audio_devices, open_cache_folder, delete_ai_model, get_gpu_recommendation, add_category, delete_category,
             delete_song, map_track_to_categories, get_app_paths, export_backup, import_backup, get_active_separations,
+            get_ai_engine_status,
             alignment::get_separated_audio_list, alignment::run_forced_alignment, 
             alignment::cancel_forced_alignment, alignment::read_audio_file,
             alignment::apply_alignment_tuning,

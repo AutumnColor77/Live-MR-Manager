@@ -7,8 +7,15 @@ use std::path::PathBuf;
 use std::fs;
 
 use crate::vocal_remover::WaveformRemover;
+// AI Model Library Reference: https://huggingface.co/seanghay/uvr_models/tree/main
+
 use crate::audio_player::sys_log;
 use crate::types::SongMetadata;
+
+pub const MODELS: &[(&str, &str, &str)] = &[
+    ("kim", "Kim_Vocal_2.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx"),
+    ("inst_hq_3", "UVR-MDX-NET-Inst_HQ_3.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx"),
+];
 
 // --- App Paths Management ---
 #[derive(Debug, Clone, serde::Serialize)]
@@ -143,6 +150,12 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             FOREIGN KEY(track_id) REFERENCES Tracks(id) ON DELETE CASCADE,
             FOREIGN KEY(tag_id) REFERENCES Tags(id) ON DELETE CASCADE
          );
+         CREATE TABLE IF NOT EXISTS Settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+         );
+         INSERT OR IGNORE INTO Settings (key, value) VALUES ('active_model_id', 'kim');
+         UPDATE Settings SET value = 'inst_hq_3' WHERE key = 'active_model_id' AND value = 'roformer';
          COMMIT;"
     ).expect("Failed to create tables");
 

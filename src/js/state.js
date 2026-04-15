@@ -17,6 +17,7 @@ export const state = {
   prevVolume: 100,
   activeTasks: {}, // path -> { title, percentage, status }
   cancelledPaths: new Set(), // path blacklist for UI updates
+  playbackSequence: 0, // Latest playback request ID to handle race conditions
   
   // Interpolation / Progress State
   targetProgressMs: 0,

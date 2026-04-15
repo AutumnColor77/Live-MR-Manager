@@ -48,6 +48,7 @@ export const elements = {
   btnPrev: null,
   btnNext: null,
   aiModelStatus: null,
+  aiEngineProvider: null,
   btnDownloadModel: null,
   btnDeleteModel: null,
   btnStartTrack: null,
@@ -123,6 +124,7 @@ export function initDomReferences() {
   elements.btnPrev = document.getElementById("btn-prev");
   elements.btnNext = document.getElementById("btn-next");
   elements.aiModelStatus = document.getElementById("ai-model-status");
+  elements.aiEngineProvider = document.getElementById("ai-engine-provider");
   elements.btnDownloadModel = document.getElementById("btn-download-model");
   elements.btnDeleteModel = document.getElementById("btn-delete-model");
   elements.btnStartTrack = document.getElementById("btn-start-track");
@@ -824,15 +826,31 @@ function deleteSong(index) {
 /**
  * Updates the AI Model status badge in Settings
  */
-export function updateAiModelStatus(isReady) {
+export async function updateAiModelStatus(isReady) {
   if (!elements.aiModelStatus) return;
 
   if (isReady) {
     elements.aiModelStatus.textContent = "Online (Ready)";
     elements.aiModelStatus.className = "ai-status-badge status-online";
+    if (elements.btnDownloadModel) elements.btnDownloadModel.textContent = "모델 재설치";
+    if (elements.btnDeleteModel) elements.btnDeleteModel.style.display = "block";
+
+    // 실제 가속 장치 정보 가져오기
+    try {
+      const provider = await invoke("get_ai_engine_status");
+      if (elements.aiEngineProvider) {
+        elements.aiEngineProvider.textContent = `현재 가속: ${provider}`;
+        elements.aiEngineProvider.style.color = provider.includes("GPU") ? "#4ade80" : "#fb923c";
+      }
+    } catch (e) {
+      console.error("Failed to get engine status:", e);
+    }
   } else {
     elements.aiModelStatus.textContent = "Offline (Need Download)";
     elements.aiModelStatus.className = "ai-status-badge status-offline";
+    if (elements.btnDownloadModel) elements.btnDownloadModel.textContent = "모델 다운로드";
+    if (elements.btnDeleteModel) elements.btnDeleteModel.style.display = "none";
+    if (elements.aiEngineProvider) elements.aiEngineProvider.textContent = "";
   }
 }
 
@@ -1244,6 +1262,11 @@ export function updateTaskUI(targetPath = null) {
         badgeEl.className = "task-provider-badge " + pClass;
       }
       
+      const modelEl = existingCard.querySelector(".task-model-name");
+      if (modelEl && task.model) {
+        modelEl.textContent = formatModelName(task.model);
+      }
+      
       const isRunning = task.status !== "Finished" && task.status !== "Cancelled" && task.status !== "Error";
       if (isRunning) return; 
     }
@@ -1285,12 +1308,13 @@ export function updateTaskUI(targetPath = null) {
       return `
         <div class="task-card ${isQueued ? 'task-queued' : ''}" data-task-path="${path}">
           <div class="task-header-info">
-            ${thumbnail ? `<img src="${thumbnail}" class="task-thumb" onerror="this.style.display='none'">` : `<div class="task-icon">MR</div>`}
+            <img src="${getThumbnailUrl(thumbnail, song)}" class="task-thumb" onerror="this.src='assets/images/Thumb_Music.png'">
             <div class="task-info-main">
               <span class="task-title" title="${path}">${displayName}</span>
               <div class="task-status-row-top">
                 <span class="task-status-text">${statusText}</span>
                 <span class="task-percentage">${isQueued ? '-' : pct + '%'}</span>
+                <div class="task-model-name">${formatModelName(t.model || "")}</div>
               </div>
             </div>
             <div class="task-provider-badge ${pClass}">${pText}</div>
@@ -1310,6 +1334,14 @@ export function updateTaskUI(targetPath = null) {
  * @param {string} path - The path of the song to update
  * @param {HTMLElement|null} card - Optional card element to update directly
  */
+function formatModelName(filename) {
+  if (!filename) return "";
+  if (filename.includes("Kim")) return "Kim Vocal 2";
+  if (filename.includes("KARA")) return "KARA 2";
+  if (filename.includes("Inst_HQ_3")) return "Inst HQ 3";
+  return filename.split('.')[0]; 
+}
+
 export async function updateCardStatusBadge(path, card = null) {
   const targetCard = card || document.querySelector(`.song-card[data-path="${path}"]`);
   if (!targetCard) return;

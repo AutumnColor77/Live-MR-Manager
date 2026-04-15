@@ -38,11 +38,13 @@ impl SeparationTask {
         }
 
         // 2. Initial status: Queued (Waiting for Lock)
+        let default_model = Self::get_configured_model_name();
         window.emit("separation-progress", SeparationProgress {
             path: path.clone(),
             percentage: 0.0,
             status: "Queued".into(),
             provider: "SYSTEM".into(),
+            model: default_model.clone(),
         }).ok();
 
         // 3. Wait for Global AI Queue Lock (One task at a time)
@@ -79,6 +81,7 @@ impl SeparationTask {
             percentage: 0.0,
             status: "Starting".into(),
             provider: engine.get_provider(),
+            model: engine.get_model_name(),
         }).ok();
 
         // 7. Execute core separation logic in a dedicated thread
@@ -92,20 +95,27 @@ impl SeparationTask {
         }
         drop(engine_guard);
 
-        // Initialization needed
         window.emit("separation-progress", SeparationProgress {
             path: path.to_string(),
             percentage: 0.0,
             status: "AI 모델 로딩 중...".into(),
             provider: "SYSTEM".into(),
+            model: Self::get_configured_model_name(),
         }).ok();
 
+        let db = crate::state::DB.lock();
+        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
+        
+        let (_, model_filename, _) = crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id == model_id)
+            .unwrap_or(&crate::state::MODELS[0]);
+
         let paths = window.state::<crate::state::AppPaths>();
-        let model_path = paths.models.join("Kim_Vocal_2.onnx");
+        let model_path = paths.models.join(model_filename);
 
         if !model_path.exists() {
-            let err = "Error: 모델 파일 없음".to_string();
-            Self::emit_error(window, path, &err, "SYSTEM");
+            let err = format!("Error: 모델 파일({}) 없음", model_filename);
+            Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
             return Err(err);
         }
 
@@ -119,7 +129,7 @@ impl SeparationTask {
             Err(e) => {
                 let err = format!("Error: 모델 초기화 실패 ({})", e);
                 sys_log(&format!("Model init error: {}", e));
-                Self::emit_error(window, path, &err, "SYSTEM");
+                Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
                 Err(err)
             }
         }
@@ -130,7 +140,7 @@ impl SeparationTask {
             let p = PathBuf::from(path);
             if !p.exists() {
                 let err = "Error: 소스 파일 없음".to_string();
-                Self::emit_error(window, path, &err, "SYSTEM");
+                Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
                 return Err(err);
             }
             return Ok(p);
@@ -142,6 +152,7 @@ impl SeparationTask {
             percentage: 0.0,
             status: "Downloading... (Preparing)".into(),
             provider: "NETWORK".into(),
+            model: Self::get_configured_model_name(),
         }).ok();
 
         match YoutubeManager::get_video_metadata(path).await {
@@ -157,13 +168,13 @@ impl SeparationTask {
                 match YoutubeManager::download_audio(window, path, final_path.clone(), true).await {
                     Ok(_) => Ok(final_path),
                     Err(e) => {
-                        Self::emit_error(window, path, &format!("YT Error: {}", e), "NETWORK");
+                        Self::emit_error(window, path, &format!("YT Error: {}", e), "NETWORK", &Self::get_configured_model_name());
                         Err(e)
                     }
                 }
             },
             Err(e) => {
-                Self::emit_error(window, path, &format!("YT Metadata Error: {}", e), "NETWORK");
+                Self::emit_error(window, path, &format!("YT Metadata Error: {}", e), "NETWORK", &Self::get_configured_model_name());
                 Err(e)
             }
         }
@@ -182,6 +193,7 @@ impl SeparationTask {
         let path_clone = path.clone();
         let cache_dir_clone = cache_dir.clone();
         let engine_info = engine.get_provider();
+        let engine_model = engine.get_model_name();
         let engine_for_spawn = engine.clone();
 
         let (tx, rx) = oneshot::channel::<Result<(), String>>();
@@ -195,6 +207,7 @@ impl SeparationTask {
             let p_for_progress = path_clone.clone();
             let p_for_cleanup = norm_p; // Use the normalized path passed in
             let info = engine_info;
+            let model = engine_model;
 
             let last_percentage = Arc::new(AtomicU32::new(f32::to_bits(-1.0)));
             let last_p_progress = last_percentage.clone();
@@ -214,6 +227,7 @@ impl SeparationTask {
                             percentage,
                             status: "Processing".into(),
                             provider: info.clone(),
+                            model: model.clone(),
                         });
                     }
                 })
@@ -237,6 +251,7 @@ impl SeparationTask {
                     percentage: 100.0,
                     status: "Finished".into(),
                     provider: engine.get_provider(),
+                    model: engine.get_model_name(),
                 }).ok();
             }
             Ok(Err(e)) => {
@@ -247,21 +262,34 @@ impl SeparationTask {
                     percentage: 0.0,
                     status: status.into(),
                     provider: engine.get_provider(),
+                    model: engine.get_model_name(),
                 }).ok();
             }
             Err(_) => {
                 let _ = std::fs::remove_dir_all(&cache_dir);
-                Self::emit_error(&window, &path, "Process panicked", "SYSTEM");
+                Self::emit_error(&window, &path, "Process panicked", "SYSTEM", &Self::get_configured_model_name());
             }
         }
     }
 
-    fn emit_error(window: &WebviewWindow, path: &str, message: &str, provider: &str) {
+    fn emit_error(window: &WebviewWindow, path: &str, message: &str, provider: &str, model: &str) {
         window.emit("separation-progress", SeparationProgress {
             path: path.to_string(),
             percentage: 0.0,
             status: message.to_string(),
             provider: provider.to_string(),
+            model: model.to_string(),
         }).ok();
+    }
+
+    fn get_configured_model_name() -> String {
+        let db = crate::state::DB.lock();
+        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
+        
+        let (_, model_filename, _) = crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id == model_id)
+            .unwrap_or(&crate::state::MODELS[0]);
+            
+        model_filename.to_string()
     }
 }

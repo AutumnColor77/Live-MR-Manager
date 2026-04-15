@@ -23,6 +23,7 @@ pub struct SeparationProgress {
     pub percentage: f32,
     pub status: String,
     pub provider: String,
+    pub model: String,
 }
 
 pub mod task;

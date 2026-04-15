@@ -3,7 +3,7 @@
  */
 
 import { state } from './state.js';
-import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus, updateTaskUI, updateCardStatusBadge } from './ui.js';
+import { elements, renderLibrary, updateThumbnailOverlay, updatePlayButton, updateAiModelStatus, updateTaskUI, updateCardStatusBadge, renderDropdownOptions } from './ui.js';
 import { formatTime, showNotification } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { selectTrack, highlightTrack, handlePlaybackToggle, updateProgressBar, handleNextTrack, handlePrevTrack } from './player.js';
@@ -732,14 +732,21 @@ export function initGlobalListeners() {
   if (btnDownloadModel) {
     btnDownloadModel.onclick = async () => {
       try {
-        // Access invoke from bridge
         const { updateAiModelStatus } = await import('./ui.js');
-        await invoke("download_ai_model");
+        const modelId = await invoke("get_model_settings");
+        
+        btnDownloadModel.disabled = true;
+        btnDownloadModel.textContent = "다운로드 중...";
+        
+        await invoke("download_ai_model", { modelId: modelId });
         state.isAiModelReady = true;
         updateAiModelStatus(true);
         showNotification("AI 모델 다운로드 및 준비가 완료되었습니다.", "success");
       } catch (err) {
         showNotification("모델 다운로드 실패: " + err, "error");
+      } finally {
+        btnDownloadModel.disabled = false;
+        btnDownloadModel.textContent = "모델 다운로드";
       }
     };
   }
@@ -757,24 +764,23 @@ export function initGlobalListeners() {
 
   const btnDeleteModel = document.getElementById("btn-delete-model");
   if (btnDeleteModel) {
-    btnDeleteModel.onclick = () => {
+    btnDeleteModel.onclick = async () => {
+      const modelId = await invoke("get_model_settings");
+      const modelName = modelId === "kim" ? "Kim Vocal 2" : "Inst HQ 3";
+
       const confirmTitle = document.getElementById("confirm-title");
       const confirmMsg = document.getElementById("confirm-message");
       const confirmOk = document.getElementById("confirm-ok");
       
       if (confirmTitle) confirmTitle.textContent = "AI 모델 삭제";
-      if (confirmMsg) confirmMsg.textContent = "AI 모델 파일(Kim Vocal 2)을 삭제하시겠습니까?\n삭제 후에는 다시 다운로드해야 분리 기능을 사용할 수 있습니다.";
+      if (confirmMsg) confirmMsg.textContent = `${modelName} 모델 파일을 삭제하시겠습니까?\n삭제 후에는 다시 다운로드해야 분리 기능을 사용할 수 있습니다.`;
       
       if (confirmOk) {
         confirmOk.onclick = async () => {
           try {
-            // Access invoke from bridge
-            await invoke("delete_ai_model");
-            showNotification("AI 모델이 삭제되었습니다.", "success");
-            
+            await invoke("delete_ai_model", { modelId: modelId });
+            showNotification(`${modelName} 모델이 삭제되었습니다.`, "success");
             elements.confirmModal.classList.remove("active");
-            
-            // Sync status
             updateAiModelStatus(false);
           } catch (err) {
             showNotification("모델 삭제 실패: " + err, "error");
@@ -785,6 +791,64 @@ export function initGlobalListeners() {
       elements.confirmModal.classList.add("active");
     };
   }
+
+  // --- AI 모델 선택 드롭다운 처리 ---
+  renderDropdownOptions("ai-model-select-dropdown", [
+    { val: "kim", text: "Kim Vocal 2 (기본/빠름)" },
+    { val: "inst_hq_3", text: "Inst HQ 3 (고품질 반주/MR)" }
+  ], async (val) => {
+    try {
+      await invoke("update_model_settings", { modelId: val });
+      const { updateAiModelStatus } = await import('./ui.js');
+      
+      // 모델 설명 업데이트
+      const descEl = document.getElementById("ai-model-desc");
+      if (descEl) {
+        descEl.textContent = val === "kim" 
+          ? "기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다."
+          : "고품질 MR 추출에 특화된 모델입니다. 보컬 분리보다는 배경 음악을 깔끔하게 추출하는 데 최적화되어 있습니다.";
+      }
+
+      // 상태 확인 및 업데이트
+      const isReady = await invoke("check_model_ready", { modelId: val });
+      state.isAiModelReady = isReady;
+      updateAiModelStatus(isReady);
+      
+      showNotification(`${val === "kim" ? "Kim Vocal 2" : "Inst HQ 3"} 모델로 변경되었습니다.`, "info");
+    } catch (err) {
+      console.error("Failed to switch model:", err);
+    }
+  });
+
+  // 초기 모델 상태 동기화
+  const syncInitialModel = async () => {
+    try {
+      const activeModelId = await invoke("get_model_settings").catch(() => "kim");
+      const dropdown = document.getElementById("ai-model-select-dropdown");
+      if (dropdown) {
+        const selectedText = dropdown.querySelector(".selected-text");
+        const options = dropdown.querySelectorAll(".option-item");
+        options.forEach(opt => {
+          opt.classList.toggle("selected", opt.dataset.value === activeModelId);
+          if (opt.dataset.value === activeModelId && selectedText) {
+            selectedText.textContent = opt.textContent;
+          }
+        });
+
+        // 설명 업데이트
+        const descEl = document.getElementById("ai-model-desc");
+        if (descEl) {
+          descEl.textContent = activeModelId === "kim" 
+            ? "기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다."
+            : "고품질 MR 추출에 특화된 모델입니다. 보컬 분리보다는 배경 음악을 깔끔하게 추출하는 데 최적화되어 있습니다.";
+        }
+      }
+    } catch (err) {
+      console.error("Initial model sync failed:", err);
+    }
+  };
+  
+  syncInitialModel();
 
   // --- Library Manager Events ---
   let libraryBackup = [];
@@ -1085,7 +1149,7 @@ export function setupBackendListeners() {
   });
 
   listen("separation-progress", (event) => {
-    const { path, percentage, status, provider } = event.payload;
+    const { path, percentage, status, provider, model } = event.payload;
     
     // 1. Ignore events for paths that were recently cancelled
     if (state.cancelledPaths.has(path)) {
@@ -1095,7 +1159,7 @@ export function setupBackendListeners() {
       return;
     }
 
-    state.activeTasks[path] = { percentage, status, provider };
+    state.activeTasks[path] = { percentage, status, provider, model };
     
     if (status === "Finished" || status === "Cancelled" || status === "Error") {
       // 1. Show final state immediately

@@ -48,14 +48,24 @@ impl ModelManager {
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
         let response = client.get(url).send().await
-            .map_err(|e| format!("Failed to send request: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to send request: {}", e);
+                let _ = crate::audio_player::sys_log(&format!("[ModelManager] [Error] {}", err_msg));
+                err_msg
+            })?;
         
         if !response.status().is_success() {
-            return Err(format!("Failed to download model: HTTP {}", response.status()));
+            let err_msg = format!("Failed to download model: HTTP {}", response.status());
+            let _ = crate::audio_player::sys_log(&format!("[ModelManager] [Error] {}", err_msg));
+            return Err(err_msg);
         }
 
         let total_size = response.content_length().unwrap_or(0);
-        let mut file = fs::File::create(&path).map_err(|e| e.to_string())?;
+        let mut file = fs::File::create(&path).map_err(|e| {
+            let err_msg = format!("Failed to create model file: {}", e);
+            let _ = crate::audio_player::sys_log(&format!("[ModelManager] [Error] {}", err_msg));
+            err_msg
+        })?;
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = 0;
 

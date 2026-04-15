@@ -293,16 +293,31 @@
             </div>
 
             <div class="ai-model-card">
-              <div class="ai-info-left">
-               <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
-                <h2 class="ai-title-large">Kim Vocal 2 (MDX-Net)</h2>
-                <div class="ai-model-desc">
-                  고품질 보컬/반주 분리를 위해 약 67MB의 AI 모델 파일이 필요합니다.
+              <div class="ai-info-left" style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                  <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
+                  <div id="ai-engine-provider" style="font-size: 0.8rem; opacity: 0.7; font-weight: 500;"></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
+                  <h2 class="ai-title-large" style="margin: 0;">AI 분리 모델</h2>
+                  <div class="custom-select" id="ai-model-select-dropdown" style="min-width: 220px;">
+                    <div class="select-trigger">
+                      <span class="selected-text" id="selected-model-text">Kim Vocal 2 (기본/고속)</span>
+                      <span class="select-arrow"></span>
+                    </div>
+                    <div class="select-options">
+                      <div class="option-item selected" data-value="kim">Kim Vocal 2 (기본/고속)</div>
+                      <div class="option-item" data-value="inst_hq_3">Inst HQ 3 (고품질 반주/MR)</div>
+                    </div>
+                  </div>
+                </div>
+                <div id="ai-model-desc" class="ai-model-desc">
+                  기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.
                 </div>
               </div>
               <div class="ai-actions-right">
                 <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
-                <button id="btn-delete-model" class="btn-ai-action danger">모델 삭제</button>
+                <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
                 <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
               </div>
             </div>

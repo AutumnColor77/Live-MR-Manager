@@ -3709,6 +3709,7 @@ input:checked+.slider:before {
   align-items: center;
   gap: 8px;
   margin-top: -1px;
+  width: 100%;
 }
 
 .task-status-row-top .task-status-text {
@@ -3724,6 +3725,19 @@ input:checked+.slider:before {
   font-weight: 800;
   color: var(--accent-primary);
   line-height: 1;
+}
+
+.task-model-name {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #818cf8; /* Slightly lighter indigo */
+  background: rgba(99, 102, 241, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  margin-left: auto; /* Pushes to the right end of the flex container */
 }
 
 .task-header-info {

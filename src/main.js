@@ -12,6 +12,14 @@ import { invoke, appWindow } from './js/tauri-bridge.js';
 
 async function initApp() {
   console.log("[App] Initializing...");
+
+  // Register permanent error listeners to bridge JS errors to terminal
+  window.addEventListener('error', (event) => {
+    invoke('remote_js_log', { msg: `[Error] ${event.message} at ${event.filename}:${event.lineno}` }).catch(() => {});
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    invoke('remote_js_log', { msg: `[Unhandled Promise] ${event.reason ? event.reason.toString() : 'Unknown'}` }).catch(() => {});
+  });
   
   // Fix manual input font/layout shift (fallback for locked CSS)
   const style = document.createElement('style');
@@ -88,6 +96,7 @@ async function initApp() {
     console.log(`[App] AI Model Ready: ${state.isAiModelReady}`);
   } catch (err) {
     console.error("AI Model check failed", err);
+    updateAiModelStatus(false);
   }
 
   // 6. Check GPU Recommendation (NVIDIA/CUDA)
