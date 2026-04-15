@@ -970,6 +970,7 @@ pub fn run() {
             alignment::cancel_forced_alignment, alignment::read_audio_file,
             alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
+            alignment::save_lrc_file,
             diagnostics::remote_js_log,
             metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,

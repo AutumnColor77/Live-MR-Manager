@@ -15,20 +15,26 @@
 .alignment-container {
     flex: 1;
     display: grid;
-    height: auto;
+    height: calc(100vh - 160px); 
     width: 100%;
-    grid-template-columns: minmax(280px, 1fr) minmax(400px, 2fr) minmax(280px, 1fr);
-    gap: 24px;
-    padding: 20px 0 40px 0; /* Inherit 30px from parent scroll-area */
+    grid-template-columns: minmax(260px, 1fr) minmax(400px, 3.5fr) minmax(260px, 1fr);
+    gap: 20px;
+    padding: 10px 24px 20px 24px;
     box-sizing: border-box;
     color: #e2e8f0;
     background: transparent;
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    align-items: flex-start; /* Key: don't stretch columns to full row height */
-    overflow: visible; /* Scroll handled by global parent */
+    align-items: stretch;
+    overflow: hidden;
 }
 
-/* Custom scrollbars removed in favor of global standard */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 9. Analysis Card (Removed AI features) */
+/* Custom scrollbars and pulse effects included in sections above */
 .alignment-container::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
@@ -58,11 +64,12 @@
 
 /* 3. Column Wrappers */
 .lyric-input-column, .alignment-main, .lyric-sidebar {
-    height: auto;
-    min-height: 100%;
+    height: 100%; /* 부모 높이에 맞춤 */
     display: flex;
     flex-direction: column;
     gap: 16px;
+    overflow: hidden; /* 개별 카드 내부 스크롤 사용 */
+    min-width: 0; /* 그리드 내부에서 유연하게 축소되도록 보장 */
 }
 
 /* 4. Left Column: Tuning & Input */
@@ -139,12 +146,13 @@
 }
 
 .waveform-canvas-container {
-    height: 180px; /* Fixed height for better control area space */
-    background: rgba(0, 0, 0, 0.4);
+    height: 160px; /* 고정 높이로 타이트하게 관리 */
+    background: rgba(0, 0, 0, 0.5);
     border-radius: 16px;
     position: relative;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.3);
 }
 
 canvas#waveform-canvas {
@@ -153,72 +161,16 @@ canvas#waveform-canvas {
     display: block;
 }
 
-/* 6. Player Controls - Premium Multi-row Layout */
-.player-controls-mini {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 12px 6px 4px 6px;
+/* 6. Sync Control Panel */
+.sync-controls-panel {
+    margin-top: auto;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.seekbar-row {
-    width: 100%;
-    padding: 0 4px; /* Minimal side padding for full-width feel */
-}
-
-.seekbar-row input[type="range"] {
-    width: 100% !important;
-    margin: 0;
-}
-
-.player-actions-bar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.play-circle-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 0 15px rgba(74, 158, 255, 0.2);
-}
-
-.play-circle-btn:hover {
-    background: var(--accent-blue);
-    transform: scale(1.1);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.4);
-}
-
-.time-display {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: #94a3b8;
-    letter-spacing: 0.5px;
-}
-
-/* 7. VAD Tuning Section - Refined Grid */
-.vad-tuning-section {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    padding: 8px 4px;
-}
-
-.tuning-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+@keyframes pulse-border {
+    0% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
+    50% { box-shadow: 0 4px 35px rgba(99, 102, 241, 0.7); }
+    100% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
 }
 
 /* 7. Right Sidebar: Results list */
@@ -227,6 +179,7 @@ canvas#waveform-canvas {
     overflow-y: auto;
     padding-right: 8px;
     scroll-behavior: smooth;
+    min-height: 0; /* Flexbox 하위 요소 스크롤을 위한 필수 설정 */
 }
 
 .lyric-line-item {
@@ -251,6 +204,19 @@ canvas#waveform-canvas {
     background: rgba(74, 158, 255, 0.12);
     border-color: var(--accent-blue);
     box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+}
+
+.lyric-line-item.syncing {
+    background: rgba(129, 140, 248, 0.2);
+    border-color: #818cf8;
+    box-shadow: 0 0 25px rgba(129, 140, 248, 0.3);
+    animation: sync-pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes sync-pulse {
+    0% { border-color: #818cf8; box-shadow: 0 0 15px rgba(129, 140, 248, 0.2); }
+    50% { border-color: #c7d2fe; box-shadow: 0 0 35px rgba(129, 140, 248, 0.5); }
+    100% { border-color: #818cf8; box-shadow: 0 0 15px rgba(129, 140, 248, 0.2); }
 }
 
 .lyric-line-item .time-range {
@@ -309,119 +275,29 @@ canvas#waveform-canvas {
     z-index: 10;
 }
 
-/* 9. Progress Section */
-.alignment-status-card {
-    margin-top: auto;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.03);
+.waveform-canvas-container {
+    /* 기존 속성에 추가 (중복 스타일 병합 권장) */
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.3);
 }
 
-.progress-track {
-    position: relative; /* 자식 .progress-fill (style.css의 absolute 영향) 가두기 */
-    height: 6px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 100px;
-    overflow: hidden;
+.sync-controls-panel {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 24px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     margin-top: 10px;
 }
 
-.progress-fill {
-    height: 100%;
-    background: var(--accent-blue);
-    width: 0%;
-    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 0 15px rgba(74, 158, 255, 0.4);
+.sync-buttons {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 20px;
 }
 
-/* 10. Integrated Analysis Panel (New) */
-#analysis-panel-root {
-    width: 100%;
-}
-
-.analysis-card {
-    height: auto !important;
-    min-height: 200px;
-    margin-bottom: 24px;
-    animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.analysis-table-container {
-    max-height: 400px;
-    overflow-y: auto;
-    border-radius: 16px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.comparison-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-.comparison-table th {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    background: rgba(30, 30, 35, 0.95);
-    padding: 14px 20px;
-    text-align: left;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.comparison-table td {
-    padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    font-size: 0.92rem;
-    line-height: 1.5;
-    vertical-align: middle;
-}
-
-.comparison-table tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
-}
-
-/* Badges */
-.badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-}
-
-.badge-match {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.2);
-}
-
-.badge-diff {
-    background: rgba(234, 179, 8, 0.1);
-    color: #eab308;
-    border: 1px solid rgba(234, 179, 8, 0.2);
-}
-
-.badge-error {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+/* Cleanup: Removing AI-related styles */
+/* (The following markers were for AI features now removed) */
+.comparison-table, .badge, .badge-match, .badge-diff, .badge-error, .analysis-card, #analysis-panel-root {
+    display: none;
 }

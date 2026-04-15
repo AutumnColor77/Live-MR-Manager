@@ -14,7 +14,7 @@ impl AudioProcessor {
         }
     }
 
-    /// WAV 파일을 로드하고 16kHz로 리샘플링 및 ZMUV 정규화된 f32 배열을 반환합니다.
+    /// WAV 파일을 로드하고 16kHz로 리샘플링 및 ZMUV 정규화된 f32 배열을 반환합니다. (정렬용)
     pub fn load_and_preprocess<P: AsRef<Path>>(&self, path: P) -> Result<Array1<f32>, String> {
         let mut reader = hound::WavReader::open(path)
             .map_err(|e| format!("WAV 파일을 열 수 없습니다: {}", e))?;
@@ -65,7 +65,38 @@ impl AudioProcessor {
 
         println!("✅ [Audio] Preprocessing finished: {} samples", final_samples.len());
         Ok(Array1::from_vec(final_samples))
+}
+
+/// 시각화(파형)용으로 최소한의 처리(모노 믹싱)만 하여 샘플을 로드합니다.
+pub fn load_for_visualization<P: AsRef<Path>>(&self, path: P) -> Result<Vec<f32>, String> {
+    let mut reader = hound::WavReader::open(path)
+        .map_err(|e| format!("WAV 파일을 열 수 없습니다: {}", e))?;
+
+    let spec = reader.spec();
+    let channels = spec.channels as usize;
+
+    let samples: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Float => {
+            reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect()
+        }
+        hound::SampleFormat::Int => {
+            let max_val = (1 << (spec.bits_per_sample - 1)) as f32;
+            reader
+                .samples::<i32>()
+                .map(|s| s.unwrap_or(0) as f32 / max_val)
+                .collect()
+        }
+    };
+
+    if channels > 1 {
+        Ok(samples
+            .chunks_exact(channels)
+            .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
+            .collect())
+    } else {
+        Ok(samples)
     }
+}
 
     /// 전체 오디오 샘플에 대해 평균을 0, 표준편차를 1로 정규화합니다.
     fn apply_zmuv(&self, samples: &mut [f32]) {

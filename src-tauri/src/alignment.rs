@@ -344,21 +344,33 @@ fn perform_alignment_internal(
 #[command]
 pub async fn get_waveform_summary(audio_path: String) -> Result<WaveformSummary, String> {
     let processor = AudioProcessor::new();
-    let samples = processor.load_and_preprocess(&audio_path)?;
+    
+    // 파형 전용 경량 로더 사용 (ZMUV, 리샘플링 없음)
+    let samples = processor.load_for_visualization(&audio_path)?;
+    
+    // 원본 샘플 레이트 확인 (duration 계산용)
+    let reader = hound::WavReader::open(&audio_path).map_err(|e| e.to_string())?;
+    let sample_rate = reader.spec().sample_rate;
+    
     let n_buckets = 2000;
     let samples_per_bucket = samples.len() / n_buckets;
     let mut points = Vec::with_capacity(n_buckets);
 
-    for i in 0..n_buckets {
-        let start = i * samples_per_bucket;
-        let end = if i == n_buckets - 1 { samples.len() } else { (i + 1) * samples_per_bucket };
-        let chunk = &samples.as_slice().unwrap()[start..end];
-        let mut min = 1.0f32; let mut max = -1.0f32;
-        for &s in chunk { if s < min { min = s; } if s > max { max = s; } }
-        points.push((min, max));
+    if samples_per_bucket > 0 {
+        for i in 0..n_buckets {
+            let start = i * samples_per_bucket;
+            let end = if i == n_buckets - 1 { samples.len() } else { (i + 1) * samples_per_bucket };
+            let chunk = &samples[start..end];
+            let mut min = 1.0f32; let mut max = -1.0f32;
+            for &s in chunk { if s < min { min = s; } if s > max { max = s; } }
+            points.push((min, max));
+        }
     }
 
-    Ok(WaveformSummary { points, duration_sec: samples.len() as f32 / 16000.0 })
+    Ok(WaveformSummary { 
+        points, 
+        duration_sec: samples.len() as f32 / sample_rate as f32 
+    })
 }
 
 pub struct WordTimestamp {
@@ -680,4 +692,14 @@ impl Aligner {
             _ => j.chars().next().unwrap_or(' '),
         }
     }
+}
+
+#[command]
+pub async fn save_lrc_file(audio_path: String, content: String) -> Result<(), String> {
+    let audio_buf = PathBuf::from(&audio_path);
+    let lrc_path = audio_buf.with_extension("lrc");
+    
+    fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+    sys_log(&format!("[Alignment] LRC saved to {:?}", lrc_path));
+    Ok(())
 }

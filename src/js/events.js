@@ -70,7 +70,6 @@ export function switchTab(tabId) {
       alignmentViewer.setupListeners();
       alignmentViewer.setupCanvasListeners();
       alignmentViewer.loadTrackList();
-      alignmentViewer.loadModelList();
     }
   } else {
     elements.viewport?.classList.remove("alignment-mode");

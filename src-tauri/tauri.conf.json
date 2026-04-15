@@ -24,7 +24,8 @@
       "csp": null,
       "assetProtocol": {
         "scope": [
-          "$APPDATA/**"
+          "$APPDATA/**",
+          "**"
         ]
       }
     }

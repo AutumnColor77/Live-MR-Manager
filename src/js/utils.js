@@ -2,7 +2,7 @@
  * utils.js - Formatting and common utility functions
  */
 
-import { convertFileSrc } from './tauri-bridge.js';
+import { convertFileSrc, invoke } from './tauri-bridge.js';
 
 export function formatTime(sec) {
   if (isNaN(sec) || sec < 0) return "0:00";
@@ -22,6 +22,11 @@ export function getThumbnailUrl(path, song) {
 }
 
 export function showNotification(msg, type = "info") {
+  // 터미널 디버깅을 위해 백엔드로 로그 전송
+  const logPrefix = `[Notification:${type.toUpperCase()}]`;
+  console.log(`${logPrefix} ${msg}`);
+  invoke("remote_js_log", { msg: `${logPrefix} ${msg}` }).catch(() => {});
+
   const container = document.getElementById("notification-container");
   if (!container) return;
 

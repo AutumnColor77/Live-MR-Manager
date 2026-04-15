@@ -1,5 +1,5 @@
 import { showNotification } from './utils.js';
-import { invoke, listen } from './tauri-bridge.js';
+import { invoke, listen, convertFileSrc } from './tauri-bridge.js';
 
 /**
  * ForcedAlignmentViewer (v15 Refactored)
@@ -10,38 +10,68 @@ export class ForcedAlignmentViewer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         
+        this.invoke = invoke;
+        
         // --- State Management ---
         this.state = {
-            audioContext: new (window.AudioContext || window.webkitAudioContext)(),
-            audioBuffer: null,
             duration: 0,
             currentTime: 0,
             isPlaying: false,
             alignmentData: null,
             segments: [],
             isProcessing: false,
-            progress: 0
+            progress: 0,
+            isSyncMode: false,
+            currentSyncIndex: -1,
+            waveformPoints: null // Cached points for fast drawing
         };
 
-        this.tuningParams = {
-            blank: 0.0,
-            rep: 0.0,
-            penalty: -0.05
-        };
-
+        this.unlistenProgress = null;
+        this.unlistenStatus = null;
         this.animationId = null;
 
         // --- Initialize ---
         this.initUI();
-        
-        // Using safe bridge
-        this.invoke = invoke;
-        this.setupListeners();
+        this.setupListeners(); // Async
         this.setupCanvasListeners();
         this.loadTrackList();
-        this.loadModelList();
 
+        // 윈도우 리사이즈
         window.addEventListener('resize', () => this.resizeCanvas());
+        
+        // Ensure canvas is ready after layout calc
+        setTimeout(() => this.resizeCanvas(), 200);
+    }
+
+    async setupListeners() {
+        // 백엔드 오디오 진행 이벤트 구독
+        this.unlistenProgress = await listen('playback-progress', (e) => {
+            if (this.state.isSeeking) return; // 탐색 중에는 업데이트 무시
+            const { positionMs, durationMs } = e.payload;
+            this.state.currentTime = positionMs / 1000;
+            this.state.duration = durationMs / 1000;
+            this.updateTimeDisplay();
+            this.drawWaveform();
+        });
+
+        // 백엔드 재생 상태 이벤트 구독
+        this.unlistenStatus = await listen('playback-status', (e) => {
+            const { status } = e.payload;
+            this.state.isPlaying = (status === 'playing');
+            this.updatePlayButton();
+        });
+    }
+
+    async onDestroy() {
+        // 리스너 해제
+        if (this.unlistenProgress) {
+            const unlisten = await this.unlistenProgress;
+            unlisten();
+        }
+        if (this.unlistenStatus) {
+            const unlisten = await this.unlistenStatus;
+            unlisten();
+        }
     }
 
     /**
@@ -51,19 +81,12 @@ export class ForcedAlignmentViewer {
         if (!this.container) return;
         this.container.innerHTML = `
             <div class="alignment-container">
-                <!-- Left: Lyrics Input & Model Selection -->
+                <!-- Left: Lyrics Input & Audio Selection -->
                 <aside class="lyric-input-column">
                     <div class="alignment-card">
                         <section>
-                            <span class="alignment-label">가사 입력 (원고)</span>
+                            <span class="alignment-label">음원 선택</span>
                             <div class="track-select-row">
-                                <span class="alignment-sub-label">모델:</span>
-                                <select id="model-select" class="track-select">
-                                    <option value="">모델을 스캔 중...</option>
-                                </select>
-                            </div>
-                            <div class="track-select-row">
-                                <span class="alignment-sub-label">음원:</span>
                                 <select id="track-select" class="track-select">
                                     <option value="">음원을 선택하세요...</option>
                                 </select>
@@ -71,7 +94,9 @@ export class ForcedAlignmentViewer {
                             </div>
                         </section>
 
-                        <textarea id="lyrics-input" class="lyrics-textarea" placeholder="이곳에 노래 가사를 입력하세요...">한 낮에 내리는 햇살.
+                        <section style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                            <span class="alignment-label">가사 입력 (원고)</span>
+                            <textarea id="lyrics-input" class="lyrics-textarea" placeholder="이곳에 노래 가사를 입력하세요...">한 낮에 내리는 햇살.
 머리는 어지럽고
 어제의 내가 난 기억이 나질 않네
 
@@ -94,98 +119,42 @@ export class ForcedAlignmentViewer {
 울었던것 같고 소리친것 같은데
 너에게 애원한것 같고 
 울었던것 같고 소리친것 같은데 
-난 아무도 아무것도 기억이 없네
-
-빗속을 뛰었던것 같고 
-울었던것 같고 
-너에게 애원한것 같고 
-울었던것 같고 
 난 아무도 아무것도 기억이 없네</textarea>
-
-                        <div style="display: flex; gap: 8px; margin-top: 8px;">
-                            <button id="run-alignment-btn" class="run-btn primary-btn" style="flex: 1; height: 40px; font-size: 1rem;">
-                                AI 가사 정렬 시작
-                            </button>
-                        </div>
-
-                        <div class="alignment-status-card">
-                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700;">
-                                <span>정렬 상태</span>
-                                <span id="progress-val">0%</span>
-                            </div>
-                            <div class="progress-track">
-                                <div id="scan-progress-bar" class="progress-fill"></div>
-                            </div>
-                        </div>
+                        </section>
                     </div>
                 </aside>
 
-                <!-- Center: Primary Timeline Visualization -->
+                <!-- Center: Waveform & Manual Sync Controls -->
                 <main class="alignment-main">
                     <div class="alignment-card waveform-card">
                         <div class="card-header">
-                            <h3>오디오 타임라인 정렬</h3>
+                            <h3>오디오 타임라인 (수동 정렬)</h3>
                         </div>
                         
                         <div class="waveform-canvas-container">
                             <canvas id="waveform-canvas"></canvas>
                         </div>
 
-                        <div class="player-controls-mini">
-                            <div class="seekbar-row">
-                                <input type="range" id="seek-bar" class="mini-seekbar" min="0" max="100" value="0">
+                        <!-- Manual Sync Control Bar -->
+                        <div class="sync-controls-panel">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <div id="sync-status-text" style="color: var(--accent-blue); font-weight: 800; font-size: 0.8rem; text-transform: uppercase;">Manual Sync Mode</div>
+                                <div id="time-display" style="font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 0.85rem;">00:00 / 00:00</div>
                             </div>
-
-                            <div class="player-actions-bar">
-                                <div id="play-btn" class="play-circle-btn">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                                        <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                </div>
-                                <div class="time-display" id="time-display">0:00 / 0:00</div>
-                            </div>
-                        </div>
-
-                        <!-- New Tuning Section -->
-                        <div class="vad-tuning-section">
-                            <div class="tuning-group">
-                                <span class="alignment-sub-label">공백(Blank) 패널티: <b id="blank-val">0.00</b></span>
-                                <input type="range" id="blank-slider" class="mini-seekbar" min="-10.0" max="10.0" step="0.5" value="0.00">
-                            </div>
-                            <div class="tuning-group">
-                                <span class="alignment-sub-label">반복(Rep) 억제: <b id="rep-val">0.00</b></span>
-                                <input type="range" id="rep-slider" class="mini-seekbar" min="-20.0" max="0.0" step="0.5" value="0.00">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Detail Analysis Panel (Integrated below waveform) -->
-                    <div id="analysis-panel" class="alignment-card analysis-card" style="margin-top: 16px;">
-                        <div class="card-header" style="flex-direction: row; justify-content: space-between; padding-bottom: 20px;">
-                            <h3 style="font-size: 1rem;">AI 정밀 분석 및 보정</h3>
-                            <div class="analysis-controls" style="display: flex; gap: 20px; align-items: center;">
-                                <div class="tuning-group" style="min-width: 160px;">
-                                    <span class="alignment-sub-label">전이 패널티: <b id="penalty-val">-0.05</b></span>
-                                    <input type="range" id="penalty-slider" class="mini-seekbar" min="-50.0" max="0" step="0.1" value="-0.05">
-                                </div>
-                                <button id="re-align-btn" class="run-btn" style="height: 32px; padding: 0 12px; font-size: 0.75rem; background: rgba(79, 70, 229, 0.2); border: 1px solid rgba(79, 70, 229, 0.4);">
-                                    재정렬
+                            
+                            <div class="sync-buttons">
+                                <button id="play-btn" class="run-btn" style="width: 48px; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center;">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                                <button id="manual-sync-btn" class="run-btn primary-btn" style="flex: 2; height: 48px; background: var(--accent-blue); font-weight: 800;">
+                                    수동 정렬 시작
+                                </button>
+                                <button id="sync-tap-btn" class="run-btn" style="flex: 1; height: 48px; background: #6366f1; font-weight: 800; display: none; animation: pulse-border 2s infinite;">
+                                    TAP (Space)
                                 </button>
                             </div>
-                        </div>
-                        <div class="analysis-table-container">
-                            <table class="comparison-table">
-                                <thead>
-                                    <tr>
-                                        <th>원본</th>
-                                        <th>AI 인식</th>
-                                        <th>상태</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="analysis-table-body">
-                                    <!-- Comparison data injected here -->
-                                </tbody>
-                            </table>
+                            
+                            <input type="range" id="seek-bar" class="seek-bar" value="0">
                         </div>
                     </div>
                 </main>
@@ -194,14 +163,17 @@ export class ForcedAlignmentViewer {
                 <aside class="lyric-sidebar">
                     <div class="alignment-card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <span class="alignment-label">정렬 결과</span>
-                            <button id="add-line-btn" class="run-btn" style="padding: 4px 10px; font-size: 0.75rem;">+ 줄 추가</button>
+                            <span class="alignment-label">정렬 결과 (LRC)</span>
+                            <button id="add-line-btn" class="run-btn" style="padding: 4px 10px; font-size: 0.7rem;">+ 줄 추가</button>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <span id="line-count" class="alignment-sub-label">0 lines</span>
+                            <button id="save-lrc-btn" class="run-btn primary-btn" style="display: none; padding: 4px 12px; font-size: 0.75rem; background: #10b981;">LRC 저장</button>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
-                            <div style="color: #64748b; font-size: 0.9rem; text-align: center; margin-top: 40px;">음원과 가사를 선택하고 실행하세요.</div>
+                            <div style="color: #475569; font-size: 0.9rem; text-align: center; margin-top: 50px;">
+                                가사를 입력하고<br><b>[수동 정렬 시작]</b>을 클릭하세요.
+                            </div>
                         </div>
                     </div>
                 </aside>
@@ -209,8 +181,10 @@ export class ForcedAlignmentViewer {
         `;
         
         this.canvas = document.getElementById('waveform-canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.resizeCanvas();
+        if (this.canvas) {
+            this.ctx = this.canvas.getContext('2d');
+            setTimeout(() => this.resizeCanvas(), 50); // Give layout a moment to settle
+        }
     }
 
     /**
@@ -218,111 +192,33 @@ export class ForcedAlignmentViewer {
      */
     setupListeners() {
         document.getElementById('refresh-tracks-btn').onclick = () => this.loadTrackList();
-        document.getElementById('run-alignment-btn').onclick = () => this.handleRunAlignment();
         document.getElementById('add-line-btn').onclick = () => this.handleAddLine();
         document.getElementById('play-btn').onclick = () => this.togglePlayback();
-        document.getElementById('seek-bar').oninput = (e) => this.handleSeek(e.target.value);
         
-        // Immediate Linkage: Load audio when track is selected
+        const seekBar = document.getElementById('seek-bar');
+        seekBar.oninput = (e) => this.handleSeek(e.target.value);
+        seekBar.onchange = () => this.finishSeek();
+
+        document.getElementById('manual-sync-btn').onclick = () => this.handleManualSyncInit();
+        document.getElementById('sync-tap-btn').onclick = () => this.handleSyncTap();
+        document.getElementById('save-lrc-btn').onclick = () => this.saveLyrics();
+        
+        // Manual sync hotkey (Space)
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && this.state.isSyncMode) {
+                e.preventDefault();
+                this.handleSyncTap();
+            }
+        });
+        
         document.getElementById('track-select').onchange = (e) => {
             if (e.target.value) this.loadAudio(e.target.value);
         };
-
-        // Tuning sliders
-        document.getElementById('blank-slider').oninput = (e) => {
-            const val = parseFloat(e.target.value);
-            this.tuningParams.blank = val;
-            document.getElementById('blank-val').innerText = val.toFixed(2);
-            this.handlePenaltyChange();
-        };
-        document.getElementById('rep-slider').oninput = (e) => {
-            const val = parseFloat(e.target.value);
-            this.tuningParams.rep = val;
-            document.getElementById('rep-val').innerText = val.toFixed(2);
-            this.handlePenaltyChange();
-        };
-
-        // Tauri Backend Listeners
-        listen('alignment-progress', (event) => {
-            const val = typeof event.payload === 'number' ? event.payload : (event.payload?.progress ?? 0);
-            this.updateProgress(val);
-        });
-
-        // Penalty slider (Real-time update with debounce)
-        document.getElementById('penalty-slider').oninput = (e) => {
-            const val = parseFloat(e.target.value);
-            this.tuningParams.penalty = val;
-            document.getElementById('penalty-val').innerText = val.toFixed(2);
-            this.handlePenaltyChange();
-        };
-
-        // Re-align button in panel
-        document.getElementById('re-align-btn').onclick = () => this.handleRunAlignment();
     }
 
     /**
-     * 3. Service Layer: Tauri Command Communication
+     * 3. Service Layer: Audio & Track Management
      */
-    async loadModelList() {
-        const select = document.getElementById('model-select');
-        if (!select) return;
-        select.innerHTML = '<option value="">스캔 중...</option>';
-        try {
-            const models = await this.invoke('get_model_list');
-            select.innerHTML = '';
-            if (!models || models.length === 0) {
-                select.innerHTML = '<option value="">모델 없음</option>';
-                return;
-            }
-            for (const entry of models) {
-                const pipeIdx = entry.indexOf('|');
-                const label    = pipeIdx >= 0 ? entry.slice(0, pipeIdx)    : entry;
-                const filename = pipeIdx >= 0 ? entry.slice(pipeIdx + 1)   : entry;
-                const opt = new Option(label, filename);
-                select.appendChild(opt);
-            }
-        } catch (err) {
-            console.error('[Alignment] loadModelList error:', err);
-            select.innerHTML = `<option value="">오류: ${err}</option>`;
-        }
-    }
-
-    // Debounce timer for slider
-    penaltyTimer = null;
-
-    async handlePenaltyChange() {
-        if (this.penaltyTimer) clearTimeout(this.penaltyTimer);
-        
-        this.penaltyTimer = setTimeout(async () => {
-            if (!this.state.alignmentData) return; // Need at least one run first
-            
-            try {
-                console.log(`[Alignment] Requesting real-time tuning: penalty=\${this.tuningParams.penalty}, blank=\${this.tuningParams.blank}, rep=\${this.tuningParams.rep}`);
-                // Use the fast tuning command
-                const result = await this.invoke('apply_alignment_tuning', { 
-                    penalty: parseFloat(this.tuningParams.penalty),
-                    blankPenalty: parseFloat(this.tuningParams.blank),
-                    repPenalty: parseFloat(this.tuningParams.rep)
-                });
-                
-                // Update internal state and UI results (but NOT progress or loading state)
-                this.state.alignmentData = result;
-                this.state.segments = (result.lines || []).map(l => ({
-                    start: l.start_ms / 1000.0,
-                    end: l.end_ms / 1000.0,
-                    text: l.text
-                }));
-                
-                this.renderLyricList();
-                this.renderAnalysisTable();
-                this.drawWaveform();
-            } catch (err) {
-                console.error('[Alignment] Tuning failed:', err);
-                // Silent fail for real-time slider to avoid notification spam
-            }
-        }, 80); // 80ms debounce for smoothness
-    }
-
     async loadTrackList() {
         const select = document.getElementById('track-select');
         if (!select) return;
@@ -337,117 +233,19 @@ export class ForcedAlignmentViewer {
             for (const t of tracks) {
                 if (!t.has_vocal) continue;
                 const opt = new Option(t.name, t.folder_path + '/vocal.wav');
-                // '07 숙취' 자동 선택 로직 추가
                 if (t.name.includes('07 숙취')) {
                     opt.selected = true;
                     this.loadAudio(opt.value);
                 }
                 select.appendChild(opt);
             }
-            if (select.options.length === 1) {
+            if (select.options.length === 1 && select.options[0].value === "") {
                 select.innerHTML = '<option value="">보컬 파일 없음</option>';
             }
         } catch (err) {
             console.error('[Alignment] loadTrackList error:', err);
             select.innerHTML = `<option value="">오류: ${err}</option>`;
         }
-    }
-
-    async handleRunAlignment() {
-        // --- Cancellation Handling ---
-        if (this.state.isProcessing) {
-            try {
-                await this.invoke('cancel_forced_alignment');
-                showNotification('정렬 작업 중단 중...', 'info');
-            } catch (err) {
-                console.error('Cancel failed:', err);
-            }
-            return;
-        }
-
-        const trackPath = document.getElementById('track-select').value;
-        const lyrics = document.getElementById('lyrics-input').value;
-        const modelName = document.getElementById('model-select').value;
-
-        if (!trackPath || !lyrics.trim()) {
-            showNotification('음원과 가사를 모두 선택/입력해주세요.', 'error');
-            return;
-        }
-
-        try {
-            this.state.isProcessing = true;
-            this.updateButtonState();
-            this.updateProgress(0);
-            
-            // Sync argument names with Rust alignment.rs:run_forced_alignment
-            const result = await this.invoke('run_forced_alignment', {
-                audioPath: trackPath,
-                lyrics: lyrics,
-                modelName: modelName,
-                language: "ko",
-                blankPenalty: parseFloat(this.tuningParams.blank),
-                repPenalty: parseFloat(this.tuningParams.rep),
-                transPenalty: parseFloat(this.tuningParams.penalty)
-            });
-
-            this.state.alignmentData = result;
-            this.state.segments = (result.lines || []).map(l => ({
-                start: l.start_ms / 1000.0,
-                end: l.end_ms / 1000.0,
-                text: l.text
-            }));
-            
-            this.updateProgress(100);
-            this.renderLyricList();
-            this.renderAnalysisTable();
-            showNotification('가사 정렬이 완료되었습니다.', 'success');
-        } catch (err) {
-            console.error('[Alignment Error] run_forced_alignment failed:', err);
-            if (typeof err === 'string' && err.includes('취소')) {
-                showNotification('정렬 작업이 중단되었습니다.', 'info');
-            } else {
-                showNotification(`정렬 실패: ${err}`, 'error');
-            }
-        } finally {
-            this.state.isProcessing = false;
-            this.updateButtonState();
-        }
-    }
-
-    renderAnalysisTable() {
-        const panel = document.getElementById('analysis-panel');
-        const body = document.getElementById('analysis-table-body');
-        if (!panel || !body || !this.state.alignmentData) return;
-
-        panel.style.display = 'block';
-        body.innerHTML = '';
-
-        (this.state.alignmentData.lines || []).forEach(line => {
-            const tr = document.createElement('tr');
-            const original = line.text;
-            const extracted = line.extracted_text || '(인식 불가)';
-            const startSec = (line.start_ms / 1000).toFixed(2);
-            const endSec = (line.end_ms / 1000).toFixed(2);
-            
-            let statusBadge = '<span class="badge badge-match">MATCH</span>';
-            if (original.replace(/\s/g, '') !== extracted.replace(/\s/g, '')) {
-                statusBadge = '<span class="badge badge-diff">DIFF</span>';
-            }
-            if (line.end_ms - line.start_ms > 10000) {
-                statusBadge = '<span class="badge badge-error">LONG</span>';
-            }
-
-            tr.innerHTML = `
-                <td style="color: white; font-weight: 500;">${original}</td>
-                <td style="color: #94a3b8;">${extracted}</td>
-                <td style="font-family: monospace; color: #818cf8;">${startSec}s - ${endSec}s</td>
-                <td>${statusBadge}</td>
-            `;
-
-            tr.style.cursor = 'pointer';
-            tr.onclick = () => this.seekToMs(line.start_ms);
-            body.appendChild(tr);
-        });
     }
 
     async seekToMs(ms) {
@@ -459,96 +257,102 @@ export class ForcedAlignmentViewer {
         }
     }
 
-    handleOpenCalibration() {
-        showNotification('이제 하단 [AI 정밀 분석] 패널을 사용하세요.', 'info');
-        const panel = document.getElementById('analysis-panel');
-        if (panel) {
-            panel.style.display = 'block';
-            panel.scrollIntoView({ behavior: 'smooth' });
-        }
-    }
-
     /**
-     * 4. Audio Engine: Bit-perfect playback & state sync
+     * 4. Audio Engine: Backend-Integrated Playback & State Sync
      */
     async loadAudio(path) {
         try {
-            // convertFileSrc 대신 read_audio_file 사용 (%25 인코딩 폴더 문제 우회)
-            const bytes = await this.invoke('read_audio_file', { path });
-            const uint8 = new Uint8Array(bytes);
-            const arrayBuffer = uint8.buffer;
-            this.state.audioBuffer = await this.state.audioContext.decodeAudioData(arrayBuffer);
-            this.state.duration = this.state.audioBuffer.duration;
-            this.updateTimeDisplay();
+            this.state.waveformPoints = null;
             this.drawWaveform();
+
+            // 1. 파형 데이터 즉시 요청 (백엔드 요약본)
+            this.invoke('get_waveform_summary', { audio_path: path }).then(summary => {
+                this.state.waveformPoints = summary.points;
+                this.state.duration = summary.duration_sec || this.state.duration;
+                this.updateTimeDisplay();
+                this.drawWaveform();
+            }).catch(e => console.error('Waveform summary error:', e));
+
+            // 2. 백엔드 오디오 로드
+            // 정렬 모듈에서는 일관성을 위해 play_track을 호출
+            this.state.currentTime = 0;
+            // Note: play_track internally handles MR mixing if exists
+            await this.invoke('play_track', { path: path, durationMs: 0 });
+            
+            // 시각적 피드백을 위해 하단 도크 알림 발송 가능 (생략 가능)
+            console.log(`[Alignment] Backend audio prepared for: ${path}`);
         } catch (err) {
             console.error('Audio load error:', err);
             showNotification(`오디오 로드 실패: ${err}`, 'error');
         }
     }
 
-    togglePlayback() {
-        if (!this.state.audioBuffer) return;
-        this.state.isPlaying ? this.pause() : this.play();
-    }
-
-    play() {
-        this.resumeContext();
-        this.source = this.state.audioContext.createBufferSource();
-        this.source.buffer = this.state.audioBuffer;
-        this.source.connect(this.state.audioContext.destination);
-        
-        const offset = this.state.currentTime;
-        this.source.start(0, offset);
-        this.startTime = this.state.audioContext.currentTime - offset;
-        this.state.isPlaying = true;
-        
+    updatePlayButton() {
         const playBtn = document.getElementById('play-btn');
-        if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
-        
-        this.animate();
-    }
-
-    pause() {
-        if (this.source) {
-            this.source.stop();
-            this.source = null;
+        if (!playBtn) return;
+        if (this.state.isPlaying) {
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+        } else {
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
         }
-        this.state.isPlaying = false;
+    }
+
+    togglePlayback() {
+        this.invoke('toggle_playback').catch(e => {
+            console.error('Toggle playback failed:', e);
+            showNotification('재생 제어 실패', 'error');
+        });
+    }
+
+    handleSeek(pct) {
+        this.state.isSeeking = true;
+        const targetTime = (pct / 100) * this.state.duration;
+        this.state.currentTime = targetTime;
+        this.updateTimeDisplay();
+        this.drawWaveform();
         
-        const playBtn = document.getElementById('play-btn');
-        if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-        
-        cancelAnimationFrame(this.animationId);
+        // 실시간 탐색 성능을 위해 쓰로틀링 없이 즉시 연동 (백엔드 부담 확인 필요)
+        const posMs = Math.floor(targetTime * 1000);
+        this.invoke('seek_to', { positionMs: posMs }).catch(() => {});
+    }
+
+    finishSeek() {
+        this.state.isSeeking = false;
     }
 
     /**
      * 5. Renderer & Interactive UI: High-performance Drawing & Side-sync
      */
     animate() {
-        if (!this.state.isPlaying) return;
-        this.state.currentTime = this.state.audioContext.currentTime - this.startTime;
-        this.updateTimeDisplay();
-        this.syncSidebar();
-        
-        if (this.state.currentTime >= this.state.duration) {
-            this.handlePlaybackEnd();
-            return;
-        }
-        this.animationId = requestAnimationFrame(() => this.animate());
+        // Now handled by 'timeupdate' event, but can be used for smooth UI if needed
     }
 
     syncSidebar() {
         const cur = this.state.currentTime;
         const segments = this.state.segments;
+        const container = document.getElementById('lyric-lines-container');
+        if (!container) return;
         
-        const activeIdx = segments.findIndex(s => cur >= s.start && cur <= s.end);
+        let activeIdx = -1;
+        if (this.state.isSyncMode) {
+            activeIdx = this.state.currentSyncIndex;
+        } else {
+            activeIdx = segments.findIndex(s => cur >= s.start && cur <= s.end);
+        }
         
-        document.querySelectorAll('.lyric-line-item').forEach((item, idx) => {
+        const items = container.querySelectorAll('.lyric-line-item');
+        items.forEach((item, idx) => {
             if (idx === activeIdx) {
                 if (!item.classList.contains('active')) {
                     item.classList.add('active');
-                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Manual container scroll instead of scrollIntoView to prevent window scroll
+                    const containerHeight = container.offsetHeight;
+                    const itemTop = item.offsetTop;
+                    const itemHeight = item.offsetHeight;
+                    container.scrollTo({
+                        top: itemTop - (containerHeight / 2) + (itemHeight / 2),
+                        behavior: 'smooth'
+                    });
                 }
             } else {
                 item.classList.remove('active');
@@ -563,7 +367,8 @@ export class ForcedAlignmentViewer {
         
         this.state.segments.forEach((seg, idx) => {
             const div = document.createElement('div');
-            div.className = 'lyric-line-item';
+            const isSyncing = this.state.isSyncMode && idx === this.state.currentSyncIndex;
+            div.className = `lyric-line-item \${isSyncing ? 'syncing' : ''}`;
             div.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="time-range">${this.formatTime(seg.start)} - ${this.formatTime(seg.end)}</div>
@@ -616,7 +421,7 @@ export class ForcedAlignmentViewer {
     }
 
     handleAddLine() {
-        if (!this.state.audioBuffer) return;
+        if (!this.state.audioTag.src) return;
         const lastEnd = this.state.segments.length > 0 ? this.state.segments[this.state.segments.length - 1].end : 0;
         const newStart = lastEnd;
         const newEnd = Math.min(newStart + 2, this.state.duration);
@@ -630,58 +435,141 @@ export class ForcedAlignmentViewer {
         this.drawWaveform();
     }
 
+    // --- Manual Sync Logic ---
+    
+    handleManualSyncInit() {
+        if (this.state.isSyncMode) {
+            this.state.isSyncMode = false;
+            document.getElementById('manual-sync-btn').innerText = '수동 정렬 시작';
+            document.getElementById('manual-sync-btn').style.background = 'rgba(16, 185, 129, 0.1)';
+            document.getElementById('sync-tap-btn').style.display = 'none';
+            return;
+        }
+
+        const lyrics = document.getElementById('lyrics-input').value.trim();
+        if (!lyrics) {
+            showNotification('가사를 먼저 입력해주세요.', 'error');
+            return;
+        }
+
+        const lines = lyrics.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        this.state.segments = lines.map(text => ({
+            start: 0,
+            end: 0,
+            text: text
+        }));
+
+        this.state.isSyncMode = true;
+        this.state.currentSyncIndex = 0;
+        
+        document.getElementById('manual-sync-btn').innerText = '수동 정렬 중단';
+        document.getElementById('manual-sync-btn').style.background = 'rgba(239, 68, 68, 0.2)';
+        document.getElementById('sync-tap-btn').style.display = 'block';
+        document.getElementById('save-lrc-btn').style.display = 'block';
+        
+        this.renderLyricList();
+        this.drawWaveform();
+        showNotification('수동 정렬 모드 활성화. 재생 중 Space를 눌러 시작점을 찍으세요.', 'info');
+    }
+
+    handleSyncTap() {
+        if (!this.state.isSyncMode || !this.state.isPlaying) return;
+        
+        const idx = this.state.currentSyncIndex;
+        if (idx >= this.state.segments.length) {
+            showNotification('모든 정렬이 완료되었습니다.', 'success');
+            return;
+        }
+
+        const currentTime = this.state.currentTime;
+        this.state.segments[idx].start = currentTime;
+        if (idx > 0) this.state.segments[idx - 1].end = currentTime;
+        this.state.segments[idx].end = this.state.duration;
+
+        this.state.currentSyncIndex++;
+        this.renderLyricList();
+        this.drawWaveform();
+        this.syncSidebar();
+    }
+
+    async saveLyrics() {
+        if (this.state.segments.length === 0) return;
+        const trackPath = document.getElementById('track-select').value;
+        if (!trackPath) return showNotification('음원을 선택해주세요.', 'error');
+
+        try {
+            let lrc = '';
+            this.state.segments.forEach(seg => {
+                const t = seg.start * 1000;
+                const m = Math.floor(t / 60000);
+                const s = Math.floor((t % 60000) / 1000);
+                const ms = Math.floor((t % 1000) / 10);
+                lrc += `[${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}] ${seg.text}\n`;
+            });
+
+            await this.invoke('save_lrc_file', { audioPath: trackPath, content: lrc });
+            showNotification('LRC 파일이 저장되었습니다.', 'success');
+        } catch (err) {
+            showNotification(`저장 실패: ${err}`, 'error');
+        }
+    }
+
     /**
      * 5. Renderer & Interactive UI: High-performance Drawing & Drag-logic
      */
     drawWaveform() {
-        if (!this.state.audioBuffer || !this.ctx) return;
+        if (!this.ctx) return;
         const { width, height } = this.canvas;
-        const data = this.state.audioBuffer.getChannelData(0);
-        const step = Math.ceil(data.length / width);
-        
         this.ctx.clearRect(0, 0, width, height);
 
         // A. Draw Segments (Background Blocks)
-        this.state.segments.forEach((seg, idx) => {
-            const xStart = (seg.start / this.state.duration) * width;
-            const xEnd = (seg.end / this.state.duration) * width;
-            
-            this.ctx.fillStyle = (this.state.currentTime >= seg.start && this.state.currentTime <= seg.end) 
-                ? 'rgba(74, 158, 255, 0.3)' 
-                : 'rgba(74, 158, 255, 0.1)';
-            this.ctx.fillRect(xStart, 0, xEnd - xStart, height);
-            
-            // Draw boundaries
-            this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.5)';
-            this.ctx.beginPath();
-            this.ctx.moveTo(xStart, 0); this.ctx.lineTo(xStart, height);
-            this.ctx.moveTo(xEnd, 0);   this.ctx.lineTo(xEnd, height);
-            this.ctx.stroke();
-        });
-
-        // B. Draw Waveform (Foreground)
-        this.ctx.beginPath();
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        this.ctx.lineWidth = 1;
-        for (let i = 0; i < width; i++) {
-            let min = 1.0; let max = -1.0;
-            for (let j = 0; j < step; j++) {
-                const datum = data[(i * step) + j];
-                if (datum < min) min = datum;
-                if (datum > max) max = datum;
-            }
-            this.ctx.moveTo(i, (1 + min) * height / 2);
-            this.ctx.lineTo(i, (1 + max) * height / 2);
+        if (this.state.duration > 0) {
+            this.state.segments.forEach((seg, idx) => {
+                const xStart = (seg.start / this.state.duration) * width;
+                const xEnd = (seg.end / this.state.duration) * width;
+                
+                this.ctx.fillStyle = (this.state.currentTime >= seg.start && this.state.currentTime <= seg.end) 
+                    ? 'rgba(74, 158, 255, 0.3)' 
+                    : 'rgba(74, 158, 255, 0.1)';
+                this.ctx.fillRect(xStart, 0, xEnd - xStart, height);
+                
+                this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.5)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(xStart, 0); this.ctx.lineTo(xStart, height);
+                this.ctx.moveTo(xEnd, 0);   this.ctx.lineTo(xEnd, height);
+                this.ctx.stroke();
+            });
         }
-        this.ctx.stroke();
+
+        // B. Draw Waveform (Fast! Using pre-calc buckets from backend)
+        if (this.state.waveformPoints) {
+            const points = this.state.waveformPoints;
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            this.ctx.lineWidth = 1;
+            
+            for (let i = 0; i < width; i++) {
+                const pointIdx = Math.floor((i / width) * points.length);
+                const p = points[pointIdx]; // p is [min, max] tuple from Rust
+                if (!p) continue;
+                // Apply scaling (0.8) to keep peaks within visual bounds
+                const scale = 0.8;
+                this.ctx.moveTo(i, (1 + p[0] * scale) * height / 2);
+                this.ctx.lineTo(i, (1 + p[1] * scale) * height / 2);
+            }
+            this.ctx.stroke();
+        }
 
         // C. Playhead
-        const xPlay = (this.state.currentTime / this.state.duration) * width;
-        this.ctx.strokeStyle = '#fff';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(xPlay, 0); this.ctx.lineTo(xPlay, height);
-        this.ctx.stroke();
+        if (this.state.duration > 0) {
+            const xPlay = (this.state.currentTime / this.state.duration) * width;
+            this.ctx.strokeStyle = '#ff4a4a';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(xPlay, 0);
+            this.ctx.lineTo(xPlay, height);
+            this.ctx.stroke();
+        }
     }
 
     setupCanvasListeners() {
@@ -739,95 +627,34 @@ export class ForcedAlignmentViewer {
         };
     }
 
-    animate() {
-        if (!this.state.isPlaying) {
-            this.drawWaveform(); // Keep drawing segments while paused
-            return;
-        }
-        this.state.currentTime = this.state.audioContext.currentTime - this.startTime;
-        this.updateTimeDisplay();
-        this.syncSidebar();
-        this.drawWaveform();
-        
-        if (this.state.currentTime >= this.state.duration) {
-            this.handlePlaybackEnd();
-            return;
-        }
-        this.animationId = requestAnimationFrame(() => this.animate());
-    }
-
-    updateTimeDisplay() {
-        const timeEl = document.getElementById('time-display');
-        if (!timeEl) return;
-        const cur = this.formatTime(this.state.currentTime);
-        const total = this.formatTime(this.state.duration);
-        timeEl.innerText = `${cur} / ${total}`;
-        
-        const seekBar = document.getElementById('seek-bar');
-        if (seekBar) {
-            const progress = (this.state.currentTime / this.state.duration) * 100;
-            seekBar.value = progress;
-        }
-    }
-
-    updateProgress(percent) {
-        const fill = document.getElementById('align-ai-progress-fill');
-        const text = document.getElementById('align-ai-progress-text');
-        
-        if (fill) fill.style.width = `${percent}%`;
-        if (text) text.innerText = `${Math.round(percent)}%`;
-    }
-
-    updateButtonState() {
-        const btn = document.getElementById('run-alignment-btn');
-        const wrapper = document.getElementById('align-progress-wrapper');
-        
-        if (this.state.isProcessing) {
-            if (btn) {
-                btn.innerText = '정렬 중단 (Cancel)';
-                btn.classList.add('cancel-state');
-                btn.style.background = 'rgba(239, 68, 68, 0.2)';
-                btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-                btn.style.color = '#f87171';
-            }
-            if (wrapper) wrapper.style.display = 'block';
-        } else {
-            if (btn) {
-                btn.innerText = 'AI 가사 정렬 시작';
-                btn.classList.remove('cancel-state');
-                btn.style.background = '';
-                btn.style.borderColor = '';
-                btn.style.color = '';
-            }
-            if (wrapper) wrapper.style.display = 'none';
-        }
-    }
-
     // --- Helpers ---
     formatTime(sec) {
+        if (!sec || isNaN(sec)) return '00:00';
         const m = Math.floor(sec / 60);
-        const s = (sec % 60).toFixed(2);
-        return `${m}:${s.padStart(5, '0')}`;
+        const s = Math.floor(sec % 60);
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
 
     resizeCanvas() {
-        if (!this.canvas) return;
+        if (!this.canvas || !this.canvas.parentElement) return;
         const rect = this.canvas.parentElement.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+            // Retry if layout not ready
+            setTimeout(() => this.resizeCanvas(), 100);
+            return;
+        }
         this.canvas.width = rect.width;
         this.canvas.height = rect.height;
         this.drawWaveform();
     }
 
-    handleSeek(progress) {
-        const time = (progress / 100) * this.state.duration;
+    handleSeek(value) {
+        if (!this.state.audioTag.src) return;
+        const time = (value / 100) * this.state.duration;
+        this.state.audioTag.currentTime = time;
         this.state.currentTime = time;
-        if (this.state.isPlaying) {
-            this.pause();
-            this.play();
-        } else {
-            this.updateTimeDisplay();
-            this.drawWaveform();
-        }
+        this.updateTimeDisplay();
+        this.drawWaveform();
     }
 
     handlePlaybackEnd() {
@@ -837,9 +664,16 @@ export class ForcedAlignmentViewer {
         this.drawWaveform();
     }
 
-    async resumeContext() {
-        if (this.state.audioContext.state === 'suspended') {
-            await this.state.audioContext.resume();
+    updateTimeDisplay() {
+        const display = document.getElementById('time-display');
+        const seekBar = document.getElementById('seek-bar');
+        if (display) {
+            display.innerText = `${this.formatTime(this.state.currentTime)} / ${this.formatTime(this.state.duration)}`;
         }
+        if (seekBar && !this.state.isSeeking) {
+            const pct = this.state.duration > 0 ? (this.state.currentTime / this.state.duration) * 100 : 0;
+            seekBar.value = pct;
+        }
+        this.syncSidebar();
     }
 }
