@@ -1,29 +1,17 @@
-/**
+﻿/**
  * main.js - Entry point for Live-MR-Manager
  */
 
 import { state } from './js/state.js';
-import { 
-  initDomReferences, renderLibrary, updateGenreDropdowns, 
-  updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, 
-  updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
-} from './js/ui/index.js';
-import { initAllEvents, switchTab } from './js/events/index.js';
+import { elements, initDomReferences, renderLibrary, updateGenreDropdowns, updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, updateGpuStatus, setupGridResizeObserver, initSortable } from './js/ui.js';
+import { initNavigation, initGlobalListeners, setupBackendListeners, switchTab } from './js/events.js';
 import { loadLibrary, checkAiModelStatus } from './js/audio.js';
 import { showNotification } from './js/utils.js';
 
-import { invoke, appWindow } from './js/tauri-bridge.js';
+const { invoke } = window.__TAURI__.core;
 
 async function initApp() {
   console.log("[App] Initializing...");
-
-  // Register permanent error listeners to bridge JS errors to terminal
-  window.addEventListener('error', (event) => {
-    invoke('remote_js_log', { msg: `[Error] ${event.message} at ${event.filename}:${event.lineno}` }).catch(() => {});
-  });
-  window.addEventListener('unhandledrejection', (event) => {
-    invoke('remote_js_log', { msg: `[Unhandled Promise] ${event.reason ? event.reason.toString() : 'Unknown'}` }).catch(() => {});
-  });
   
   // Fix manual input font/layout shift (fallback for locked CSS)
   const style = document.createElement('style');
@@ -53,30 +41,6 @@ async function initApp() {
     }
   `;
   document.head.appendChild(style);
-
-  // 0. Initialize Metadata Context (Dictionary)
-  try {
-    await invoke('init_metadata_context');
-    await invoke('sync_dictionary_to_db');
-    
-    // EMERGENCY RESCUE: If library is empty or as a one-time fix
-    console.log("[Rescue] Starting background cache rescue...");
-    invoke('run_cache_rescue').then(async (count) => {
-      if (count > 0) {
-        console.log(`[Rescue] Successfully restored ${count} songs.`);
-        state.songLibrary = await loadLibrary() || [];
-        renderLibrary();
-      } else {
-        console.log("[Rescue] No new songs found to restore.");
-      }
-    }).catch(e => {
-      console.error("[Rescue] Background rescue failed:", e);
-    });
-    
-    console.log("[App] Metadata context initialized and synced to DB.");
-  } catch (err) {
-    console.error("[App] Initial metadata sync failed:", err);
-  }
   
   // 1. Initialize DOM references
   initDomReferences();
@@ -88,11 +52,13 @@ async function initApp() {
     console.log(`[App] Loaded ${state.songLibrary.length} songs.`);
   } catch (err) {
     console.error("Failed to load library:", err);
-    showNotification("라이브러리를 불러오는데 실패했습니다.", "error");
+    showNotification("?쇱씠釉뚮윭由щ? 遺덈윭?ㅻ뒗???ㅽ뙣?덉뒿?덈떎.", "error");
   }
 
   // 3. Initialize Event Listeners
-  initAllEvents();
+  initNavigation();
+  initGlobalListeners();
+  setupBackendListeners();
 
   // 4. Set Initial UI State
   const initialTab = "library";
@@ -122,7 +88,6 @@ async function initApp() {
     console.log(`[App] AI Model Ready: ${state.isAiModelReady}`);
   } catch (err) {
     console.error("AI Model check failed", err);
-    updateAiModelStatus(false);
   }
 
   // 6. Check GPU Recommendation (NVIDIA/CUDA)
@@ -154,7 +119,8 @@ async function initApp() {
 }
 
 function setupTitlebar() {
-  // appWindow is imported from tauri-bridge.js
+  const { getCurrentWindow } = window.__TAURI__.window;
+  const appWindow = getCurrentWindow();
 
   document.getElementById('titlebar-minimize')?.addEventListener('click', async () => {
     try { await appWindow.minimize(); } catch (e) { console.error(e); }

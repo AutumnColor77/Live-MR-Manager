@@ -28,12 +28,13 @@ impl SeparationTask {
 
         // 1. Normalize path and register in active map immediately to prevent duplicates
         let norm_p = path.replace("\\", "/").to_lowercase();
+        
+        // [FIX] Clear any previous cancellation records for this path
+        crate::audio_player::CANCEL_REQUESTS.lock().remove(&norm_p);
+        
         let cancel_flag = Arc::new(AtomicBool::new(false));
         {
             let mut active = ACTIVE_SEPARATIONS.lock();
-            // Optional: If already being processed, we can exit or just let it queue.
-            // But since the frontend might have already sent the command, the safest is to check in lib.rs.
-            // Still, registering here ensures it's tracked even while waiting for lock.
             active.insert(norm_p.clone(), (path.clone(), cancel_flag.clone()));
         }
 

@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Live-MR-Manager",
-        "width": 1384,
-        "height": 750,
-        "minWidth": 1384,
-        "minHeight": 700,
+        "width": 1400,
+        "height": 787,
+        "minWidth": 1400,
+        "minHeight": 787,
         "decorations": false
       }
     ],

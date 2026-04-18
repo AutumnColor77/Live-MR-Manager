@@ -103,8 +103,7 @@ impl<S> Iterator for DynamicVolumeSource<S> where S: Source<Item = f32> {
     fn next(&mut self) -> Option<Self::Item> {
         let s = self.input.next()?;
         let target_vol_bits = self.volume.load(Ordering::Relaxed);
-        let target_vol_raw = f32::from_bits(target_vol_bits) / 125.0;
-        let target_vol = target_vol_raw * target_vol_raw; // Quadratic scaling for natural volume curve
+        let target_vol = f32::from_bits(target_vol_bits) / 125.0; // Linear scale for tracks to avoid nested quadratic drop
         
         // Smoothly interpolate current_vol towards target_vol
 
@@ -349,7 +348,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         active_sample_rate: device_rate,
         active_channels: device_channels,
         track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
-        vocal_volume: Arc::new(AtomicU32::new(80.0f32.to_bits())),
+        vocal_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         playback_cv: parking_lot::Condvar::new(),
     }))

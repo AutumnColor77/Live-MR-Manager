@@ -1,4 +1,4 @@
-use hound;
+use rodio::Source;
 use rubato::{FftFixedIn, Resampler};
 use ndarray::Array1;
 use std::path::Path;
@@ -14,28 +14,17 @@ impl AudioProcessor {
         }
     }
 
-    /// WAV 파일을 로드하고 16kHz로 리샘플링 및 ZMUV 정규화된 f32 배열을 반환합니다. (정렬용)
+    /// 다양한 오디오 파일을 로드하고 16kHz로 리샘플링 및 ZMUV 정규화된 f32 배열을 반환합니다. (정렬용)
     pub fn load_and_preprocess<P: AsRef<Path>>(&self, path: P) -> Result<Array1<f32>, String> {
-        let mut reader = hound::WavReader::open(path)
-            .map_err(|e| format!("WAV 파일을 열 수 없습니다: {}", e))?;
+        let file = std::fs::File::open(path).map_err(|e| format!("파일을 열 수 없습니다: {}", e))?;
+        let decoder = rodio::Decoder::new(std::io::BufReader::new(file))
+            .map_err(|e| format!("오디오 디코딩 실패: {}", e))?;
 
-        let spec = reader.spec();
-        let source_sample_rate = spec.sample_rate;
-        let channels = spec.channels as usize;
+        let source_sample_rate = decoder.sample_rate().get();
+        let channels = decoder.channels().get() as usize;
 
-        // 모든 채널의 샘플을 읽어서 f32로 변환
-        let samples: Vec<f32> = match spec.sample_format {
-            hound::SampleFormat::Float => {
-                reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect()
-            }
-            hound::SampleFormat::Int => {
-                let max_val = (1 << (spec.bits_per_sample - 1)) as f32;
-                reader
-                    .samples::<i32>()
-                    .map(|s| s.unwrap_or(0) as f32 / max_val)
-                    .collect()
-            }
-        };
+        // 모든 샘플을 f32로 변환하여 수집 (정렬용은 전체 데이터가 필요함)
+        let samples: Vec<f32> = decoder.collect();
 
         // 다중 채널인 경우 모노로 믹싱
         let mono_samples = if channels > 1 {
@@ -65,38 +54,52 @@ impl AudioProcessor {
 
         println!("✅ [Audio] Preprocessing finished: {} samples", final_samples.len());
         Ok(Array1::from_vec(final_samples))
-}
-
-/// 시각화(파형)용으로 최소한의 처리(모노 믹싱)만 하여 샘플을 로드합니다.
-pub fn load_for_visualization<P: AsRef<Path>>(&self, path: P) -> Result<Vec<f32>, String> {
-    let mut reader = hound::WavReader::open(path)
-        .map_err(|e| format!("WAV 파일을 열 수 없습니다: {}", e))?;
-
-    let spec = reader.spec();
-    let channels = spec.channels as usize;
-
-    let samples: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => {
-            reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect()
-        }
-        hound::SampleFormat::Int => {
-            let max_val = (1 << (spec.bits_per_sample - 1)) as f32;
-            reader
-                .samples::<i32>()
-                .map(|s| s.unwrap_or(0) as f32 / max_val)
-                .collect()
-        }
-    };
-
-    if channels > 1 {
-        Ok(samples
-            .chunks_exact(channels)
-            .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
-            .collect())
-    } else {
-        Ok(samples)
     }
-}
+
+    /// 시각화용 파형 데이터를 메모리 효율적으로 스트리밍하며 생성합니다.
+    pub fn create_waveform_summary<P: AsRef<Path>>(&self, path: P, n_buckets: usize) -> Result<(Vec<(f32, f32)>, f32), String> {
+        let file = std::fs::File::open(path).map_err(|e| format!("파일을 열 수 없습니다: {}", e))?;
+        let decoder = rodio::Decoder::new(std::io::BufReader::new(file))
+            .map_err(|e| format!("오디오 디코딩 실패: {}", e))?;
+
+        let sample_rate = decoder.sample_rate().get();
+        let channels = decoder.channels().get() as usize;
+
+        // 전체 샘플 수집 (파형은 정밀도보다 속도가 중요하므로 믹싱하면서 수집)
+        // 팁: MP3는 미리 크기를 알 수 없는 경우가 많아 collect 후 처리하는 것이 구현상 안정적임
+        // 단, 이전처럼 여러 번 복사하지 않고 단 한번의 패스로 정리함
+        let all_samples: Vec<f32> = decoder.collect();
+        let _total_samples = all_samples.len();
+        
+        let mono_samples = if channels > 1 {
+            all_samples.chunks_exact(channels)
+                .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
+                .collect::<Vec<f32>>()
+        } else {
+            all_samples
+        };
+
+        let duration_sec = mono_samples.len() as f32 / sample_rate as f32;
+        let samples_per_bucket = (mono_samples.len() / n_buckets).max(1);
+        let mut points = Vec::with_capacity(n_buckets);
+
+        for i in 0..n_buckets {
+            let start = i * samples_per_bucket;
+            if start >= mono_samples.len() { break; }
+            let end = (start + samples_per_bucket).min(mono_samples.len());
+            let chunk = &mono_samples[start..end];
+            
+            let mut min = 0.0f32;
+            let mut max = 0.0f32;
+            for &s in chunk {
+                if s < min { min = s; }
+                if s > max { max = s; }
+            }
+            points.push((min, max));
+        }
+
+        Ok((points, duration_sec))
+    }
 
     /// 전체 오디오 샘플에 대해 평균을 0, 표준편차를 1로 정규화합니다.
     fn apply_zmuv(&self, samples: &mut [f32]) {

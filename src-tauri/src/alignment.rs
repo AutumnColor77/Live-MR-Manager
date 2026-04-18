@@ -39,6 +39,7 @@ fn clean_lyrics(text: &str) -> String {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SeparatedTrack {
     pub name: String,
+    pub original_path: String,
     pub folder_path: String,
     pub has_vocal: bool,
     pub has_inst: bool,
@@ -102,10 +103,11 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
                 let has_inst = path.join("inst.wav").exists();
 
                 let name = urlencoding::decode(&folder_name).map(|d| d.into_owned()).unwrap_or(folder_name.clone());
-                let display_name = Path::new(&name).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or(name);
+                let display_name = Path::new(&name).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| name.clone());
 
                 tracks.push(SeparatedTrack {
                     name: display_name,
+                    original_path: name,
                     folder_path: path.to_string_lossy().to_string(),
                     has_vocal,
                     has_inst,
@@ -344,32 +346,13 @@ fn perform_alignment_internal(
 #[command]
 pub async fn get_waveform_summary(audio_path: String) -> Result<WaveformSummary, String> {
     let processor = AudioProcessor::new();
-    
-    // 파형 전용 경량 로더 사용 (ZMUV, 리샘플링 없음)
-    let samples = processor.load_for_visualization(&audio_path)?;
-    
-    // 원본 샘플 레이트 확인 (duration 계산용)
-    let reader = hound::WavReader::open(&audio_path).map_err(|e| e.to_string())?;
-    let sample_rate = reader.spec().sample_rate;
-    
     let n_buckets = 2000;
-    let samples_per_bucket = samples.len() / n_buckets;
-    let mut points = Vec::with_capacity(n_buckets);
-
-    if samples_per_bucket > 0 {
-        for i in 0..n_buckets {
-            let start = i * samples_per_bucket;
-            let end = if i == n_buckets - 1 { samples.len() } else { (i + 1) * samples_per_bucket };
-            let chunk = &samples[start..end];
-            let mut min = 1.0f32; let mut max = -1.0f32;
-            for &s in chunk { if s < min { min = s; } if s > max { max = s; } }
-            points.push((min, max));
-        }
-    }
-
+    
+    let (points, duration_sec) = processor.create_waveform_summary(&audio_path, n_buckets)?;
+    
     Ok(WaveformSummary { 
         points, 
-        duration_sec: samples.len() as f32 / sample_rate as f32 
+        duration_sec
     })
 }
 

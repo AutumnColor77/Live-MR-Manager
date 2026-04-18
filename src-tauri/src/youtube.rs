@@ -89,7 +89,7 @@ impl YoutubeManager {
 
     pub async fn get_video_metadata(url: &str) -> Result<YoutubeMetadata, String> {
         let exe = Self::find_yt_dlp();
-        println!("Using yt-dlp at: {} for metadata from: {}", exe, url);
+        let _ = crate::audio_player::sys_log(&format!("[Youtube] Using yt-dlp at: {} for metadata from: {}", exe, url));
         
         let mut cmd = Command::new(&exe);
         #[cfg(windows)]
@@ -101,14 +101,16 @@ impl YoutubeManager {
             .output()
             .await
             .map_err(|e| {
-                println!("Failed to start yt-dlp ({}): {}", exe, e);
-                format!("Failed to execute yt-dlp: {}", e)
+                let err_msg = format!("Failed to start yt-dlp ({}): {}", exe, e);
+                let _ = crate::audio_player::sys_log(&err_msg);
+                err_msg
             })?;
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
-            println!("yt-dlp stderr: {}", err);
-            return Err(format!("yt-dlp error: {}", err));
+            let err_msg = format!("yt-dlp execution failed: {}", err);
+            let _ = crate::audio_player::sys_log(&err_msg);
+            return Err(err_msg);
         }
 
         let raw_stdout = String::from_utf8_lossy(&output.stdout);
@@ -118,16 +120,26 @@ impl YoutubeManager {
             &raw_stdout
         };
 
+        if json_content.trim().is_empty() {
+            let _ = crate::audio_player::sys_log("[Youtube] yt-dlp returned empty output");
+            return Err("yt-dlp returned empty output".into());
+        }
+
         let v: Value = serde_json::from_str(json_content)
             .map_err(|e| {
-                println!("Failed to parse JSON. Raw output: {}", raw_stdout);
-                format!("Failed to parse JSON: {}", e)
+                let err_msg = format!("Failed to parse yt-dlp JSON: {}", e);
+                let _ = crate::audio_player::sys_log(&format!("{} | Raw output: {}", err_msg, raw_stdout));
+                err_msg
             })?;
 
         let metadata = YoutubeMetadata {
             id: v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()),
-            title: v.get("title").and_then(|x| x.as_str()).map(|s| s.to_string()),
-            uploader: v.get("uploader").and_then(|x| x.as_str()).map(|s| s.to_string()),
+            title: v.get("title").and_then(|x| x.as_str())
+                .or_else(|| v.get("fulltitle").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()),
+            uploader: v.get("uploader").and_then(|x| x.as_str())
+                .or_else(|| v.get("channel").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()),
             duration: v.get("duration").and_then(|x| x.as_f64()),
             thumbnail: v.get("thumbnail").and_then(|x| x.as_str())
                 .or_else(|| {
@@ -140,6 +152,7 @@ impl YoutubeManager {
                 .map(|s| s.to_string()),
         };
 
+        let _ = crate::audio_player::sys_log(&format!("[Youtube] Successfully fetched metadata: {:?}", metadata.title));
         Ok(metadata)
     }
 

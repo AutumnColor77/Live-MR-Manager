@@ -3,6 +3,7 @@ use parking_lot::RwLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use rusqlite::params;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,6 +40,7 @@ pub(crate) struct AppContext {
     pub genre_master: HashMap<String, GenreEntity>, // id -> entity
     pub tag_map: HashMap<String, String>,           // raw -> id
     pub tag_master: HashMap<String, String>,        // id -> name
+    pub category_map: HashMap<String, String>,      // raw -> category_name
     pub exclusions: Vec<Regex>,
 }
 
@@ -80,6 +82,7 @@ fn load_context(app: &AppHandle) -> AppContext {
     let mut genre_master = HashMap::new();
     let mut tag_map = HashMap::new();
     let mut tag_master = HashMap::new();
+    let mut category_map = HashMap::new();
     let mut exclusions = Vec::new();
 
     if let Some(genres) = seed["genres"].as_array() {
@@ -149,6 +152,17 @@ fn load_context(app: &AppHandle) -> AppContext {
             }
         }
     }
+    if let Some(cats) = seed["categories"].as_array() {
+        for c in cats {
+            if let (Some(name), Some(ms)) = (c["name"].as_str(), c["mappings"].as_array()) {
+                for m in ms {
+                    if let Some(mapping) = m.as_str() {
+                        category_map.insert(mapping.to_lowercase(), name.to_string());
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(excl) = seed["exclusions"].as_array() {
         for p in excl {
@@ -165,6 +179,7 @@ fn load_context(app: &AppHandle) -> AppContext {
         genre_master,
         tag_map,
         tag_master,
+        category_map,
         exclusions,
     };
     
@@ -174,12 +189,14 @@ fn load_context(app: &AppHandle) -> AppContext {
     ctx
 }
 
-pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (Option<String>, Option<Vec<String>>) {
+pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (Option<String>, Option<Vec<String>>, Option<String>) {
     let ctx_lock = CONTEXT.read();
     let ctx = match &*ctx_lock {
         Some(c) => c,
-        None => return (genre, tags),
+        None => return (genre, tags, None),
     };
+
+    let mut auto_category = None;
 
     let new_genre = genre.map(|g| {
         let low = g.to_lowercase().trim().to_string();
@@ -205,11 +222,17 @@ pub fn translate_metadata(genre: Option<String>, tags: Option<Vec<String>>) -> (
             if mapped != t {
                 crate::audio_player::sys_log(&format!("[Metadata] Translated Tag: {} -> {}", t, mapped));
             }
+            if auto_category.is_none() {
+                if let Some(cat) = ctx.category_map.get(&low) {
+                    auto_category = Some(cat.clone());
+                }
+            }
+
             mapped
         }).collect()
     });
 
-    (new_genre, new_tags)
+    (new_genre, new_tags, auto_category)
 }
 
 // --- Commands ---
@@ -218,8 +241,18 @@ const CLOUDFLARE_PROXY_URL: &str = "https://live-mr-manager-lastfm.boohun2771.wo
 
 #[tauri::command]
 pub fn init_metadata_context(app: AppHandle) -> Result<(), String> {
-    let mut ctx = CONTEXT.write();
-    *ctx = Some(load_context(&app));
+    let mut ctx_guard = CONTEXT.write();
+    let ctx = load_context(&app);
+    *ctx_guard = Some(ctx);
+    
+    // Sync Categories from dictionary to DB
+    if let Some(ctx) = ctx_guard.as_ref() {
+        let db = crate::state::DB.lock();
+        for cat_name in ctx.category_map.values() {
+            let _ = db.execute("INSERT OR IGNORE INTO Categories (name) VALUES (?)", params![cat_name]);
+        }
+    }
+    
     Ok(())
 }
 
@@ -569,4 +602,58 @@ async fn process_metadata_logic(client: &reqwest::Client, artist: String, track:
         genre: final_genre,
         tags: final_tags,
     })
+}
+
+#[tauri::command]
+pub async fn sync_dictionary_to_db(_app: AppHandle) -> Result<(), String> {
+    let ctx_lock = CONTEXT.read();
+    let _ctx = match &*ctx_lock {
+        Some(c) => c,
+        None => return Ok(()),
+    };
+
+    let db_guard = crate::state::DB.lock();
+    
+    // 1. Get all tracks and their current tags
+    let mut stmt = db_guard.prepare("
+        SELECT t.id, 
+        (SELECT GROUP_CONCAT(name) FROM Tags JOIN Track_Tag_Map ON Tags.id = Track_Tag_Map.tag_id WHERE Track_Tag_Map.track_id = t.id) as tags,
+        (SELECT COUNT(*) FROM Track_Category_Map WHERE track_id = t.id) as cat_count
+        FROM Tracks t
+    ").map_err(|e| e.to_string())?;
+
+    let mut updates = Vec::new();
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?, // id
+            row.get::<_, Option<String>>(1).ok().flatten().map(|s| s.split(',').map(|t| t.to_string()).collect::<Vec<String>>()), // tags
+            row.get::<_, i64>(2)? // cat_count
+        ))
+    }).map_err(|e| e.to_string())?;
+
+    for r in rows {
+        if let Ok((id, tags, cat_count)) = r {
+            // Only sync if there are no categories assigned yet
+            if cat_count == 0 {
+                let (_, _, auto_cat) = translate_metadata(None, tags);
+                if let Some(ac) = auto_cat {
+                    updates.push((id, ac));
+                }
+            }
+        }
+    }
+    drop(stmt);
+
+    // 2. Apply updates
+    if !updates.is_empty() {
+        crate::audio_player::sys_log(&format!("[Metadata] Syncing {} auto-categories to DB", updates.len()));
+        for (tid, cat_name) in updates {
+            let _ = db_guard.execute("INSERT OR IGNORE INTO Categories (name) VALUES (?)", params![&cat_name]);
+            if let Ok(cid) = db_guard.query_row("SELECT id FROM Categories WHERE name = ?", params![&cat_name], |row| row.get::<_, i64>(0)) {
+                let _ = db_guard.execute("INSERT OR IGNORE INTO Track_Category_Map (track_id, category_id) VALUES (?, ?)", params![tid, cid]);
+            }
+        }
+    }
+
+    Ok(())
 }

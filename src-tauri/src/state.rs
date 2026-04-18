@@ -130,6 +130,9 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             date_added INTEGER,
             is_mr INTEGER DEFAULT 0,
             genre_id INTEGER,
+            original_title TEXT,
+            translated_title TEXT,
+            curation_category TEXT,
             FOREIGN KEY(genre_id) REFERENCES Genres(id)
          );
          CREATE TABLE IF NOT EXISTS Track_Category_Map (
@@ -192,6 +195,9 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
                 date_added INTEGER,
                 is_mr INTEGER DEFAULT 0,
                 genre_id INTEGER,
+                original_title TEXT,
+                translated_title TEXT,
+                curation_category TEXT,
                 FOREIGN KEY(genre_id) REFERENCES Genres(id)
             )",
             []
@@ -209,9 +215,20 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
         // 5. Drop old table
         let _ = conn.execute("DROP TABLE Tracks_Old", []);
         sys_log("[DB] Tracks table migration completed.");
-    } else if !columns.contains(&"genre_id".to_string()) {
-        // Fallback: Just add genre_id if it's missing (though usually handled above)
-        let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN genre_id INTEGER", []);
+    } else {
+        // Check for missing curation columns individually
+        if !columns.contains(&"original_title".to_string()) {
+            let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN original_title TEXT", []);
+            sys_log("[DB] Added original_title column to Tracks.");
+        }
+        if !columns.contains(&"translated_title".to_string()) {
+            let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN translated_title TEXT", []);
+            sys_log("[DB] Added translated_title column to Tracks.");
+        }
+        if !columns.contains(&"curation_category".to_string()) {
+            let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN curation_category TEXT", []);
+            sys_log("[DB] Added curation_category column to Tracks.");
+        }
     }
 
     // 3. One-time migration from library.json if exists

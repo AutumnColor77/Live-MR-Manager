@@ -293,8 +293,12 @@ impl InferenceEngine for WaveformRemover {
         // Normalize path for reliable cancellation check (ignore slash direction and case)
         let path_str = audio_path.to_string_lossy().to_string().replace("\\", "/").to_lowercase();
         
-        if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
-            return Err(anyhow!("Cancelled after audio load"));
+        let is_cancelled = || {
+            cancel_flag.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str)
+        };
+
+        if is_cancelled() {
+            return Err(anyhow!("Cancelled before processing"));
         }
 
         let target_sample_rate = 44100;
@@ -308,14 +312,14 @@ impl InferenceEngine for WaveformRemover {
             padded_samples.extend_from_slice(&raw_samples);
             padded_samples.extend_from_slice(&vec![0.0f32; padding_samples * num_channels]);
             
-            if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
+            if is_cancelled() {
                 return Err(anyhow!("Cancelled before resampling"));
             }
 
             // 2. Resample the padded audio
             let resampled_padded = self.resample(&padded_samples, sample_rate, target_sample_rate, num_channels)?;
             
-            if crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str) {
+            if is_cancelled() {
                 return Err(anyhow!("Cancelled after resampling"));
             }
 
@@ -467,13 +471,17 @@ impl InferenceEngine for WaveformRemover {
         let channels_data_clone = Arc::clone(&channels_data);
         let stft_engine_clone = stft_engine.clone();
         let cancel_flag_prep = cancel_flag.clone();
+        let path_str_prep = path_str.clone();
         let pre_tx_clone = pre_tx.clone();
         std::thread::spawn(move || {
             let prep_start = Instant::now();
-            // Use regular loop instead of into_par_iter to ensure sync_channel backpressure works properly
-            // This prevents Rayon from flooding memory with pre-calculated tensors.
+            
+            let check_cancel = || {
+                cancel_flag_prep.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_prep)
+            };
+
             for chunk_idx in 0..num_chunks {
-                if cancel_flag_prep.load(Ordering::Relaxed) { break; }
+                if check_cancel() { break; }
                 
                 // [FIX] Broadcast Mode Throttle (More aggressive)
                 if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
@@ -555,10 +563,11 @@ impl InferenceEngine for WaveformRemover {
         let session_clone = Arc::clone(&self.session);
         
         let cancel_flag_infer = cancel_flag.clone();
+        let path_str_infer = path_str.clone();
         std::thread::spawn(move || {
             let infer_start = Instant::now();
             while let Ok((chunk_idx, input_tensor, current_chunks, chunk_start, is_last_chunk, is_kara_chunk)) = pre_rx.recv() {
-                if cancel_flag_infer.load(Ordering::Relaxed) { break; }
+                if cancel_flag_infer.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_infer) { break; }
                 
                 let outputs_vec_res = {
                     let mut session_guard = session_clone.lock();
@@ -584,11 +593,12 @@ impl InferenceEngine for WaveformRemover {
         let is_instrumental_model = self.model_name.contains("Inst") || self.model_name.contains("KARA");
 
         let cancel_flag_post = cancel_flag.clone();
+        let path_str_post = path_str.clone();
         let post_handle = std::thread::spawn(move || {
             let post_proc_start = Instant::now();
             let mut processed_count = 0;
             while let Ok((chunk_idx, outputs, current_chunks, chunk_start, _is_last_chunk_at_end, _is_kara_node)) = post_rx.recv() {
-                if cancel_flag_post.load(Ordering::Relaxed) { break; }
+                if cancel_flag_post.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str_post) { break; }
                 
                 // Extract Result from Tensor
                 let owned_data: Vec<f32> = if let Ok((_shape, slice)) = outputs[0].try_extract_tensor::<f32>() {
@@ -704,6 +714,12 @@ impl InferenceEngine for WaveformRemover {
         drop(pre_tx); // Signals Stage 2 to stop after finishing remaining packets
         
         let _ = post_handle.join(); 
+        
+        // [FIX] Check if the process was cancelled before finalizing
+        if is_cancelled() {
+            return Err(anyhow!("Separation Cancelled during processing"));
+        }
+
         sys_log("DEBUG: [WaveformRemover] Pipelined processing complete.");
 
         // Finalize OLA Normalization

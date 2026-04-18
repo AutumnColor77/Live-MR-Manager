@@ -8,6 +8,7 @@ pub enum Status {
     Decoding,
     Separating,
     Playing,
+    Paused,
     Error,
     Finished,
 }
@@ -33,6 +34,7 @@ pub struct AppState {
     pub pitch: f32,
     pub tempo: f32,
     pub volume: f32,
+    pub vocal_balance: f32,
     pub vocal_enabled: bool,
     pub lyric_enabled: bool,
     pub is_playing: bool,
@@ -45,6 +47,7 @@ impl Default for AppState {
             pitch: 0.0,
             tempo: 1.0,
             volume: 80.0,
+            vocal_balance: 50.0,
             vocal_enabled: true,
             lyric_enabled: false,
             is_playing: false,
@@ -85,4 +88,8 @@ pub struct SongMetadata {
     pub play_count: Option<u32>,
     pub date_added: Option<u64>,
     pub is_mr: Option<bool>,
+    pub is_separated: Option<bool>,
+    pub original_title: Option<String>,
+    pub translated_title: Option<String>,
+    pub curation_category: Option<String>,
 }

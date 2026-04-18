@@ -1,0 +1,328 @@
+/* Sidebar */
+.sidebar {
+  width: 210px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  padding: 40px 24px;
+  z-index: 100;
+}
+
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 48px;
+  width: fit-content;
+}
+
+.logo-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-text-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.logo-badge-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.beta-badge {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.logo-icon {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.logo-text {
+  font-family: 'SUITE', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.1;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+
+.nav-group {
+  margin-bottom: 28px;
+}
+
+.nav-label {
+  font-size: 1.1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: block;
+  padding-left: 12px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  position: relative;
+}
+
+.nav-item i {
+  width: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+}
+
+.nav-item.no-icon {
+  /* Offset = 12px (parent padding) + 16px (icon space) + 12px (gap) = 40px */
+  /* But we want to align with the text, so we use padding-left to push it back */
+  padding-left: 40px;
+}
+
+.nav-item:hover {
+  background: var(--glass-bg);
+  color: #fff;
+}
+
+.nav-item.active {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-primary);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.task-count {
+  background: var(--accent-gradient);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 900;
+  margin-left: auto;
+  box-shadow: 0 0 10px var(--accent-glow);
+  min-width: 22px;
+  text-align: center;
+}
+
+/* Main Viewport */
+.viewport {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-bottom: var(--dock-height);
+  width: 100%;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.top-bar {
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px var(--safe-area);
+  background: linear-gradient(to bottom, var(--bg-color), transparent);
+  z-index: 50;
+  flex-wrap: wrap;
+  gap: 20px;
+  max-width: var(--grid-actual-width, 100%);
+  margin: 0;
+  width: 100%;
+}
+
+.view-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+h1 {
+  font-family: 'SUITE', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+}
+
+.view-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-weight: 600;
+  animation: fadeIn 0.3s ease;
+}
+
+/* View Controls */
+.view-controls {
+  display: flex;
+  background: var(--glass-bg);
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+}
+
+.view-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.view-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+  scrollbar-gutter: stable;
+  padding: 10px var(--safe-area) 40px var(--safe-area);
+}
+
+.page-controls-wrapper {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px var(--safe-area);
+  background: transparent;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 110;
+  max-width: calc(var(--grid-actual-width, 100%) + (var(--safe-area) * 2));
+  margin: 0;
+  width: 100%;
+}
+
+.library-controls {
+  margin: 0 !important;
+  height: auto;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px; /* Align gap with grid gap */
+  width: 100%;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.search-section {
+  height: 42px;
+  animation: fadeIn 0.3s ease;
+}
+
+#lib-search {
+  flex: 1; /* Expand to fill space between filters */
+  min-width: 300px;
+}
+
+#youtube-search {
+  width: 100%; /* Full width for YouTube page */
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 80px;
+    padding: 24px 0;
+  }
+
+  .logo-text,
+  .nav-label,
+  .nav-item span {
+    display: none;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: 14px 0;
+  }
+}
+
+/* Alignment Viewer Overrides (Restored) */
+.viewport[data-view="alignment-viewer"] {
+  padding-bottom: 0;
+}
+
+.viewport[data-view="alignment-viewer"] .scroll-area {
+  padding: 0;
+  overflow: hidden;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}

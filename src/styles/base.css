@@ -1,0 +1,234 @@
+/* --- Base Design Tokens (Restored from Original) --- */
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 300;
+  src: url('../assets/fonts/SUITE-Light.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 400;
+  src: url('../assets/fonts/SUITE-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 500;
+  src: url('../assets/fonts/SUITE-Medium.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 600;
+  src: url('../assets/fonts/SUITE-SemiBold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 700;
+  src: url('../assets/fonts/SUITE-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 800;
+  src: url('../assets/fonts/SUITE-ExtraBold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SUITE';
+  font-weight: 900;
+  src: url('../assets/fonts/SUITE-Heavy.ttf') format('truetype');
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'SUITE', sans-serif;
+  user-select: none;
+}
+
+:root {
+  --bg-color: #08080a;
+  --sidebar-bg: rgba(13, 13, 18, 0.98);
+  --dock-bg: rgba(18, 18, 24, 0.85);
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --accent-primary: #3b82f6;
+  --accent-secondary: #8b5cf6;
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --accent-glow: rgba(59, 130, 246, 0.4);
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --safe-area: 40px;
+  --dock-height: 100px;
+  --titlebar-height: 38px;
+
+  /* Button Sizing System */
+  --btn-h-sm: 28px;
+  --btn-h-md: 38px;
+  --btn-h-lg: 52px;
+  --btn-h-xl: 68px;
+}
+
+/* Premium Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  background: var(--bg-color);
+  color: var(--text-main);
+  font-family: 'SUITE', sans-serif;
+}
+
+/* Custom Titlebar */
+.titlebar {
+  height: var(--titlebar-height);
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 0 12px;
+  backdrop-filter: blur(20px);
+}
+
+.titlebar-logo {
+  font-family: 'SUITE', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.titlebar-actions {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 44px;
+  height: 100%;
+  color: var(--text-dim);
+  transition: all 0.2s;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.titlebar-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+#titlebar-close:hover {
+  background: #e81123 !important;
+  color: #fff !important;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  padding-top: var(--titlebar-height);
+}
+
+.bg-glow {
+  position: fixed;
+  top: -20%;
+  right: -10%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  filter: blur(100px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 5;
+}
+
+.loading-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 4px;
+}

@@ -85,6 +85,10 @@
     { "name": "방송/유로비전", "mappings": ["mondiovision"] },
     { "name": "감상용", "mappings": ["por escuchar"] }
   ],
+  "categories": [
+    { "name": "커버곡", "mappings": ["cover", "cover version", "커버"] },
+    { "name": "자작곡", "mappings": ["original", "composition", "자작곡", "자작"] }
+  ],
   "exclusions": [
     "^k-pop$", "^kpop$", "^south korea$", "^korean.*$", "^asian.*$", "^j-pop$", "^jpop$",
     "^remastered$", "^various artists$", "^singer-songwriter$", "^girl group$", "^boy group$",
