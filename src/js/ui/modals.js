@@ -49,21 +49,12 @@ export function openEditModal(song, index) {
 
   document.getElementById("edit-category").value = song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "") || "기본";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
-  
-  const thumbInput = document.getElementById("edit-thumbnail-url");
-  if (thumbInput) thumbInput.value = song.thumbnail || "";
-  
+
   // Volume slider initialization
   if (elements.editVolume) {
     elements.editVolume.value = song.volume !== undefined ? song.volume : 100;
     if (elements.editVolumeVal) elements.editVolumeVal.textContent = elements.editVolume.value + "%";
   }
-
-  // Curation fields
-  // Curation fields for the Edit Modal
-  if (elements.editCurationOriginal) elements.editCurationOriginal.value = song.original_title || "";
-  if (elements.editCurationCategory) elements.editCurationCategory.value = song.curation_category || "";
-  if (elements.editCurationTranslated) elements.editCurationTranslated.value = song.translated_title || "";
 
   elements.metadataModal.classList.add("active");
 }

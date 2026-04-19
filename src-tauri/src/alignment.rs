@@ -43,6 +43,9 @@ pub struct SeparatedTrack {
     pub folder_path: String,
     pub has_vocal: bool,
     pub has_inst: bool,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub thumbnail: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -93,6 +96,9 @@ pub struct WaveformSummary {
 pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<SeparatedTrack>, String> {
     let paths = crate::state::AppPaths::from_handle(&handle);
     let mut tracks = Vec::new();
+    
+    // DB 연결을 위해 Mutex를 잠시 잠급니다.
+    let db = crate::state::DB.lock();
 
     if let Ok(entries) = fs::read_dir(&paths.separated) {
         for entry in entries.flatten() {
@@ -102,15 +108,35 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
                 let has_vocal = path.join("vocal.wav").exists();
                 let has_inst = path.join("inst.wav").exists();
 
-                let name = urlencoding::decode(&folder_name).map(|d| d.into_owned()).unwrap_or(folder_name.clone());
-                let display_name = Path::new(&name).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| name.clone());
+                let original_path = urlencoding::decode(&folder_name).map(|d| d.into_owned()).unwrap_or(folder_name.clone());
+                let display_name = Path::new(&original_path).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| original_path.clone());
+
+                // DB에서 추가 메타데이터 조회
+                let mut title = None;
+                let mut artist = None;
+                let mut thumbnail = None;
+
+                // 경로 정규화 (DB 저장 방식에 맞춤: 윈도우 슬래시 등)
+                // get_songs_internal 로직을 참고하여 비교합니다.
+                if let Ok(row) = db.query_row(
+                    "SELECT title, artist, thumbnail FROM Tracks WHERE path = ? OR path = ?",
+                    rusqlite::params![original_path, original_path.replace("/", "\\")],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, String>(2)?))
+                ) {
+                    title = Some(row.0);
+                    artist = row.1;
+                    thumbnail = Some(row.2);
+                }
 
                 tracks.push(SeparatedTrack {
                     name: display_name,
-                    original_path: name,
+                    original_path,
                     folder_path: path.to_string_lossy().to_string(),
                     has_vocal,
                     has_inst,
+                    title,
+                    artist,
+                    thumbnail,
                 });
             }
         }

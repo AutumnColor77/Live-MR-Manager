@@ -342,10 +342,6 @@ h1 {
 }
 
 /* Alignment Viewer Overrides (Restored) */
-.viewport[data-view="alignment-viewer"] {
-  padding-bottom: 0;
-}
-
 .viewport[data-view="alignment-viewer"] .scroll-area {
   padding: 0;
   overflow: hidden;

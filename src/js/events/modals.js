@@ -22,11 +22,7 @@ export function initModalListeners() {
         genre: document.getElementById("edit-genre-custom").value.trim() || document.getElementById("edit-genre-select").value,
         category: document.getElementById("edit-category").value,
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
-        thumbnail: document.getElementById("edit-thumbnail-url") ? document.getElementById("edit-thumbnail-url").value : song.thumbnail,
         volume: parseFloat(elements.editVolume.value), // Keep in 0-120 range
-        original_title: document.getElementById("edit-curation-original") ? document.getElementById("edit-curation-original").value : "",
-        curation_category: document.getElementById("edit-curation-category") ? document.getElementById("edit-curation-category").value : "",
-        translated_title: document.getElementById("edit-curation-translated") ? document.getElementById("edit-curation-translated").value : "",
       };
 
       try {
@@ -130,7 +126,29 @@ export function initModalListeners() {
           item.onclick = () => {
             document.getElementById("edit-title").value = res.name || res.title || "";
             document.getElementById("edit-artist").value = res.artist || "";
-            if (res.thumbnail) document.getElementById("edit-thumbnail-url").value = res.thumbnail;
+            
+            // 1. 장르 정보 업데이트
+            const isUnknown = !res.genre || res.genre.toLowerCase() === "unknown" || res.genre.toLowerCase() === "unknown genre";
+            if (!isUnknown) {
+              document.getElementById("edit-genre-custom").value = res.genre;
+              const genreSelect = document.getElementById("edit-genre-select");
+              if (genreSelect) genreSelect.value = ""; // 드롭다운 선택 초기화
+              const genreText = document.querySelector("#edit-genre-dropdown .selected-text");
+              if (genreText) genreText.textContent = "장르 선택...";
+            }
+            
+            // 2. 태그 정보 업데이트
+            if (res.tags && res.tags.length > 0) {
+              document.getElementById("edit-tags").value = res.tags.join(", ");
+            }
+            
+            // 3. 썸네일 정보 업데이트
+            const coverUrl = res.thumbnail || res.image || res.cover_url || res.cover;
+            if (coverUrl) {
+              const thumbEl = document.getElementById("edit-thumbnail-url");
+              if (thumbEl) thumbEl.value = coverUrl;
+            }
+
             elements.metadataSearchResultsModal.classList.remove("active");
           };
           elements.searchResultsList.appendChild(item);

@@ -578,25 +578,7 @@
               <input type="range" min="0" max="120" value="100" class="range-slider volume-slider" id="edit-volume">
             </div>
           </div>
-          <div class="input-group">
-            <label>썸네일 URL</label>
-            <input type="text" id="edit-thumbnail-url" placeholder="https://..." autocomplete="off">
-          </div>
-          <!-- Curation Fields (Added for stability) -->
-          <div class="curation-edit-group" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
-            <div class="input-group">
-              <label>원문 (Curation)</label>
-              <input type="text" id="edit-curation-original" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-            <div class="input-group">
-              <label>카테고리</label>
-              <input type="text" id="edit-curation-category" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-            <div class="input-group">
-              <label>번역문</label>
-              <input type="text" id="edit-curation-translated" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-          </div>
+
         </div>
       </div>
       <footer class="modal-footer" style="justify-content: space-between;">
@@ -757,6 +739,28 @@
         </div>
         <div style="margin-top: 15px; text-align: right; font-size: 0.8rem; color: #888;">
           Powered by <a href="https://www.last.fm" target="_blank" style="color: #bbb; text-decoration: none; font-weight: bold;">Last.fm</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 가사 정렬용 음원 선택 모달 -->
+  <div id="alignment-track-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 600px;">
+      <header class="modal-header">
+        <h3>음원 선택</h3>
+        <button class="close-btn" id="alignment-track-close">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="search-bar" style="margin-bottom: 15px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input type="text" id="alignment-track-search" placeholder="곡 제목 또는 아티스트 검색..." autocomplete="off">
+        </div>
+        <div id="alignment-track-list" class="alignment-track-list">
+          <!-- Dynamically populated -->
         </div>
       </div>
     </div>

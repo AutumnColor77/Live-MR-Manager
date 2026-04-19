@@ -172,9 +172,6 @@ export function initDomReferences() {
   elements.curationOriginal = document.getElementById("curation-original");
   elements.curationCategory = document.getElementById("curation-category");
   elements.curationTranslated = document.getElementById("curation-translated");
-  elements.editCurationOriginal = document.getElementById("edit-curation-original");
-  elements.editCurationCategory = document.getElementById("edit-curation-category");
-  elements.editCurationTranslated = document.getElementById("edit-curation-translated");
   elements.unclassifiedTagsList = document.getElementById("unclassified-tags-list");
   elements.scrollArea = document.querySelector(".scroll-area");
   elements.viewport = document.querySelector(".viewport");

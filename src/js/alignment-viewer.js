@@ -1,5 +1,6 @@
-import { showNotification } from './utils.js';
+import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
+import { state } from './state.js';
 
 export class ForcedAlignmentViewer {
     constructor(containerId) {
@@ -34,16 +35,20 @@ export class ForcedAlignmentViewer {
                 <aside class="lyric-input-column">
                     <div class="alignment-card">
                         <section>
-                            <span class="alignment-label">음원 선택</span>
+                            <div class="card-header" style="margin-bottom: 12px;">
+                                <h3>음원 선택</h3>
+                            </div>
                             <div class="track-select-row">
-                                <select id="track-select" class="track-select">
-                                    <option value="">음원을 선택하세요...</option>
-                                </select>
-                                <button id="refresh-btn" class="run-btn">↻</button>
+                                <button id="open-track-modal-btn" class="track-select-btn">
+                                    <span id="selected-track-name">음원을 선택하세요...</span>
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                                </button>
                             </div>
                         </section>
                         <section style="flex:1; display:flex; flex-direction:column; min-height:0;">
-                            <span class="alignment-label">가사 원고</span>
+                            <div class="card-header" style="margin-bottom: 12px;">
+                                <h3>가사 원고</h3>
+                            </div>
                             <textarea id="lyrics-input" class="lyrics-textarea" placeholder="가사를 입력하세요..."></textarea>
                         </section>
                     </div>
@@ -53,24 +58,33 @@ export class ForcedAlignmentViewer {
                     <div class="alignment-card waveform-card">
                         <div class="card-header">
                             <h3>오디오 타임라인</h3>
-                            <div id="sync-status-text" class="status-badge">Manual Mode</div>
                         </div>
                         <div class="waveform-canvas-container" style="position: relative;">
                             <canvas id="waveform-canvas"></canvas>
-                            <div id="waveform-loader" class="loading-overlay">
-                                <div class="spinner spinner-lg"></div>
+                            <div id="waveform-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; z-index: 10; border-radius: 8px;">
+                                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#4a9eff" stroke-width="3" style="animation: waveform-spin 1s linear infinite;">
+                                    <circle cx="12" cy="12" r="10" stroke-opacity="0.2" />
+                                    <path d="M12 2a10 10 0 0 1 10 10" />
+                                </svg>
+                                <style>
+                                    @keyframes waveform-spin { 100% { transform: rotate(360deg); } }
+                                </style>
                             </div>
                         </div>
+                        <div class="seek-bar-container" style="padding: 0; margin-top: -2px; margin-bottom: 4px;">
+                            <input type="range" id="seek-bar" class="seek-bar" value="0" step="0.1" style="width: 100%; margin: 0;">
+                        </div>
                         <div class="sync-controls-panel">
-                            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                                <span id="time-display" style="font-family:monospace; color:#94a3b8;">00:00 / 00:00</span>
-                            </div>
-                            <input type="range" id="seek-bar" class="seek-bar" value="0" step="0.1">
-                            <div class="sync-buttons">
-                                <button id="play-btn" class="run-btn circle-btn">
-                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                            <div class="sync-bottom-row">
+                                <button id="play-btn" class="sync-ctrl-btn circle-btn" title="재생/일시정지">
+                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
-                                <button id="sync-tap-btn" class="run-btn tap-btn" style="flex:2">TAP (Space)</button>
+                                <button id="sync-tap-btn" class="sync-ctrl-btn tap-btn">
+                                    <span class="tap-label">TAP (Space)</span>
+                                </button>
+                                <div class="time-container">
+                                    <span id="time-display" style="font-family:monospace; color:#94a3b8; font-size:0.85rem;">00:00 / 00:00</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -78,9 +92,9 @@ export class ForcedAlignmentViewer {
 
                 <aside class="lyric-sidebar">
                     <div class="alignment-card">
-                        <div class="card-header">
-                            <span class="alignment-label">LRC 결과</span>
-                            <button id="save-lrc-btn" class="run-btn success-btn" style="display:block">저장</button>
+                        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3>가사 정렬 결과</h3>
+                            <button id="save-lrc-btn" class="sync-save-btn">저장</button>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
                             <div style="color:#475569; text-align:center; padding-top:40px;">정렬을 시작하세요.</div>
@@ -95,8 +109,13 @@ export class ForcedAlignmentViewer {
 
     setupListeners() {
         const get = (id) => document.getElementById(id);
-        get('refresh-btn').onclick = () => this.loadTrackList();
-        get('track-select').onchange = (e) => this.loadAudio(e.target.value);
+        get('open-track-modal-btn').onclick = () => this.openTrackModal();
+        get('alignment-track-close').onclick = () => this.closeTrackModal();
+        get('alignment-track-modal').onclick = (e) => {
+            if (e.target === get('alignment-track-modal')) this.closeTrackModal();
+        };
+        get('alignment-track-search').oninput = (e) => this.renderTrackList(e.target.value);
+
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
         get('save-lrc-btn').onclick = () => this.saveLrc();
@@ -224,6 +243,9 @@ export class ForcedAlignmentViewer {
         this.state.waveformPoints = null; // 파형 초기화
         this.drawWaveform();
 
+        const loader = document.getElementById('waveform-loader');
+        if (loader) loader.style.display = 'flex';
+
         try {
             // Get duration immediately from backend
             const ms = await this.invoke('play_track', { path, durationMs: 0, playNow: false });
@@ -236,18 +258,19 @@ export class ForcedAlignmentViewer {
                 if (lrcContent && lrcContent.trim()) {
                     this.parseLrcString(lrcContent);
                 } else {
+                    document.getElementById('lyrics-input').value = '';
                     this.parseLyrics();
                 }
             } catch (err) {
+                document.getElementById('lyrics-input').value = '';
                 this.parseLyrics();
             }
 
-            this.state.isProcessing = false;
             this.drawWaveform();
 
             // Background waveform (파형 후순위 비동기 로드)
-            const vocalPath = path.replace(/\\/g, '/') + '/vocal.wav';
-            this.invoke('get_waveform_summary', { audioPath: vocalPath }).then(summary => {
+            const waveformPath = path; // 이제 원본 오디오 파일 경로를 직접 사용합니다.
+            this.invoke('get_waveform_summary', { audioPath: waveformPath }).then(summary => {
                 if (summary) {
                     this.state.waveformPoints = summary.points;
                     if (!this.state.duration) {
@@ -256,10 +279,15 @@ export class ForcedAlignmentViewer {
                     }
                     this.drawWaveform();
                 }
-            }).catch(e => console.error("Waveform load failed:", e));
+            }).catch(e => console.error("Waveform load failed:", e))
+            .finally(() => {
+                this.state.isProcessing = false;
+                if (loader) loader.style.display = 'none';
+            });
 
         } catch (e) {
             this.state.isProcessing = false;
+            if (loader) loader.style.display = 'none';
             showNotification('오디오 로드 실패', 'error');
         }
     }
@@ -326,21 +354,87 @@ export class ForcedAlignmentViewer {
     // --- Helpers & Others ---
 
     async loadTrackList() {
-        const select = document.getElementById('track-select');
-        if (!select) return;
         try {
-            const tracks = await this.invoke('get_separated_audio_list');
-            select.innerHTML = '<option value="">음원을 선택하세요...</option>';
-            tracks.filter(t => t.has_vocal).forEach(t => {
-                select.appendChild(new Option(t.name, t.folder_path));
-            });
+            // 이제 분리된 오디오 목록 대신 라이브러리의 전체 원본 음원을 불러옵니다.
+            this.tracks = state.songLibrary || [];
+            
+            // If currently selected track is in the list, update its display
+            if (this.state.currentPath) {
+                const track = this.tracks.find(t => t.path === this.state.currentPath);
+                if (track) {
+                    const nameEl = document.getElementById('selected-track-name');
+                    if (nameEl) nameEl.innerText = track.title || "Unknown Title";
+                }
+            }
         } catch (e) { console.error(e); }
+    }
+
+    openTrackModal() {
+        const modal = document.getElementById('alignment-track-modal');
+        if (modal) {
+            modal.classList.add('active');
+            document.getElementById('alignment-track-search').value = '';
+            this.loadTrackList(); // 모달을 열 때마다 메인 라이브러리의 최신 목록으로 갱신
+            this.renderTrackList();
+            setTimeout(() => document.getElementById('alignment-track-search').focus(), 100);
+        }
+    }
+
+    closeTrackModal() {
+        const modal = document.getElementById('alignment-track-modal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    renderTrackList(query = '') {
+        const container = document.getElementById('alignment-track-list');
+        if (!container) return;
+
+        const filtered = this.tracks ? this.tracks.filter(t => {
+            const searchStr = `${t.title || ''} ${t.artist || ''}`.toLowerCase();
+            return !query || searchStr.includes(query.toLowerCase());
+        }) : [];
+
+        if (filtered.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:#64748b;">음원이 없습니다.</div>`;
+            return;
+        }
+
+        container.innerHTML = filtered.map(t => {
+            const title = t.title || 'Unknown Title';
+            const artist = t.artist || 'Unknown Artist';
+            const thumbnail = t.thumbnail || '';
+            const path = t.path; // 원본 파일 경로
+            
+            const thumbUrl = getThumbnailUrl(thumbnail, t);
+
+            return `
+                <div class="track-item" data-path="${path.replace(/"/g, '&quot;')}">
+                    <div class="track-thumb">
+                        ${thumbUrl ? `<img src="${thumbUrl}" alt="">` : `<div class="thumb-placeholder">♪</div>`}
+                    </div>
+                    <div class="track-info">
+                        <div class="track-name" title="${title.replace(/"/g, '&quot;')}">${title}</div>
+                        <div class="track-artist" title="${artist.replace(/"/g, '&quot;')}">${artist}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.querySelectorAll('.track-item').forEach(item => {
+            item.onclick = () => {
+                const path = item.getAttribute('data-path');
+                const name = item.querySelector('.track-name').innerText;
+                document.getElementById('selected-track-name').innerText = name;
+                this.loadAudio(path);
+                this.closeTrackModal();
+            };
+        });
     }
 
     togglePlayback() { this.invoke('toggle_playback'); }
 
     formatTime(sec) {
-        if (!sec || isNaN(sec)) return "00:00.0";
+        if (sec === undefined || sec === null || sec === 0 || isNaN(sec)) return "--:--.-";
         const m = Math.floor(sec / 60);
         const s = (sec % 60).toFixed(1);
         return `${m.toString().padStart(2, '0')}:${s.padStart(4, '0')}`;
@@ -478,7 +572,6 @@ export class ForcedAlignmentViewer {
         container.querySelectorAll('.lyric-line-item').forEach((item) => {
             item.onclick = async (e) => {
                 const idx = parseInt(item.getAttribute('data-index'));
-                const isTimeClick = e.target.classList.contains('time-range');
                 const targetTime = this.state.segments[idx].start;
                 
                 // 가사나 시간을 클릭하면 해당 위치로 이동 (시간이 0보다 클 때)
@@ -493,11 +586,11 @@ export class ForcedAlignmentViewer {
                     }
                 }
                 
-                // 만약 시간을 클릭했다면 다음 스탬프를 '다음 가사'에 찍도록 설정
-                // 가사를 클릭했다면 '해당 가사'를 다시 찍도록 설정
-                if (isTimeClick && targetTime > 0) {
+                if (targetTime > 0) {
+                    // 시간이 찍혀 있는(이동 가능한) 가사를 클릭했다면, 자연스럽게 다음 가사부터 스탬프를 찍도록 대기
                     this.state.currentSyncIndex = Math.min(idx + 1, this.state.segments.length);
                 } else {
+                    // 아직 시간이 없는 가사를 클릭하면 그 가사부터 스탬프를 찍도록 지정
                     this.state.currentSyncIndex = idx;
                 }
                 
