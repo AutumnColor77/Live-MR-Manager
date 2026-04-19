@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "Live-MR-Manager",
-        "width": 1400,
+        "width": 1319,
         "height": 787,
-        "minWidth": 1400,
+        "minWidth": 1319,
         "minHeight": 787,
         "decorations": false
       }

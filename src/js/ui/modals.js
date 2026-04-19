@@ -78,8 +78,14 @@ export function openConfirmModal(title, message, onConfirm) {
   
   const titleEl = elements.confirmModal.querySelector("h3");
   const msgEl = elements.confirmModal.querySelector("p");
-  const confirmBtn = document.getElementById("confirm-yes");
-  const cancelBtn = document.getElementById("confirm-no");
+  // Prefer current button IDs, but keep legacy fallback for compatibility.
+  const confirmBtn = document.getElementById("confirm-ok") || document.getElementById("confirm-yes");
+  const cancelBtn = document.getElementById("confirm-cancel") || document.getElementById("confirm-no");
+  
+  if (!confirmBtn || !cancelBtn) {
+    console.error("[openConfirmModal] Confirm/Cancel buttons not found");
+    return;
+  }
   
   if (titleEl) titleEl.textContent = title;
   if (msgEl) msgEl.textContent = message;

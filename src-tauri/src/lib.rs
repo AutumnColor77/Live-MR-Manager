@@ -12,7 +12,6 @@ mod alignment;
 mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
-mod rescue;
 mod library;
 mod audio_commands;
 mod model_commands;
@@ -60,17 +59,15 @@ pub fn run() {
             model_commands::get_active_separations,
             audio_commands::get_ai_engine_status, 
             library::update_song_metadata,
-            alignment::get_separated_audio_list, alignment::run_forced_alignment, 
+            audio_commands::get_alignment_sync_state,
+            alignment::get_separated_audio_list, alignment::run_forced_alignment,
             alignment::cancel_forced_alignment, alignment::read_audio_file,
             alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
-            alignment::save_lrc_file,
-            system::remote_js_log,
-            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
+            alignment::save_lrc_file, alignment::load_lrc_file,
+            system::remote_js_log,            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
-            metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db,
-            rescue::run_local_rescue,
-            rescue::run_cache_rescue
+            metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

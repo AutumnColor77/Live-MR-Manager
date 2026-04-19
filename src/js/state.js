@@ -50,3 +50,26 @@ export const SORT_OPTIONS = [
   { val: "title", text: "제목순 (A-Z)" },
   { val: "plays", text: "재생 횟수순" }
 ];
+
+// --- Helper Functions for UI ---
+import { invoke } from './tauri-bridge.js';
+
+export async function getAllGenres() {
+  try {
+    const genres = await invoke('get_genres');
+    return genres.map(g => g.name);
+  } catch (err) {
+    console.error('Failed to load genres:', err);
+    return [];
+  }
+}
+
+export async function getAllCategories() {
+  try {
+    const categories = await invoke('get_categories');
+    return categories.map(c => c.name);
+  } catch (err) {
+    console.error('Failed to load categories:', err);
+    return [];
+  }
+}

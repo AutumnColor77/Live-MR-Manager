@@ -3,6 +3,7 @@
  */
 import { listen } from '../tauri-bridge.js';
 import { state } from '../state.js';
+import { elements } from '../ui/elements.js';
 import { updateTaskUI, updateAiModelStatus, updateCardStatusBadge } from '../ui/components.js';
 import { renderLibrary } from '../ui/library.js';
 import { showNotification } from '../utils.js';
@@ -11,10 +12,14 @@ export async function setupBackendListeners() {
   // Playback Progress Update
   await listen('playback-progress', (event) => {
     if (!state.isSeeking) {
-      state.targetProgressMs = event.payload.position_ms;
+      // Rust struct may serialize to CamelCase or snake_case depending on serde config.
+      const positionMs = event.payload.positionMs ?? event.payload.position_ms ?? 0;
+      const durationMs = event.payload.durationMs ?? event.payload.duration_ms ?? 0;
+      
+      state.targetProgressMs = positionMs;
       // Ensure duration is always updated if available
-      if (event.payload.duration_ms > 0 || !state.trackDurationMs) {
-        state.trackDurationMs = event.payload.duration_ms;
+      if (durationMs > 0 || !state.trackDurationMs) {
+        state.trackDurationMs = durationMs;
       }
     }
   });
@@ -47,17 +52,31 @@ export async function setupBackendListeners() {
       state.rafId = null;
 
       if (s === "finished") {
+        state.isPlaying = false;
         state.currentProgressMs = 0;
         state.targetProgressMs = 0;
-        const { handleNextTrack } = await import('../player.js');
-        handleNextTrack();
+        state.rafId = null;
+        
+        // Reset backend position to 0 so it can be replayed
+        const { seekTo } = await import('../audio.js');
+        await seekTo(0);
+
+        // Force UI reset to 0:00
+        const { elements } = await import('../ui/elements.js');
+        if (elements.playbackBar) elements.playbackBar.value = 0;
+        if (elements.progressFill) elements.progressFill.style.width = "0%";
+        if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+
+        const { updateThumbnailOverlay, updatePlayButton } = await import('../ui/components.js');
+        updateThumbnailOverlay();
+        updatePlayButton();
       }
     }
 
-    // 3. Status Message in Dock
+    // 3. Status Message in Dock (Removed text as per user request)
     const { elements } = await import('../ui/elements.js');
     if (elements.statusMsg) {
-      elements.statusMsg.textContent = message || (s === "playing" ? "Ready" : "");
+      elements.statusMsg.textContent = "";
     }
     
     const { updateThumbnailOverlay, updatePlayButton } = await import('../ui/components.js');
@@ -76,7 +95,7 @@ export async function setupBackendListeners() {
       if (s === "finished") {
         showNotification("MR 분리가 완료되었습니다.", "success");
         // Update local state flag
-        const song = state.library.find(s => s.path === path);
+        const song = state.songLibrary.find(s => s.path === path);
         if (song) {
           song.isSeparated = true;
           song.is_separated = true;
@@ -111,6 +130,23 @@ export async function setupBackendListeners() {
     updateAiModelStatus(event.payload);
   });
 
+  // Model download percentage updates for settings button
+  await listen('model-download-progress', (event) => {
+    const percentage = Math.round(event.payload);
+    if (elements.btnDownloadModel) {
+      elements.btnDownloadModel.disabled = true;
+      elements.btnDownloadModel.textContent = `다운로드 중 (${percentage}%)`;
+      if (percentage >= 100) {
+        setTimeout(() => {
+          if (elements.btnDownloadModel) {
+            elements.btnDownloadModel.disabled = false;
+            elements.btnDownloadModel.textContent = "모델 다운로드";
+          }
+        }, 1500);
+      }
+    }
+  });
+
   // File Drag & Drop support
   await listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
@@ -125,7 +161,7 @@ export async function setupBackendListeners() {
           try {
             const metadata = await getAudioMetadata(path);
             metadata.source = "local";
-            state.library.push(metadata);
+            state.songLibrary.push(metadata);
             addedCount++;
           } catch (err) {
             console.error("Drop add failed for:", path, err);
@@ -134,7 +170,7 @@ export async function setupBackendListeners() {
       }
       
       if (addedCount > 0) {
-        await saveLibrary(state.library);
+        await saveLibrary(state.songLibrary);
         showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");
         renderLibrary();
       }

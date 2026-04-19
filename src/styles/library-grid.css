@@ -1,0 +1,99 @@
+/* Premium Grid Mode (Standard) - Content Specifics */
+body .song-grid.grid-mode {
+  /* Inherits layout from .song-grid in library-common.css */
+  /* Fixed 200px cards. 5 cards (1000px) + 4 gaps (48px) = 1048px (Perfect Flush) */
+  grid-template-columns: repeat(auto-fill, 200px) !important;
+  gap: 12px !important; 
+}
+
+body .song-grid.grid-mode .song-card {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  width: 200px !important; /* STRICTLY FIXED SIZE */
+  height: auto !important;
+}
+
+body .song-grid.grid-mode .song-card:hover {
+  transform: translateY(-8px) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Thumbnail with Overlay Badge */
+body .song-grid.grid-mode .song-card .thumbnail {
+  width: 100% !important;
+  aspect-ratio: 1/1 !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+/* Original MR Badge Position: Top Right of Thumbnail */
+body .song-grid.grid-mode .song-card .status-badge {
+  position: absolute !important;
+  top: 10px !important;
+  right: 10px !important;
+  z-index: 10 !important;
+  margin: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Info Section */
+body .song-grid.grid-mode .song-card .song-info-content {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+body .song-grid.grid-mode .song-card .song-name {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Category & Duration Row (Same Line) */
+body .song-grid.grid-mode .song-card .metadata-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-top: 4px !important;
+}
+
+body .song-grid.grid-mode .song-card .badge-group-inline {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+body .song-grid.grid-mode .song-card .duration-text {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.85rem !important;
+  color: var(--text-muted) !important;
+  margin-left: auto !important;
+}
+
+/* Tag Section at the bottom */
+body .song-grid.grid-mode .song-card .tag-row {
+  margin-top: 4px !important;
+}
+
+body .song-grid.grid-mode .song-card .tag-container.no-info,
+body .song-grid.grid-mode .song-card .tag-no-info {
+  font-size: 0.8rem !important;
+  font-style: italic !important;
+  color: var(--text-muted) !important;
+  opacity: 0.6 !important;
+}

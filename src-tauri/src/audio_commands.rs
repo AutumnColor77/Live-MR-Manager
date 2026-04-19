@@ -20,7 +20,7 @@ use urlencoding;
 pub static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
-pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<(), String> {
+pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<u64, String> {
     let res = play_track_internal(window.clone(), path, duration_ms, None, play_now.unwrap_or(true)).await;
     if let Err(ref e) = res {
         let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
@@ -28,7 +28,7 @@ pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option
     res
 }
 
-pub async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hint: Option<u64>, start_pos_ms: Option<u64>, play_now: bool) -> Result<(), String> {
+pub async fn play_track_internal(window: WebviewWindow, path: String, duration_ms_hint: Option<u64>, start_pos_ms: Option<u64>, play_now: bool) -> Result<u64, String> {
     let handler = match &*AUDIO_HANDLER {
         Ok(h) => h.clone(),
         Err(e) => return Err(e.clone()),
@@ -70,10 +70,22 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     }
     
     let paths = window.state::<crate::state::AppPaths>();
-    let cache_key = urlencoding::encode(&path).to_string();
-    let cache_dir = paths.separated.join(&cache_key);
-    let vocal_path = cache_dir.join("vocal.wav");
-    let inst_path = cache_dir.join("inst.wav");
+    
+    // Determine the cache directory. 
+    let (vocal_path, inst_path) = if path.contains("separated") {
+        let p = std::path::PathBuf::from(&path);
+        if p.is_file() {
+            let parent = p.parent().unwrap_or(&p);
+            (parent.join("vocal.wav"), parent.join("inst.wav"))
+        } else {
+            // It's a directory
+            (p.join("vocal.wav"), p.join("inst.wav"))
+        }
+    } else {
+        let cache_key = urlencoding::encode(&path).to_string();
+        let cache_dir = paths.separated.join(&cache_key);
+        (cache_dir.join("vocal.wav"), cache_dir.join("inst.wav"))
+    };
     
     let target_rate = handler.active_sample_rate;
     let target_channels = handler.active_channels;
@@ -94,7 +106,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
 
         let mut sources = Vec::new();
         for i in 0..5 {
-            if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+            if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
             
             match (File::open(&vocal_path), File::open(&inst_path)) {
                 (Ok(v), Ok(i)) => {
@@ -102,15 +114,18 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
                     break;
                 }
                 _ if i < 4 => {
-                    sys_log(&format!("[AUDIO] Retry {}/5: Opening MR files...", i + 1));
+                    sys_log(&format!("[AUDIO] Retry {}/5: Opening MR files ({:?})", i + 1, vocal_path));
                     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
                 }
-                (Err(e1), _) => return Err(format!("Vocal 파일을 열 수 없습니다: {}", e1)),
-                (_, Err(e2)) => return Err(format!("Inst 파일을 열 수 없습니다: {}", e2)),
+                (Err(e1), _) => return Err(format!("Vocal 파일을 열 수 없습니다: {} (Path: {:?})", e1, vocal_path)),
+                (_, Err(e2)) => return Err(format!("Inst 파일을 열 수 없습니다: {} (Path: {:?})", e2, inst_path)),
             }
         }
 
         let (v_file, i_file) = sources.pop().unwrap();
+        
+        // [FIX] Get metadata before moving files into decoders
+        let i_file_size = i_file.metadata().map(|m| m.len()).unwrap_or(0);
         
         let mut v_decoder = rodio::Decoder::new(BufReader::new(v_file)).map_err(|e| e.to_string())?;
         let mut i_decoder = rodio::Decoder::new(BufReader::new(i_file)).map_err(|e| e.to_string())?;
@@ -122,20 +137,34 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
             let _ = i_decoder.try_seek(Duration::from_millis(ms));
         }
         
-        if let Some(d) = i_decoder.total_duration() {
-            let ms = d.as_millis() as u64;
-            handler.total_duration_ms.store(ms, Ordering::Relaxed);
+        let ms = if let Some(d) = i_decoder.total_duration() {
+            let val = d.as_millis() as u64;
+            handler.total_duration_ms.store(val, Ordering::Relaxed);
+            val
+        } else {
+            // Fallback: Estimate duration if metadata fails
+            let mut est_ms = 0;
+            if i_file_size > 0 && handler.track_sample_rate.load(Ordering::Relaxed) > 0 {
+                let rate = handler.track_sample_rate.load(Ordering::Relaxed) as u64;
+                let est_sec = i_file_size / (rate * 2 * 2); 
+                if est_sec > 0 {
+                    est_ms = est_sec * 1000;
+                    handler.total_duration_ms.store(est_ms, Ordering::Relaxed);
+                    sys_log(&format!("[AUDIO] Estimated duration from file size: {}s", est_sec));
+                }
+            }
+            est_ms
+        };
 
-            let mut current_duration = String::new();
-            if let Ok(d_str) = DB.lock().query_row("SELECT duration FROM Tracks WHERE path = ?", rusqlite::params![&path], |row| row.get::<_, String>(0)) {
-                current_duration = d_str;
-            }
-            if current_duration == "0:00" || current_duration.is_empty() {
-                let secs = ms / 1000;
-                let new_duration = format!("{}:{:02}", secs / 60, secs % 60);
-                let _ = crate::library::update_track_duration(&path, &new_duration);
-                sys_log(&format!("[DB] Updated missing duration for {}: {}", path, new_duration));
-            }
+        let mut current_duration = String::new();
+        if let Ok(d_str) = DB.lock().query_row("SELECT duration FROM Tracks WHERE path = ?", rusqlite::params![&path], |row| row.get::<_, String>(0)) {
+            current_duration = d_str;
+        }
+        if (current_duration == "0:00" || current_duration.is_empty()) && ms > 0 {
+            let secs = ms / 1000;
+            let new_duration = format!("{}:{:02}", secs / 60, secs % 60);
+            let _ = crate::library::update_track_duration(&path, &new_duration);
+            sys_log(&format!("[DB] Updated missing duration for {}: {}", path, new_duration));
         }
 
         let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
@@ -147,7 +176,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         let mixed = resampled_i.mix(resampled_v);
         
         let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
-        if final_v != target_version { return Ok(()); }
+        if final_v != target_version { return Ok(0); }
         
         {
             let controller = handler.controller.lock();
@@ -169,7 +198,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         let msg = if play_now { "Playing" } else { "Prepared" };
         window.emit("playback-status", PlaybackStatus { status, message: msg.into() }).unwrap();
         sys_log("[DEBUG] Starting instantaneous playback from local MR cache.");
-        return Ok(());
+        return Ok(ms);
     }
 
     // Case 2: Fallback to Original source
@@ -179,7 +208,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         }
         let metadata = YoutubeManager::get_video_metadata(&path).await?;
         
-        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
 
         let temp_dir = window.state::<crate::state::AppPaths>().temp.clone();
         let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
@@ -205,7 +234,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         std::path::PathBuf::from(&path)
     };
 
-    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
 
     if !play_path.exists() && !path.starts_with("http") {
         return Err("파일을 찾을 수 없습니다".into());
@@ -216,7 +245,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     let mut first_error_msg = String::new();
 
     for i in 0..5 {
-        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
 
         let reader = match StreamingReader::new(play_path.clone(), is_yt) {
             Ok(r) => r,
@@ -248,7 +277,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     
     let mut decoder = decoder_result.ok_or_else(|| format!("디코딩 실패: {}", first_error_msg))?;
     
-    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(()); }
+    if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
     
     handler.track_sample_rate.store(decoder.sample_rate().into(), Ordering::Relaxed);
     if let Some(ms) = start_pos_ms { let _ = decoder.try_seek(Duration::from_millis(ms)); }
@@ -274,7 +303,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
     
     let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
-    if final_v != target_version { return Ok(()); }
+    if final_v != target_version { return Ok(0); }
     
     {
         let controller = handler.controller.lock();
@@ -296,7 +325,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     let msg = if play_now { "Playing" } else { "Prepared" };
     window.emit("playback-status", PlaybackStatus { status, message: msg.into() }).unwrap();
     sys_log("[DEBUG] Starting playback (Original/Fallback)");
-    Ok(())
+    Ok(handler.total_duration_ms.load(Ordering::Relaxed))
 }
 
 #[tauri::command]
@@ -332,6 +361,29 @@ pub async fn toggle_playback() -> Result<bool, String> {
     }
 
     Ok(new_is_playing)
+}
+
+#[tauri::command]
+pub fn get_alignment_sync_state() -> Result<PlaybackProgress, String> {
+    let handler = match &*AUDIO_HANDLER {
+        Ok(h) => h.clone(),
+        Err(e) => return Err(e.clone()),
+    };
+
+    let rate = handler.track_sample_rate.load(Ordering::Relaxed);
+    let pos_samples = handler.current_pos_samples.load(Ordering::Relaxed);
+    let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+    
+    let position_ms = if rate > 0 {
+        (pos_samples as f64 / rate as f64 * 1000.0) as u64
+    } else {
+        0
+    };
+
+    Ok(PlaybackProgress {
+        position_ms,
+        duration_ms,
+    })
 }
 
 #[tauri::command]
@@ -496,13 +548,28 @@ pub fn start_playback_progress_loop(handle: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(100));
         if let Ok(handler) = &*AUDIO_HANDLER {
-            let (samples, duration_ms, track_rate) = {
-                (
-                    handler.current_pos_samples.load(Ordering::Relaxed), 
-                    handler.total_duration_ms.load(Ordering::Relaxed), 
-                    handler.track_sample_rate.load(Ordering::Relaxed)
-                )
-            };
+            let samples = handler.current_pos_samples.load(Ordering::Relaxed);
+            let mut duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+            let track_rate = handler.track_sample_rate.load(Ordering::Relaxed);
+            
+            // Fallback: If duration is 0, try to get it from the DB
+            if duration_ms == 0 {
+                if let Some(track_path) = handler.state.lock().current_track.clone() {
+                    if let Ok(d_str) = crate::state::DB.lock().query_row(
+                        "SELECT duration FROM Tracks WHERE path = ?", 
+                        rusqlite::params![track_path], 
+                        |row| row.get::<_, String>(0)
+                    ) {
+                        let parts: Vec<&str> = d_str.split(':').collect();
+                        if parts.len() == 2 {
+                            let m = parts[0].parse::<u64>().unwrap_or(0);
+                            let s = parts[1].parse::<u64>().unwrap_or(0);
+                            duration_ms = (m * 60 + s) * 1000;
+                            handler.total_duration_ms.store(duration_ms, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
             
             let pos_ms = if track_rate > 0 { 
                 ((samples as u128 * 1000) / track_rate as u128) as u64
@@ -525,7 +592,9 @@ pub fn start_playback_progress_loop(handle: tauri::AppHandle) {
                 }
             }
 
-            let _ = handle.emit("playback-progress", PlaybackProgress { position_ms: pos_ms, duration_ms });
+            if duration_ms > 0 {
+                let _ = handle.emit("playback-progress", PlaybackProgress { position_ms: pos_ms, duration_ms });
+            }
         }
     });
 }

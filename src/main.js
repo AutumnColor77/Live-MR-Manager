@@ -58,21 +58,6 @@ async function initApp() {
   try {
     await invoke('init_metadata_context');
     await invoke('sync_dictionary_to_db');
-    
-    // EMERGENCY RESCUE: If library is empty or as a one-time fix
-    console.log("[Rescue] Starting background cache rescue...");
-    invoke('run_cache_rescue').then(async (count) => {
-      if (count > 0) {
-        console.log(`[Rescue] Successfully restored ${count} songs.`);
-        state.songLibrary = await loadLibrary() || [];
-        renderLibrary();
-      } else {
-        console.log("[Rescue] No new songs found to restore.");
-      }
-    }).catch(e => {
-      console.error("[Rescue] Background rescue failed:", e);
-    });
-    
     console.log("[App] Metadata context initialized and synced to DB.");
   } catch (err) {
     console.error("[App] Initial metadata sync failed:", err);
@@ -98,8 +83,8 @@ async function initApp() {
   const initialTab = "library";
   switchTab(initialTab);
   
-  updateGenreDropdowns();
-  updateCategoryDropdown();
+  await updateGenreDropdowns();
+  await updateCategoryDropdown();
   updateSortDropdown();
   
   // Initialize View Mode UI based on saved state

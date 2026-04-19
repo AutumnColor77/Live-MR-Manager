@@ -82,7 +82,12 @@ pub static DB: Lazy<Arc<Mutex<Connection>>> = Lazy::new(|| {
     sys_log(&format!("[DB] Connecting to: {:?}", db_path));
     
     let mut conn = Connection::open(db_path).expect("Failed to open database");
+    // Enable foreign keys and improve data durability
     conn.execute("PRAGMA foreign_keys = ON", []).ok();
+    // Use WAL mode for better concurrent access and durability
+    conn.execute("PRAGMA journal_mode = WAL", []).ok();
+    // Ensure data is written to disk before returning from write operations
+    conn.execute("PRAGMA synchronous = FULL", []).ok();
     init_db(&mut conn, &app_dir);
     
     Arc::new(Mutex::new(conn))

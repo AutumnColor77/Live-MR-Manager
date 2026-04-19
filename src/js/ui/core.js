@@ -1,11 +1,11 @@
 /**
  * js/ui/core.js - Core UI Utilities & Layout Logic
  */
-import { state } from '../state.js';
+import { state, getAllGenres, getAllCategories } from '../state.js';
 import { elements } from './elements.js';
 
-export function updateGenreDropdowns() {
-  const genres = ["전체", ...state.getAllGenres()];
+export async function updateGenreDropdowns() {
+  const genres = ["전체", ...(await getAllGenres())];
   const dropdown = document.getElementById("lib-genre-dropdown");
   if (!dropdown) return;
   
@@ -17,8 +17,8 @@ export function updateGenreDropdowns() {
   }
 }
 
-export function updateCategoryDropdown() {
-  const cats = ["전체", ...state.getAllCategories()];
+export async function updateCategoryDropdown() {
+  const cats = ["전체", ...(await getAllCategories())];
   const dropdown = document.getElementById("lib-category-dropdown");
   if (!dropdown) return;
 
@@ -36,6 +36,18 @@ export function updateSortDropdown() {
 
 
 let resizeObserver = null;
+
+/** Matches --library-grid-gap (12) and horizontal padding 30+30 from library-common.css */
+const GRID_GAP = 12;
+const CARD_WIDTH = 200;
+const LIBRARY_H_PADDING = 60;
+
+function computeGridColumns(containerWidth) {
+  const inner = Math.max(0, containerWidth - LIBRARY_H_PADDING);
+  const slot = CARD_WIDTH + GRID_GAP;
+  return Math.max(1, Math.floor((inner + GRID_GAP) / slot));
+}
+
 export function setupGridResizeObserver() {
   const container = elements.scrollArea || (elements.songGrid ? elements.songGrid.parentElement : null);
   if (!container || !elements.songGrid) return;
@@ -49,7 +61,7 @@ export function setupGridResizeObserver() {
       const width = entry.contentRect.width;
       if (width <= 0) continue;
       
-      const columns = Math.floor((width + 24 + 30) / (200 + 24));
+      const columns = computeGridColumns(width);
       
       if (columns > 0 && state.lastColumns !== columns) {
         // 1. [First] Capture current positions
@@ -61,10 +73,10 @@ export function setupGridResizeObserver() {
 
         // 2. [Last] Apply new layout
         state.lastColumns = columns;
-        elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, 200px)`;
+        elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, ${CARD_WIDTH}px)`;
 
         // Update the global CSS variable for other components to align with the grid
-        const actualWidth = (columns * 200) + ((columns - 1) * 24);
+        const actualWidth = columns * CARD_WIDTH + (columns - 1) * GRID_GAP;
         document.documentElement.style.setProperty('--grid-actual-width', `${actualWidth}px`);
 
         // 3. [Invert & Play] Trigger animation in next frame to allow layout shift
@@ -100,11 +112,11 @@ export function setupGridResizeObserver() {
   // Initial column count sync
   const initialWidth = container.clientWidth;
   if (initialWidth > 0) {
-    const columns = Math.floor((initialWidth + 24 + 30) / (200 + 24));
+    const columns = computeGridColumns(initialWidth);
     if (columns > 0) {
       state.lastColumns = columns;
-      elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, 200px)`;
-      const actualWidth = (columns * 200) + ((columns - 1) * 24);
+      elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, ${CARD_WIDTH}px)`;
+      const actualWidth = columns * CARD_WIDTH + (columns - 1) * GRID_GAP;
       document.documentElement.style.setProperty('--grid-actual-width', `${actualWidth}px`);
     }
   }

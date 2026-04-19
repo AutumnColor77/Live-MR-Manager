@@ -53,7 +53,7 @@ export function switchTab(tabId) {
       elements.songGrid.style.setProperty("display", "none", "important");
     }
 
-    elements.songGrid.classList.toggle("list-view", state.viewMode === "list");
+    elements.songGrid.classList.toggle("list-mode", state.viewMode === "list");
     elements.songGrid.classList.toggle("button-view", state.viewMode === "button");
     
     if (elements.viewport) {
@@ -67,7 +67,9 @@ export function switchTab(tabId) {
     elements.viewport?.classList.add("alignment-mode");
     if (alignmentPage) alignmentPage.style.display = "block";
     // Initialize alignment viewer if needed
-    initAlignmentViewer();
+    initAlignmentViewer().then(() => {
+      if (alignmentViewer) alignmentViewer.resize();
+    });
   } else {
     elements.viewport?.classList.remove("alignment-mode");
     if (alignmentPage) alignmentPage.style.display = "none";
@@ -95,15 +97,12 @@ function getTabTitle(tabId) {
   return titles[tabId] || "Live MR Manager";
 }
 
-let alignmentViewer = null;
+export let alignmentViewer = null;
 async function initAlignmentViewer() {
   if (alignmentViewer) return;
   const { ForcedAlignmentViewer } = await import('../alignment-viewer.js');
   const { invoke } = await import('../tauri-bridge.js');
   
   alignmentViewer = new ForcedAlignmentViewer("alignment-viewer-root");
-  alignmentViewer.invoke = invoke;
-  alignmentViewer.setupListeners();
-  alignmentViewer.setupCanvasListeners();
-  alignmentViewer.loadTrackList();
+  // Constructor already calls setupListeners, setupCanvasListeners, and loadTrackList
 }

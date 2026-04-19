@@ -1,87 +1,36 @@
 import { showNotification } from './utils.js';
-import { invoke, listen, convertFileSrc } from './tauri-bridge.js';
+import { invoke, listen } from './tauri-bridge.js';
 
-/**
- * ForcedAlignmentViewer (v15 Refactored)
- * A modular controller that orchestrates Audio engine, UI rendering, and AI services.
- * Strictly preserves the premium design specified by the user.
- */
 export class ForcedAlignmentViewer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
-        
         this.invoke = invoke;
         
-        // --- State Management ---
         this.state = {
             duration: 0,
             currentTime: 0,
             isPlaying: false,
-            alignmentData: null,
             segments: [],
+            waveformPoints: null,
             isProcessing: false,
-            progress: 0,
-            isSyncMode: false,
+            isSeeking: false,
             currentSyncIndex: -1,
-            waveformPoints: null // Cached points for fast drawing
+            isSyncMode: false
         };
 
-        this.unlistenProgress = null;
-        this.unlistenStatus = null;
-        this.animationId = null;
-
-        // --- Initialize ---
         this.initUI();
-        this.setupListeners(); // Async
-        this.setupCanvasListeners();
+        this.setupListeners();
+        this.parseLyrics();
+        this.setupBackendListeners();
         this.loadTrackList();
 
-        // 윈도우 리사이즈
-        window.addEventListener('resize', () => this.resizeCanvas());
-        
-        // Ensure canvas is ready after layout calc
-        setTimeout(() => this.resizeCanvas(), 200);
+        window.addEventListener('resize', () => this.resize());
     }
 
-    async setupListeners() {
-        // 백엔드 오디오 진행 이벤트 구독
-        this.unlistenProgress = await listen('playback-progress', (e) => {
-            if (this.state.isSeeking) return; // 탐색 중에는 업데이트 무시
-            const { positionMs, durationMs } = e.payload;
-            this.state.currentTime = positionMs / 1000;
-            this.state.duration = durationMs / 1000;
-            this.updateTimeDisplay();
-            this.drawWaveform();
-        });
-
-        // 백엔드 재생 상태 이벤트 구독
-        this.unlistenStatus = await listen('playback-status', (e) => {
-            const { status } = e.payload;
-            this.state.isPlaying = (status === 'playing');
-            this.updatePlayButton();
-        });
-    }
-
-    async onDestroy() {
-        // 리스너 해제
-        if (this.unlistenProgress) {
-            const unlisten = await this.unlistenProgress;
-            unlisten();
-        }
-        if (this.unlistenStatus) {
-            const unlisten = await this.unlistenStatus;
-            unlisten();
-        }
-    }
-
-    /**
-     * 1. View: Initialize HTML based on the v15 CSS Specification
-     */
     initUI() {
         if (!this.container) return;
         this.container.innerHTML = `
             <div class="alignment-container">
-                <!-- Left: Lyrics Input & Audio Selection -->
                 <aside class="lyric-input-column">
                     <div class="alignment-card">
                         <section>
@@ -90,590 +39,545 @@ export class ForcedAlignmentViewer {
                                 <select id="track-select" class="track-select">
                                     <option value="">음원을 선택하세요...</option>
                                 </select>
-                                <button id="refresh-tracks-btn" class="run-btn" style="min-width: 32px; padding: 0;">↻</button>
+                                <button id="refresh-btn" class="run-btn">↻</button>
                             </div>
                         </section>
-
-                        <section style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                            <span class="alignment-label">가사 입력 (원고)</span>
-                            <textarea id="lyrics-input" class="lyrics-textarea" placeholder="이곳에 노래 가사를 입력하세요...">한 낮에 내리는 햇살.
-머리는 어지럽고
-어제의 내가 난 기억이 나질 않네
-
-담배를 피워물고 거울앞에 서면
-유령처럼 낯선 거울속의 나
-
-희미하게 기억나는건
-술잔속에 비치는 어여쁜 너의 미소
-
-빗속을 뛰었던것 같고 
-울었던것 같고 소리친것 같은데
-너에게 애원한것 같고 
-울었던것 같고 소리친것 같은데 
-난 아무도 아무것도 기억이 없네
-
-희미하게 기억나는건
-술잔속에 비치는 어여쁜 너의 미소
-
-빗속을 뛰었던것 같고 
-울었던것 같고 소리친것 같은데
-너에게 애원한것 같고 
-울었던것 같고 소리친것 같은데 
-난 아무도 아무것도 기억이 없네</textarea>
+                        <section style="flex:1; display:flex; flex-direction:column; min-height:0;">
+                            <span class="alignment-label">가사 원고</span>
+                            <textarea id="lyrics-input" class="lyrics-textarea" placeholder="가사를 입력하세요..."></textarea>
                         </section>
                     </div>
                 </aside>
 
-                <!-- Center: Waveform & Manual Sync Controls -->
                 <main class="alignment-main">
                     <div class="alignment-card waveform-card">
                         <div class="card-header">
-                            <h3>오디오 타임라인 (수동 정렬)</h3>
+                            <h3>오디오 타임라인</h3>
+                            <div id="sync-status-text" class="status-badge">Manual Mode</div>
                         </div>
-                        
-                        <div class="waveform-canvas-container">
+                        <div class="waveform-canvas-container" style="position: relative;">
                             <canvas id="waveform-canvas"></canvas>
-                        </div>
-
-                        <!-- Manual Sync Control Bar -->
-                        <div class="sync-controls-panel">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                <div id="sync-status-text" style="color: var(--accent-blue); font-weight: 800; font-size: 0.8rem; text-transform: uppercase;">Manual Sync Mode</div>
-                                <div id="time-display" style="font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 0.85rem;">00:00 / 00:00</div>
+                            <div id="waveform-loader" class="loading-overlay">
+                                <div class="spinner spinner-lg"></div>
                             </div>
-                            
+                        </div>
+                        <div class="sync-controls-panel">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                                <span id="time-display" style="font-family:monospace; color:#94a3b8;">00:00 / 00:00</span>
+                            </div>
+                            <input type="range" id="seek-bar" class="seek-bar" value="0" step="0.1">
                             <div class="sync-buttons">
-                                <button id="play-btn" class="run-btn" style="width: 48px; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center;">
+                                <button id="play-btn" class="run-btn circle-btn">
                                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
-                                <button id="manual-sync-btn" class="run-btn primary-btn" style="flex: 2; height: 48px; background: var(--accent-blue); font-weight: 800;">
-                                    수동 정렬 시작
-                                </button>
-                                <button id="sync-tap-btn" class="run-btn" style="flex: 1; height: 48px; background: #6366f1; font-weight: 800; display: none; animation: pulse-border 2s infinite;">
-                                    TAP (Space)
-                                </button>
+                                <button id="sync-tap-btn" class="run-btn tap-btn" style="flex:2">TAP (Space)</button>
                             </div>
-                            
-                            <input type="range" id="seek-bar" class="seek-bar" value="0">
                         </div>
                     </div>
                 </main>
 
-                <!-- Right: Result Lyrics List -->
                 <aside class="lyric-sidebar">
                     <div class="alignment-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <span class="alignment-label">정렬 결과 (LRC)</span>
-                            <button id="add-line-btn" class="run-btn" style="padding: 4px 10px; font-size: 0.7rem;">+ 줄 추가</button>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span id="line-count" class="alignment-sub-label">0 lines</span>
-                            <button id="save-lrc-btn" class="run-btn primary-btn" style="display: none; padding: 4px 12px; font-size: 0.75rem; background: #10b981;">LRC 저장</button>
+                        <div class="card-header">
+                            <span class="alignment-label">LRC 결과</span>
+                            <button id="save-lrc-btn" class="run-btn success-btn" style="display:block">저장</button>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
-                            <div style="color: #475569; font-size: 0.9rem; text-align: center; margin-top: 50px;">
-                                가사를 입력하고<br><b>[수동 정렬 시작]</b>을 클릭하세요.
-                            </div>
+                            <div style="color:#475569; text-align:center; padding-top:40px;">정렬을 시작하세요.</div>
                         </div>
                     </div>
                 </aside>
             </div>
         `;
-        
         this.canvas = document.getElementById('waveform-canvas');
-        if (this.canvas) {
-            this.ctx = this.canvas.getContext('2d');
-            setTimeout(() => this.resizeCanvas(), 50); // Give layout a moment to settle
-        }
+        this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
     }
 
-    /**
-     * 2. Interaction: Centralized Event Subscriptions
-     */
     setupListeners() {
-        document.getElementById('refresh-tracks-btn').onclick = () => this.loadTrackList();
-        document.getElementById('add-line-btn').onclick = () => this.handleAddLine();
-        document.getElementById('play-btn').onclick = () => this.togglePlayback();
-        
-        const seekBar = document.getElementById('seek-bar');
-        seekBar.oninput = (e) => this.handleSeek(e.target.value);
-        seekBar.onchange = () => this.finishSeek();
+        const get = (id) => document.getElementById(id);
+        get('refresh-btn').onclick = () => this.loadTrackList();
+        get('track-select').onchange = (e) => this.loadAudio(e.target.value);
+        get('play-btn').onclick = () => this.togglePlayback();
+        get('sync-tap-btn').onclick = () => this.handleTap();
+        get('save-lrc-btn').onclick = () => this.saveLrc();
 
-        document.getElementById('manual-sync-btn').onclick = () => this.handleManualSyncInit();
-        document.getElementById('sync-tap-btn').onclick = () => this.handleSyncTap();
-        document.getElementById('save-lrc-btn').onclick = () => this.saveLyrics();
+        const lyricsInput = get('lyrics-input');
+        if (lyricsInput) {
+            lyricsInput.addEventListener('input', () => this.parseLyrics());
+        }
+
+        const bar = get('seek-bar');
         
-        // Manual sync hotkey (Space)
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && this.state.isSyncMode) {
-                e.preventDefault();
-                this.handleSyncTap();
+        // 드래그 중 실시간 업데이트 (파형 및 시간)
+        bar.addEventListener('input', (e) => {
+            this.state.isSeeking = true;
+            if (this.state.duration > 0) {
+                this.state.currentTime = (parseFloat(e.target.value) / 100) * this.state.duration;
+                this.updateTimeDisplay();
+                this.drawWaveform(); // 파형에도 즉시 반영
             }
         });
-        
-        document.getElementById('track-select').onchange = (e) => {
-            if (e.target.value) this.loadAudio(e.target.value);
+
+        // 드래그 종료 시 탐색(Seek) 요청
+        bar.addEventListener('change', async () => {
+            try {
+                if (this.state.duration > 0) {
+                    const ms = Math.floor(this.state.currentTime * 1000);
+                    // JSON.stringify에서는 BigInt를 처리할 수 없으므로 일반 Number를 사용합니다.
+                    await this.invoke('seek_to', { positionMs: ms });
+                }
+            } catch (err) {
+                console.error("Seek failed:", err);
+            } finally {
+                // 탐색이 완료되면 다시 재생 진행 상태를 수신할 수 있도록 변경
+                setTimeout(() => { 
+                    this.state.isSeeking = false; 
+                }, 100);
+            }
+        });
+
+        // 파형 캔버스 클릭 시 이동하는 로직 추가
+        if (this.canvas) {
+            this.canvas.addEventListener('mousedown', (e) => {
+                if (this.state.duration <= 0) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const ratio = Math.max(0, Math.min(1, x / rect.width));
+                
+                this.state.isSeeking = true;
+                this.state.currentTime = ratio * this.state.duration;
+                this.updateTimeDisplay();
+                this.drawWaveform();
+            });
+
+            this.canvas.addEventListener('mouseup', async () => {
+                if (!this.state.isSeeking) return;
+                try {
+                    const ms = Math.floor(this.state.currentTime * 1000);
+                    await this.invoke('seek_to', { positionMs: ms });
+                } catch (err) {
+                    console.error("Seek failed:", err);
+                } finally {
+                    setTimeout(() => { 
+                        this.state.isSeeking = false; 
+                    }, 100);
+                }
+            });
+        }
+
+        window.onkeydown = (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                this.handleTap();
+            }
         };
     }
 
-    /**
-     * 3. Service Layer: Audio & Track Management
-     */
-    async loadTrackList() {
-        const select = document.getElementById('track-select');
-        if (!select) return;
-        select.innerHTML = '<option value="">스캔 중...</option>';
-        try {
-            const tracks = await this.invoke('get_separated_audio_list');
-            select.innerHTML = '<option value="">음원을 선택하세요...</option>';
-            if (!tracks || tracks.length === 0) {
-                select.innerHTML = '<option value="">분리된 음원 없음</option>';
-                return;
-            }
-            for (const t of tracks) {
-                if (!t.has_vocal) continue;
-                const opt = new Option(t.name, t.folder_path + '/vocal.wav');
-                if (t.name.includes('07 숙취')) {
-                    opt.selected = true;
-                    this.loadAudio(opt.value);
-                }
-                select.appendChild(opt);
-            }
-            if (select.options.length === 1 && select.options[0].value === "") {
-                select.innerHTML = '<option value="">보컬 파일 없음</option>';
-            }
-        } catch (err) {
-            console.error('[Alignment] loadTrackList error:', err);
-            select.innerHTML = `<option value="">오류: ${err}</option>`;
-        }
-    }
-
-    async seekToMs(ms) {
+    async setupBackendListeners() {
         if (!window.__TAURI__) return;
-        try {
-            await this.invoke('seek_to', { positionMs: BigInt(ms) });
-        } catch (e) {
-            console.error('Seek failed:', e);
+
+        // CRITICAL: Clean up ANY existing global listeners to prevent "Event Storms"
+        // If the user navigates away and back, we must kill the old ghosts.
+        if (window._alignmentUnlistenProgress) {
+            const unlisten = await window._alignmentUnlistenProgress;
+            unlisten();
+            window._alignmentUnlistenProgress = null;
         }
+        if (window._alignmentUnlistenStatus) {
+            const unlisten = await window._alignmentUnlistenStatus;
+            unlisten();
+            window._alignmentUnlistenStatus = null;
+        }
+
+        // Now setup fresh, single listeners
+        window._alignmentUnlistenProgress = listen('playback-progress', (event) => {
+            // Rust struct may serialize to CamelCase or snake_case depending on serde config.
+            const positionMs = event.payload.positionMs ?? event.payload.position_ms ?? 0;
+            const durationMs = event.payload.durationMs ?? event.payload.duration_ms ?? 0;
+
+            if (this.state.isSeeking) return; // Only block when user is dragging
+
+            // Update duration only if we have a valid one
+            if (durationMs > 0) {
+                this.state.duration = durationMs / 1000;
+            }
+            this.state.currentTime = positionMs / 1000;
+            
+            this.updateTimeDisplay();
+            this.drawWaveform();
+            this.syncSidebar();
+        });
+
+        window._alignmentUnlistenStatus = listen('playback-status', (event) => {
+            const { status } = event.payload;
+            this.state.isPlaying = (status && status.toLowerCase() === 'playing');
+            this.updatePlayButton();
+        });
     }
 
-    /**
-     * 4. Audio Engine: Backend-Integrated Playback & State Sync
-     */
     async loadAudio(path) {
+        if (!path) return;
+        this.state.currentPath = path;
+        this.state.isProcessing = true;
+        this.state.currentTime = 0;
+        this.state.duration = 0;
+        this.state.waveformPoints = null; // 파형 초기화
+        this.drawWaveform();
+
         try {
-            this.state.waveformPoints = null;
+            // Get duration immediately from backend
+            const ms = await this.invoke('play_track', { path, durationMs: 0, playNow: false });
+            this.state.duration = ms / 1000;
+            this.updateTimeDisplay();
+
+            // Try to load existing LRC file (가사 우선 로드)
+            try {
+                const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
+                if (lrcContent && lrcContent.trim()) {
+                    this.parseLrcString(lrcContent);
+                } else {
+                    this.parseLyrics();
+                }
+            } catch (err) {
+                this.parseLyrics();
+            }
+
+            this.state.isProcessing = false;
             this.drawWaveform();
 
-            // 1. 파형 데이터 즉시 요청 (백엔드 요약본)
-            this.invoke('get_waveform_summary', { audio_path: path }).then(summary => {
-                this.state.waveformPoints = summary.points;
-                this.state.duration = summary.duration_sec || this.state.duration;
-                this.updateTimeDisplay();
-                this.drawWaveform();
-            }).catch(e => console.error('Waveform summary error:', e));
+            // Background waveform (파형 후순위 비동기 로드)
+            const vocalPath = path.replace(/\\/g, '/') + '/vocal.wav';
+            this.invoke('get_waveform_summary', { audioPath: vocalPath }).then(summary => {
+                if (summary) {
+                    this.state.waveformPoints = summary.points;
+                    if (!this.state.duration) {
+                        this.state.duration = summary.duration_sec;
+                        this.updateTimeDisplay();
+                    }
+                    this.drawWaveform();
+                }
+            }).catch(e => console.error("Waveform load failed:", e));
 
-            // 2. 백엔드 오디오 로드
-            // 정렬 모듈에서는 일관성을 위해 play_track을 호출
-            this.state.currentTime = 0;
-            // Note: play_track internally handles MR mixing if exists
-            await this.invoke('play_track', { path: path, durationMs: 0 });
-            
-            // 시각적 피드백을 위해 하단 도크 알림 발송 가능 (생략 가능)
-            console.log(`[Alignment] Backend audio prepared for: ${path}`);
-        } catch (err) {
-            console.error('Audio load error:', err);
-            showNotification(`오디오 로드 실패: ${err}`, 'error');
+        } catch (e) {
+            this.state.isProcessing = false;
+            showNotification('오디오 로드 실패', 'error');
+        }
+    }
+
+    updateTimeDisplay() {
+        const bar = document.getElementById('seek-bar');
+        const display = document.getElementById('time-display');
+        if (bar && !this.state.isSeeking) {
+            bar.value = this.state.duration > 0 ? (this.state.currentTime / this.state.duration) * 100 : 0;
+        }
+        if (display) {
+            display.innerText = `${this.formatTime(this.state.currentTime)} / ${this.formatTime(this.state.duration)}`;
         }
     }
 
     updatePlayButton() {
-        const playBtn = document.getElementById('play-btn');
-        if (!playBtn) return;
-        if (this.state.isPlaying) {
-            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
-        } else {
-            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-        }
+        const btn = document.getElementById('play-btn');
+        if (!btn) return;
+        btn.innerHTML = this.state.isPlaying 
+            ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     }
 
-    togglePlayback() {
-        this.invoke('toggle_playback').catch(e => {
-            console.error('Toggle playback failed:', e);
-            showNotification('재생 제어 실패', 'error');
-        });
-    }
-
-    handleSeek(pct) {
-        this.state.isSeeking = true;
-        const targetTime = (pct / 100) * this.state.duration;
-        this.state.currentTime = targetTime;
-        this.updateTimeDisplay();
-        this.drawWaveform();
-        
-        // 실시간 탐색 성능을 위해 쓰로틀링 없이 즉시 연동 (백엔드 부담 확인 필요)
-        const posMs = Math.floor(targetTime * 1000);
-        this.invoke('seek_to', { positionMs: posMs }).catch(() => {});
-    }
-
-    finishSeek() {
-        this.state.isSeeking = false;
-    }
-
-    /**
-     * 5. Renderer & Interactive UI: High-performance Drawing & Side-sync
-     */
-    animate() {
-        // Now handled by 'timeupdate' event, but can be used for smooth UI if needed
-    }
-
-    syncSidebar() {
-        const cur = this.state.currentTime;
-        const segments = this.state.segments;
-        const container = document.getElementById('lyric-lines-container');
-        if (!container) return;
-        
-        let activeIdx = -1;
-        if (this.state.isSyncMode) {
-            activeIdx = this.state.currentSyncIndex;
-        } else {
-            activeIdx = segments.findIndex(s => cur >= s.start && cur <= s.end);
-        }
-        
-        const items = container.querySelectorAll('.lyric-line-item');
-        items.forEach((item, idx) => {
-            if (idx === activeIdx) {
-                if (!item.classList.contains('active')) {
-                    item.classList.add('active');
-                    // Manual container scroll instead of scrollIntoView to prevent window scroll
-                    const containerHeight = container.offsetHeight;
-                    const itemTop = item.offsetTop;
-                    const itemHeight = item.offsetHeight;
-                    container.scrollTo({
-                        top: itemTop - (containerHeight / 2) + (itemHeight / 2),
-                        behavior: 'smooth'
-                    });
-                }
-            } else {
-                item.classList.remove('active');
-            }
-        });
-    }
-
-    renderLyricList() {
-        const container = document.getElementById('lyric-lines-container');
-        if (!container) return;
-        container.innerHTML = '';
-        
-        this.state.segments.forEach((seg, idx) => {
-            const div = document.createElement('div');
-            const isSyncing = this.state.isSyncMode && idx === this.state.currentSyncIndex;
-            div.className = `lyric-line-item \${isSyncing ? 'syncing' : ''}`;
-            div.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="time-range">${this.formatTime(seg.start)} - ${this.formatTime(seg.end)}</div>
-                    <button class="del-line-btn" data-index="${idx}" style="background:transparent; border:none; color:#ef4444; font-size:1.1rem; cursor:pointer; opacity:0; transition:opacity 0.2s;">&times;</button>
-                </div>
-                <div class="lyric-text" data-index="${idx}">${seg.text}</div>
-            `;
-            
-            // Interaction: Show delete button on hover
-            div.onmouseenter = () => div.querySelector('.del-line-btn').style.opacity = '1';
-            div.onmouseleave = () => div.querySelector('.del-line-btn').style.opacity = '0';
-            
-            // Interaction: Delete line
-            div.querySelector('.del-line-btn').onclick = (e) => {
-                e.stopPropagation();
-                this.state.segments.splice(idx, 1);
-                this.renderLyricList();
-                this.drawWaveform();
-            };
-            
-            // Interaction: Seek on click
-            div.onclick = (e) => {
-                if (e.target.contentEditable === "true") return;
-                this.handleSeek((seg.start / this.state.duration) * 100);
-            };
-
-            // Interaction: Double click to edit
-            const textEl = div.querySelector('.lyric-text');
-            textEl.ondblclick = (e) => {
-                e.stopPropagation();
-                textEl.contentEditable = "true";
-                textEl.focus();
-            };
-
-            textEl.onblur = () => {
-                textEl.contentEditable = "false";
-                this.state.segments[idx].text = textEl.innerText.trim();
-            };
-
-            textEl.onkeydown = (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    textEl.blur();
-                }
-            };
-
-            container.appendChild(div);
-        });
-        document.getElementById('line-count').innerText = `${this.state.segments.length} lines`;
-    }
-
-    handleAddLine() {
-        if (!this.state.audioTag.src) return;
-        const lastEnd = this.state.segments.length > 0 ? this.state.segments[this.state.segments.length - 1].end : 0;
-        const newStart = lastEnd;
-        const newEnd = Math.min(newStart + 2, this.state.duration);
-        
-        this.state.segments.push({
-            start: newStart,
-            end: newEnd,
-            text: '새 가사 줄'
-        });
-        this.renderLyricList();
-        this.drawWaveform();
-    }
-
-    // --- Manual Sync Logic ---
-    
-    handleManualSyncInit() {
-        if (this.state.isSyncMode) {
-            this.state.isSyncMode = false;
-            document.getElementById('manual-sync-btn').innerText = '수동 정렬 시작';
-            document.getElementById('manual-sync-btn').style.background = 'rgba(16, 185, 129, 0.1)';
-            document.getElementById('sync-tap-btn').style.display = 'none';
-            return;
-        }
-
-        const lyrics = document.getElementById('lyrics-input').value.trim();
-        if (!lyrics) {
-            showNotification('가사를 먼저 입력해주세요.', 'error');
-            return;
-        }
-
-        const lines = lyrics.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        this.state.segments = lines.map(text => ({
-            start: 0,
-            end: 0,
-            text: text
-        }));
-
-        this.state.isSyncMode = true;
-        this.state.currentSyncIndex = 0;
-        
-        document.getElementById('manual-sync-btn').innerText = '수동 정렬 중단';
-        document.getElementById('manual-sync-btn').style.background = 'rgba(239, 68, 68, 0.2)';
-        document.getElementById('sync-tap-btn').style.display = 'block';
-        document.getElementById('save-lrc-btn').style.display = 'block';
-        
-        this.renderLyricList();
-        this.drawWaveform();
-        showNotification('수동 정렬 모드 활성화. 재생 중 Space를 눌러 시작점을 찍으세요.', 'info');
-    }
-
-    handleSyncTap() {
-        if (!this.state.isSyncMode || !this.state.isPlaying) return;
-        
-        const idx = this.state.currentSyncIndex;
-        if (idx >= this.state.segments.length) {
-            showNotification('모든 정렬이 완료되었습니다.', 'success');
-            return;
-        }
-
-        const currentTime = this.state.currentTime;
-        this.state.segments[idx].start = currentTime;
-        if (idx > 0) this.state.segments[idx - 1].end = currentTime;
-        this.state.segments[idx].end = this.state.duration;
-
-        this.state.currentSyncIndex++;
-        this.renderLyricList();
-        this.drawWaveform();
-        this.syncSidebar();
-    }
-
-    async saveLyrics() {
-        if (this.state.segments.length === 0) return;
-        const trackPath = document.getElementById('track-select').value;
-        if (!trackPath) return showNotification('음원을 선택해주세요.', 'error');
-
-        try {
-            let lrc = '';
-            this.state.segments.forEach(seg => {
-                const t = seg.start * 1000;
-                const m = Math.floor(t / 60000);
-                const s = Math.floor((t % 60000) / 1000);
-                const ms = Math.floor((t % 1000) / 10);
-                lrc += `[${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}] ${seg.text}\n`;
-            });
-
-            await this.invoke('save_lrc_file', { audioPath: trackPath, content: lrc });
-            showNotification('LRC 파일이 저장되었습니다.', 'success');
-        } catch (err) {
-            showNotification(`저장 실패: ${err}`, 'error');
-        }
-    }
-
-    /**
-     * 5. Renderer & Interactive UI: High-performance Drawing & Drag-logic
-     */
     drawWaveform() {
-        if (!this.ctx) return;
+        if (!this.ctx || !this.canvas) return;
         const { width, height } = this.canvas;
         this.ctx.clearRect(0, 0, width, height);
 
-        // A. Draw Segments (Background Blocks)
-        if (this.state.duration > 0) {
-            this.state.segments.forEach((seg, idx) => {
-                const xStart = (seg.start / this.state.duration) * width;
-                const xEnd = (seg.end / this.state.duration) * width;
-                
-                this.ctx.fillStyle = (this.state.currentTime >= seg.start && this.state.currentTime <= seg.end) 
-                    ? 'rgba(74, 158, 255, 0.3)' 
-                    : 'rgba(74, 158, 255, 0.1)';
-                this.ctx.fillRect(xStart, 0, xEnd - xStart, height);
-                
-                this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.5)';
-                this.ctx.beginPath();
-                this.ctx.moveTo(xStart, 0); this.ctx.lineTo(xStart, height);
-                this.ctx.moveTo(xEnd, 0);   this.ctx.lineTo(xEnd, height);
-                this.ctx.stroke();
-            });
-        }
+        // 1. Segments
+        this.state.segments.forEach((seg, idx) => {
+            const x1 = (seg.start / this.state.duration) * width;
+            const x2 = (seg.end / this.state.duration) * width;
+            this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.1)';
+            this.ctx.fillRect(x1, 0, x2 - x1, height);
+        });
 
-        // B. Draw Waveform (Fast! Using pre-calc buckets from backend)
+        // 2. Waveform
         if (this.state.waveformPoints) {
-            const points = this.state.waveformPoints;
             this.ctx.beginPath();
-            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-            this.ctx.lineWidth = 1;
-            
+            this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            const points = this.state.waveformPoints;
             for (let i = 0; i < width; i++) {
-                const pointIdx = Math.floor((i / width) * points.length);
-                const p = points[pointIdx]; // p is [min, max] tuple from Rust
-                if (!p) continue;
-                // Apply scaling (0.8) to keep peaks within visual bounds
-                const scale = 0.8;
-                this.ctx.moveTo(i, (1 + p[0] * scale) * height / 2);
-                this.ctx.lineTo(i, (1 + p[1] * scale) * height / 2);
+                const idx = Math.floor((i / width) * points.length);
+                const p = points[idx];
+                if (p) {
+                    this.ctx.moveTo(i, (1 + p[0]) * height / 2);
+                    this.ctx.lineTo(i, (1 + p[1]) * height / 2);
+                }
             }
             this.ctx.stroke();
         }
 
-        // C. Playhead
+        // 3. Playhead
         if (this.state.duration > 0) {
-            const xPlay = (this.state.currentTime / this.state.duration) * width;
-            this.ctx.strokeStyle = '#ff4a4a';
+            const px = (this.state.currentTime / this.state.duration) * width;
+            this.ctx.strokeStyle = '#ef4444';
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
-            this.ctx.moveTo(xPlay, 0);
-            this.ctx.lineTo(xPlay, height);
+            this.ctx.moveTo(px, 0); this.ctx.lineTo(px, height);
             this.ctx.stroke();
         }
     }
 
-    setupCanvasListeners() {
-        let isDragging = false;
-        let dragTarget = null; // { idx, type: 'start'|'end' }
+    // --- Helpers & Others ---
 
-        this.canvas.onmousedown = (e) => {
-            const rect = this.canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const time = (x / rect.width) * this.state.duration;
-            
-            // Find if we clicked near a boundary (threshold 10px)
-            const threshold = 10;
-            for (let i = 0; i < this.state.segments.length; i++) {
-                const seg = this.state.segments[i];
-                const xStart = (seg.start / this.state.duration) * rect.width;
-                const xEnd = (seg.end / this.state.duration) * rect.width;
-                
-                if (Math.abs(x - xStart) < threshold) {
-                    isDragging = true; dragTarget = { idx: i, type: 'start' }; break;
-                }
-                if (Math.abs(x - xEnd) < threshold) {
-                    isDragging = true; dragTarget = { idx: i, type: 'end' }; break;
-                }
-            }
-        };
-
-        window.onmousemove = (e) => {
-            if (!isDragging || !dragTarget) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-            const newTime = (x / rect.width) * this.state.duration;
-            
-            const seg = this.state.segments[dragTarget.idx];
-            
-            // --- Overlap Prevention Logic ---
-            if (dragTarget.type === 'start') {
-                const minTime = dragTarget.idx > 0 ? this.state.segments[dragTarget.idx - 1].end : 0;
-                const maxTime = seg.end - 0.01;
-                seg.start = Math.max(minTime, Math.min(newTime, maxTime));
-            } else {
-                const minTime = seg.start + 0.01;
-                const maxTime = dragTarget.idx < this.state.segments.length - 1 
-                    ? this.state.segments[dragTarget.idx + 1].start 
-                    : this.state.duration;
-                seg.end = Math.max(minTime, Math.min(newTime, maxTime));
-            }
-            
-            this.drawWaveform();
-            this.renderLyricList(); // Update timestamps in sidebar
-        };
-
-        window.onmouseup = () => {
-            isDragging = false; dragTarget = null;
-        };
+    async loadTrackList() {
+        const select = document.getElementById('track-select');
+        if (!select) return;
+        try {
+            const tracks = await this.invoke('get_separated_audio_list');
+            select.innerHTML = '<option value="">음원을 선택하세요...</option>';
+            tracks.filter(t => t.has_vocal).forEach(t => {
+                select.appendChild(new Option(t.name, t.folder_path));
+            });
+        } catch (e) { console.error(e); }
     }
 
-    // --- Helpers ---
+    togglePlayback() { this.invoke('toggle_playback'); }
+
     formatTime(sec) {
-        if (!sec || isNaN(sec)) return '00:00';
+        if (!sec || isNaN(sec)) return "00:00.0";
         const m = Math.floor(sec / 60);
-        const s = Math.floor(sec % 60);
-        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        const s = (sec % 60).toFixed(1);
+        return `${m.toString().padStart(2, '0')}:${s.padStart(4, '0')}`;
     }
 
-    resizeCanvas() {
-        if (!this.canvas || !this.canvas.parentElement) return;
+    resize() {
+        if (!this.canvas) return;
         const rect = this.canvas.parentElement.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-            // Retry if layout not ready
-            setTimeout(() => this.resizeCanvas(), 100);
-            return;
-        }
         this.canvas.width = rect.width;
         this.canvas.height = rect.height;
         this.drawWaveform();
     }
 
-    handleSeek(value) {
-        if (!this.state.audioTag.src) return;
-        const time = (value / 100) * this.state.duration;
-        this.state.audioTag.currentTime = time;
-        this.state.currentTime = time;
-        this.updateTimeDisplay();
-        this.drawWaveform();
+    parseLrcString(lrcContent) {
+        const lines = lrcContent.split('\n');
+        const segments = [];
+        let rawLyrics = [];
+        const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
+        
+        lines.forEach(line => {
+            const match = timeRegex.exec(line);
+            if (match) {
+                const min = parseInt(match[1]);
+                const sec = parseFloat(match[2]);
+                const timeStr = match[0];
+                const text = line.replace(timeStr, '').trim();
+                segments.push({ text, start: min * 60 + sec, end: 0 });
+                rawLyrics.push(text);
+            } else if (line.trim()) {
+                segments.push({ text: line.trim(), start: 0, end: 0 });
+                rawLyrics.push(line.trim());
+            }
+        });
+        
+        // Calculate end times
+        for (let i = 0; i < segments.length - 1; i++) {
+            if (segments[i].start > 0 && segments[i+1].start > 0) {
+                segments[i].end = segments[i+1].start;
+            } else {
+                segments[i].end = 0;
+            }
+        }
+        if (segments.length > 0) {
+            segments[segments.length - 1].end = this.state.duration > 0 ? this.state.duration : 0;
+        }
+
+        this.state.segments = segments;
+        // The first line without a start time is the sync index
+        let nextIdx = segments.findIndex(s => s.start === 0);
+        if (nextIdx === -1) nextIdx = segments.length;
+        this.state.currentSyncIndex = nextIdx;
+        
+        const inputElement = document.getElementById('lyrics-input');
+        if (inputElement) inputElement.value = rawLyrics.join('\n');
+        
+        this.state.isSyncMode = true;
+        this.renderLyricList();
     }
 
-    handlePlaybackEnd() {
-        this.state.currentTime = 0;
-        this.pause();
-        this.updateTimeDisplay();
-        this.drawWaveform();
+    parseLyrics() {
+        const lyrics = document.getElementById('lyrics-input').value.trim();
+        if (!lyrics) {
+            this.state.segments = [];
+            this.state.currentSyncIndex = 0;
+            this.renderLyricList();
+            return;
+        }
+
+        const oldSegments = this.state.segments || [];
+        const newLines = lyrics.split('\n').filter(l => l.trim());
+        
+        const newSegments = newLines.map(text => {
+            // 1순위: 텍스트가 완전히 동일한 기존 라인을 찾아 시간 복사
+            const exactMatch = oldSegments.find(s => s.text === text && !s._used);
+            if (exactMatch) {
+                exactMatch._used = true;
+                return { text, start: exactMatch.start, end: exactMatch.end };
+            }
+            return { text, start: 0, end: 0 };
+        });
+
+        // 2순위: 텍스트가 수정되었으나 같은 줄 번호(인덱스)에 있던 시간 복사 (오타 수정 대응)
+        newSegments.forEach((seg, i) => {
+            if (seg.start === 0 && oldSegments[i] && !oldSegments[i]._used) {
+                seg.start = oldSegments[i].start;
+                seg.end = oldSegments[i].end;
+                oldSegments[i]._used = true;
+            }
+        });
+
+        // 임시 플래그 정리
+        oldSegments.forEach(s => delete s._used);
+
+        this.state.segments = newSegments;
+        this.state.isSyncMode = true;
+        
+        // 싱크 인덱스가 초기값이면 0으로 설정
+        if (this.state.currentSyncIndex < 0) {
+            this.state.currentSyncIndex = 0;
+        }
+        // 이미 탭이 진행된 상태라면 싱크 인덱스 유지 보정
+        else if (this.state.currentSyncIndex > this.state.segments.length) {
+            this.state.currentSyncIndex = this.state.segments.length;
+        }
+
+        this.renderLyricList();
     }
 
-    updateTimeDisplay() {
-        const display = document.getElementById('time-display');
-        const seekBar = document.getElementById('seek-bar');
-        if (display) {
-            display.innerText = `${this.formatTime(this.state.currentTime)} / ${this.formatTime(this.state.duration)}`;
+    handleTap() {
+        if (!this.state.isPlaying) return;
+        const idx = this.state.currentSyncIndex;
+        if (idx < 0 || idx >= this.state.segments.length) return;
+        
+        this.state.segments[idx].start = this.state.currentTime;
+        if (idx > 0 && this.state.segments[idx - 1].start > 0) {
+            // If the previous segment has a valid start time, set its end time
+            this.state.segments[idx - 1].end = this.state.currentTime;
         }
-        if (seekBar && !this.state.isSeeking) {
-            const pct = this.state.duration > 0 ? (this.state.currentTime / this.state.duration) * 100 : 0;
-            seekBar.value = pct;
+        this.state.segments[idx].end = this.state.duration;
+        this.state.currentSyncIndex++;
+        this.renderLyricList();
+    }
+
+    renderLyricList() {
+        const container = document.getElementById('lyric-lines-container');
+        if (!container) return;
+        container.innerHTML = this.state.segments.map((s, i) => `
+            <div class="lyric-line-item" data-index="${i}">
+                <span class="time-range" title="이 시간으로 재생 이동">${this.formatTime(s.start)}</span>
+                <span class="lyric-text" title="이 가사 위치로 탐색 및 타겟 지정">${s.text}</span>
+            </div>
+        `).join('');
+
+        // 클릭 이벤트 추가 (기능 분리: 이동 vs 타겟 지정)
+        container.querySelectorAll('.lyric-line-item').forEach((item) => {
+            item.onclick = async (e) => {
+                const idx = parseInt(item.getAttribute('data-index'));
+                const isTimeClick = e.target.classList.contains('time-range');
+                const targetTime = this.state.segments[idx].start;
+                
+                // 가사나 시간을 클릭하면 해당 위치로 이동 (시간이 0보다 클 때)
+                if (targetTime > 0) {
+                    this.state.currentTime = targetTime;
+                    this.updateTimeDisplay();
+                    this.drawWaveform();
+                    try {
+                        await this.invoke('seek_to', { positionMs: Math.floor(targetTime * 1000) });
+                    } catch (err) {
+                        console.error("Seek failed:", err);
+                    }
+                }
+                
+                // 만약 시간을 클릭했다면 다음 스탬프를 '다음 가사'에 찍도록 설정
+                // 가사를 클릭했다면 '해당 가사'를 다시 찍도록 설정
+                if (isTimeClick && targetTime > 0) {
+                    this.state.currentSyncIndex = Math.min(idx + 1, this.state.segments.length);
+                } else {
+                    this.state.currentSyncIndex = idx;
+                }
+                
+                this.syncSidebar(true);
+            };
+        });
+
+        // Force an immediate sync and scroll
+        this.syncSidebar(true);
+    }
+
+    syncSidebar(forceScroll = false) {
+        if (!this.state.segments || this.state.segments.length === 0) return;
+        
+        let playingIndex = -1;
+        // 1. Find the currently playing segment
+        for (let i = 0; i < this.state.segments.length; i++) {
+            const s = this.state.segments[i];
+            if (s.start > 0 && this.state.currentTime >= s.start && (s.end === 0 || this.state.currentTime < s.end)) {
+                playingIndex = i;
+            }
         }
-        this.syncSidebar();
+
+        const syncIndex = this.state.currentSyncIndex;
+
+        const container = document.getElementById('lyric-lines-container');
+        if (!container) return;
+        
+        const items = container.querySelectorAll('.lyric-line-item');
+        let shouldScroll = forceScroll;
+
+        items.forEach((item, i) => {
+            // 재생 중인 가사 하이라이트 (active)
+            if (i === playingIndex) {
+                if (!item.classList.contains('active')) {
+                    item.classList.add('active');
+                    shouldScroll = true;
+                }
+            } else {
+                item.classList.remove('active');
+            }
+
+            // 앞으로 찍을 가사 하이라이트 (syncing)
+            if (i === syncIndex) {
+                if (!item.classList.contains('syncing')) {
+                    item.classList.add('syncing');
+                    shouldScroll = true;
+                }
+            } else {
+                item.classList.remove('syncing');
+            }
+        });
+
+        if (shouldScroll) {
+            // 탭 할 가사 위치(syncing)가 있으면 거기로, 없으면 재생 중(active) 위치로 스크롤
+            const targetClass = syncIndex !== -1 && syncIndex < this.state.segments.length ? '.syncing' : '.active';
+            const targetItem = container.querySelector(`.lyric-line-item${targetClass}`);
+            if (targetItem) {
+                targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+
+    async saveLrc() {
+        if (!this.state.currentPath || !this.state.segments || this.state.segments.length === 0) {
+            showNotification('저장할 가사 데이터가 없습니다.', 'error');
+            return;
+        }
+        try {
+            const lrcLines = this.state.segments.map(s => {
+                const min = Math.floor(s.start / 60).toString().padStart(2, '0');
+                const sec = (s.start % 60).toFixed(2).padStart(5, '0');
+                return `[${min}:${sec}]${s.text}`;
+            });
+            const content = lrcLines.join('\n');
+            await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
+            showNotification('LRC 파일이 성공적으로 저장되었습니다.', 'success');
+        } catch (err) {
+            console.error(err);
+            showNotification('LRC 저장 실패: ' + err, 'error');
+        }
     }
 }

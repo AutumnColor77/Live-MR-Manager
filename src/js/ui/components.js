@@ -1,5 +1,6 @@
 /**
  * js/ui/components.js - Shared UI Components & Status Updates
+ * Cache Buster: 2026-04-19 12:10
  */
 import { state } from '../state.js';
 import { elements } from './elements.js';
@@ -45,7 +46,16 @@ export function updateAiModelStatus(statusInput) {
 export function updateTaskUI() {
   if (!elements.taskBadge || !elements.activeTasksList) return;
   
-  const tasks = Object.entries(state.activeTasks).map(([path, data]) => ({ ...data, path }));
+  const tasks = Object.entries(state.activeTasks).map(([path, data]) => {
+    const song = state.songLibrary.find((s) => s.path === path);
+    return {
+      ...data,
+      path,
+      // separation-progress payload may not include rich song metadata, so hydrate from library.
+      title: data.title || song?.title || "알 수 없는 곡",
+      thumbnail: data.thumbnail || song?.thumbnail || "",
+    };
+  });
   elements.taskBadge.textContent = tasks.length;
   elements.taskBadge.style.display = tasks.length > 0 ? "flex" : "none";
   
@@ -61,6 +71,7 @@ export function updateTaskUI() {
   elements.activeTasksList.innerHTML = tasks.map(task => {
     const percent = Math.floor(task.percentage || 0);
     const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
+    const providerLabel = task.provider === "CUDA" ? "GPU" : "CPU";
     
     // Status Translation
     const statusMap = {
@@ -81,14 +92,14 @@ export function updateTaskUI() {
             ${thumbUrl ? `<img src="${thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>'}
           </div>
           <div class="task-main-details">
-            <div class="task-title">${task.title || '알 수 없는 곡'}</div>
+            <div class="task-title">${task.title}</div>
             <div class="task-status-row">
               <span class="task-status-text">${displayStatus}</span>
               <span class="task-percentage">${percent}%</span>
             </div>
           </div>
           <div class="task-actions">
-            <div class="task-provider-badge ${task.provider === 'CUDA' ? 'provider-gpu' : ''}">${task.provider || 'CPU'}</div>
+            <div class="task-provider-badge ${task.provider === 'CUDA' ? 'provider-gpu' : ''}">${providerLabel}</div>
             <button class="btn-task-cancel" onclick="window.cancelTask(this.closest('.task-card').dataset.path)">취소</button>
           </div>
         </div>
@@ -148,32 +159,41 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSeparate = document.getElementById("menu-separate");
   const menuDeleteMr = document.getElementById("menu-delete-mr");
   const menuPlay = document.getElementById("menu-play");
+  const menuEdit = document.getElementById("menu-edit");
+  const menuDelete = document.getElementById("menu-delete");
+
+  invoke('remote_js_log', { msg: `[Context Menu Init] menuPlay=${!!menuPlay}, menuEdit=${!!menuEdit}, menuDelete=${!!menuDelete}, menuSeparate=${!!menuSeparate}, menuDeleteMr=${!!menuDeleteMr}` }).catch(() => {});
 
   if (menuDeleteMr) menuDeleteMr.style.display = "none";
   if (menuSeparate) menuSeparate.style.display = "none";
 
-  // Note: For simplicity in this refactor pass, we'll keep the logic inside showSongContextMenu
-  // but eventually we should move handler setup to a separate events module.
-  
   // Update: Using dynamic import for audio.js
   const menuTargetId = song.path;
   import('../audio.js').then(({ checkMrSeparated, deleteMr }) => {
+    invoke('remote_js_log', { msg: `[MR Check] Starting MR check for path: ${song.path}` }).catch(() => {});
     checkMrSeparated(song.path).then(isSeparated => {
+      invoke('remote_js_log', { msg: `[MR Check] Completed. isSeparated=${isSeparated}` }).catch(() => {});
       // Race condition check: make sure the menu is still for the same song
-      if (state.editingSongIndex !== originalIndex) return;
+      if (state.editingSongIndex !== originalIndex) {
+        invoke('remote_js_log', { msg: `[MR Check] Race condition detected. Skipping.` }).catch(() => {});
+        return;
+      }
 
       if (menuDeleteMr) {
+        invoke('remote_js_log', { msg: `[MR Delete Init] Setting display=${isSeparated ? "block" : "none"}` }).catch(() => {});
         menuDeleteMr.style.display = isSeparated ? "block" : "none";
         menuDeleteMr.onclick = async () => {
+          invoke('remote_js_log', { msg: `[MR Delete Click] Attempting to delete MR for: ${song.path}` }).catch(() => {});
           elements.contextMenu.classList.remove("active");
           elements.contextMenu.style.display = 'none';
           try {
             const { stopPlayback } = await import('../player.js');
             if (typeof stopPlayback === 'function') await stopPlayback();
             await deleteMr(song.path);
+            invoke('remote_js_log', { msg: `[MR Delete] Successfully deleted MR` }).catch(() => {});
             
             // Update local state to reflect deletion
-            const songInLib = state.library.find(s => s.path === song.path);
+            const songInLib = state.songLibrary.find(s => s.path === song.path);
             if (songInLib) {
               songInLib.isSeparated = false;
               songInLib.is_separated = false;
@@ -186,16 +206,21 @@ export function showSongContextMenu(e, song, originalIndex) {
             const { renderLibrary } = await import('./library.js');
             renderLibrary();
           } catch (err) {
+            invoke('remote_js_log', { msg: `[MR Delete Error] ${err.message}` }).catch(() => {});
             console.error("MR Delete failed:", err);
           }
         };
+      } else {
+        invoke('remote_js_log', { msg: `[MR Delete Init] menuDeleteMr is null!` }).catch(() => {});
       }
 
       if (menuSeparate) {
         if (state.activeTasks[song.path]) {
+          invoke('remote_js_log', { msg: `[MR Separate] Task in progress, showing cancel option` }).catch(() => {});
           menuSeparate.style.display = "block";
           menuSeparate.textContent = "분리 취소";
           menuSeparate.onclick = () => {
+            invoke('remote_js_log', { msg: `[MR Separate Cancel] Cancelling separation` }).catch(() => {});
             elements.contextMenu.classList.remove("active");
             elements.contextMenu.style.display = 'none';
             // audio.js handles cancel_separation
@@ -207,18 +232,24 @@ export function showSongContextMenu(e, song, originalIndex) {
           menuSeparate.style.display = isSeparated ? "none" : "block";
           menuSeparate.textContent = "MR 분리";
           menuSeparate.onclick = async () => {
+            invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
             elements.contextMenu.classList.remove("active");
             elements.contextMenu.style.display = 'none';
             try {
               const { startMrSeparation } = await import('../audio.js');
               await startMrSeparation(song.path);
             } catch (err) {
+              invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
               console.error("Separation trigger failed:", err);
             }
           };
         }
+      } else {
+        invoke('remote_js_log', { msg: `[MR Separate Init] menuSeparate is null!` }).catch(() => {});
       }
     });
+  }).catch(err => {
+    invoke('remote_js_log', { msg: `[Audio Import Error] ${err.message}` }).catch(() => {});
   });
 
   if (menuPlay) {
@@ -226,6 +257,7 @@ export function showSongContextMenu(e, song, originalIndex) {
     menuPlay.textContent = (isCurrent && state.isPlaying) ? "일시정지" : "재생";
 
     menuPlay.onclick = async () => {
+      invoke('remote_js_log', { msg: `[Menu Play] Clicked for index ${originalIndex}` }).catch(() => {});
       const { selectTrack, handlePlaybackToggle } = await import('../player.js');
       if (isCurrent) {
         await handlePlaybackToggle();
@@ -235,38 +267,68 @@ export function showSongContextMenu(e, song, originalIndex) {
       elements.contextMenu.classList.remove("active");
       elements.contextMenu.style.display = 'none';
     };
+  } else {
+    invoke('remote_js_log', { msg: `[Menu Play Init] menuPlay is null!` }).catch(() => {});
   }
 
-  document.getElementById("menu-edit").onclick = () => {
-    import('./modals.js').then(({ openEditModal }) => {
-       openEditModal(song, originalIndex);
-    });
-    elements.contextMenu.classList.remove("active");
-    elements.contextMenu.style.display = 'none';
-  };
+  if (menuEdit) {
+    invoke('remote_js_log', { msg: `[Menu Edit Init] Setting onclick handler` }).catch(() => {});
+    menuEdit.onclick = async () => {
+      invoke('remote_js_log', { msg: `[Menu Edit] Clicked for index ${originalIndex}` }).catch(() => {});
+      try {
+        const { openEditModal } = await import('./modals.js');
+        openEditModal(song, originalIndex);
+      } catch (err) {
+        invoke('remote_js_log', { msg: `[Menu Edit Error] ${err.message}` }).catch(() => {});
+        console.error("[Menu-Edit] Import or call failed:", err);
+      }
+      elements.contextMenu.classList.remove("active");
+      elements.contextMenu.style.display = 'none';
+    };
+  } else {
+    invoke('remote_js_log', { msg: `[Menu Edit Init] menuEdit is null!` }).catch(() => {});
+  }
 
-  document.getElementById("menu-delete").onclick = () => {
-    import('./library.js').then(({ deleteSong }) => {
-      deleteSong(originalIndex);
-    });
-    elements.contextMenu.classList.remove("active");
-    elements.contextMenu.style.display = 'none';
-  };
+  if (menuDelete) {
+    invoke('remote_js_log', { msg: `[Menu Delete Init] Setting onclick handler` }).catch(() => {});
+    menuDelete.onclick = async () => {
+      invoke('remote_js_log', { msg: `[Menu Delete] Clicked for index ${originalIndex}` }).catch(() => {});
+      try {
+        const { deleteSong } = await import('./library.js');
+        await deleteSong(originalIndex);
+      } catch (err) {
+        invoke('remote_js_log', { msg: `[Menu Delete Error] ${err.message}` }).catch(() => {});
+        console.error("[Menu-Delete] Import or call failed:", err);
+      }
+      elements.contextMenu.classList.remove("active");
+      elements.contextMenu.style.display = 'none';
+    };
+  } else {
+    invoke('remote_js_log', { msg: `[Menu Delete Init] menuDelete is null!` }).catch(() => {});
+  }
 }
 export function updateCardStatusBadge(path, card = null) {
   const targetCard = card || Array.from(document.querySelectorAll('.song-card')).find(el => el.dataset.path === path);
   if (!targetCard) return;
 
-  const isList = state.viewMode === "list";
-  const parent = isList ? targetCard.querySelector(".status-badge-container") : targetCard.querySelector(".thumbnail");
+  const mode = state.viewMode || "grid";
+  let parent;
+  
+  if (mode === "grid") {
+    parent = targetCard.querySelector(".thumbnail");
+  } else {
+    // List and Button modes use the wrapper inside info area
+    parent = targetCard.querySelector(".status-badge-wrapper");
+  }
+  
   if (!parent) return;
 
-  // Clear existing badge
-  const existingBadge = parent.querySelector(".status-badge");
-  if (existingBadge) existingBadge.remove();
+  // Clear existing status badges
+  const existingBadges = parent.querySelectorAll(".status-badge");
+  existingBadges.forEach(b => b.remove());
 
   // Find song in library for info
-  const song = state.library.find(s => s.path === path);
+  const song = state.songLibrary.find(s => s.path === path);
   
   const badge = document.createElement("div");
   badge.className = "status-badge";
@@ -315,7 +377,10 @@ export function updateThumbnailOverlay() {
 
   // Also update dock thumb overlay
   if (elements.thumbOverlay) {
-    elements.thumbOverlay.classList.toggle("loading", state.isLoading);
+    const isCurrent = !!state.currentTrack;
+    elements.thumbOverlay.classList.toggle("active", isCurrent);
+    elements.thumbOverlay.classList.toggle("playing", isCurrent && state.isPlaying);
+    elements.thumbOverlay.classList.toggle("loading", isCurrent && state.isLoading);
   }
 }
 

@@ -1,0 +1,82 @@
+/* Manager Tab & Curation UI */
+.manager-tab-nav {
+  display: flex;
+  gap: 10px;
+  padding: 0 30px;
+  background: #1a1a20;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.manager-tab-btn {
+  padding: 14px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manager-tab-btn.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.drop-box {
+  width: 100%;
+  padding: 60px 40px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border: 2px dashed var(--glass-border);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.drop-box:hover {
+  border-color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.curation-container {
+  display: flex;
+  height: 100%;
+  gap: 24px;
+  padding: 10px;
+}
+
+.curation-left {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid var(--glass-border);
+}
+
+.curation-right {
+  width: 360px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 14px;
+  padding: 24px;
+  border: 1px solid var(--glass-border);
+}
+
+.unclassified-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-item {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+}

@@ -45,3 +45,5 @@ src-tauri/models/
 *.onnx
 *.onnx_data
 src-tauri/last_json.json
+
+backup/

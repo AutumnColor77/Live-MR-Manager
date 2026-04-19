@@ -3,12 +3,36 @@
  */
 
 import { state } from './state.js';
-import { elements, updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui.js';
+import { elements, updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui/index.js';
 import { formatTime, showNotification, getThumbnailUrl } from './utils.js';
 import { 
   togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack, 
   setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated 
 } from './audio.js';
+
+function parseDurationToMs(duration) {
+  if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
+    return Math.floor(duration * 1000);
+  }
+  if (typeof duration !== "string") return 0;
+
+  const trimmed = duration.trim();
+  if (!trimmed) return 0;
+
+  const parts = trimmed.split(":").map((p) => Number.parseInt(p, 10));
+  if (parts.some((p) => Number.isNaN(p) || p < 0)) return 0;
+
+  if (parts.length === 2) {
+    const [mm, ss] = parts;
+    return ((mm * 60) + ss) * 1000;
+  }
+  if (parts.length === 3) {
+    const [hh, mm, ss] = parts;
+    return ((hh * 3600) + (mm * 60) + ss) * 1000;
+  }
+
+  return 0;
+}
 
 /**
  * Highlights a track without playing it
@@ -74,6 +98,7 @@ export async function selectTrack(index) {
 
   if (state.currentTrack && state.currentTrack.path === song.path) {
     if (state.isLoading) state.isLoading = false;
+    // Always toggle (play/pause) if clicking the already current track
     handlePlaybackToggle();
     return;
   }
@@ -88,14 +113,27 @@ export async function selectTrack(index) {
   state.currentTrack = song;
   state.isPlaying = false;
   state.isLoading = true;
+  state.targetProgressMs = 0;
+  state.currentProgressMs = 0;
+
+  const durationHintMs = parseDurationToMs(song.duration);
+  if (durationHintMs > 0) {
+    state.trackDurationMs = durationHintMs;
+  }
   
-  // Sync UI immediately
+  // Sync UI immediately - dock metadata
   if (elements.dockTitle) elements.dockTitle.textContent = song.title;
   if (elements.dockArtist) elements.dockArtist.textContent = song.artist || "Unknown Artist";
   if (elements.dockThumbImg) {
     elements.dockThumbImg.src = getThumbnailUrl(song.thumbnail, song);
     elements.dockThumbImg.style.display = "block";
   }
+  
+  // Update dock progress bar immediately
+  if (elements.timeTotal) elements.timeTotal.textContent = song.duration || "--:--";
+  if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+  if (elements.playbackBar) elements.playbackBar.value = 0;
+  if (elements.progressFill) elements.progressFill.style.width = "0%";
   
   updateThumbnailOverlay();
   updatePlayButton();
@@ -107,16 +145,10 @@ export async function selectTrack(index) {
   
   updateAiTogglesState(song);
   
-  // Progress Reset
-  state.targetProgressMs = 0;
-  state.currentProgressMs = 0;
-  
-  if (song.duration && song.duration.includes(":")) {
-    const parts = song.duration.split(":");
-    const sec = (parseInt(parts[0]) * 60) + (parseInt(parts[1]) || 0);
-    state.trackDurationMs = sec * 1000;
-  } else {
-    state.trackDurationMs = 1;
+  // Start progress bar animation immediately for loading state
+  if (!state.rafId) {
+    state.lastRafTime = performance.now();
+    state.rafId = requestAnimationFrame(updateProgressBar);
   }
   
   if (elements.playbackBar) elements.playbackBar.value = 0;
@@ -157,7 +189,7 @@ export async function selectTrack(index) {
     await setVolume(v);
 
     await Promise.race([
-      apiPlayTrack(song.path, state.trackDurationMs),
+      apiPlayTrack(song.path, durationHintMs > 0 ? durationHintMs : state.trackDurationMs),
       timeoutPromise
     ]);
     
@@ -186,7 +218,10 @@ export async function selectTrack(index) {
 }
 
 export function updateProgressBar(timestamp) {
-  if (!state.isPlaying) { state.rafId = null; return; }
+  if (!state.isPlaying && !state.isLoading) { 
+    state.rafId = null; 
+    return; 
+  }
 
   const delta = timestamp - state.lastRafTime;
   state.lastRafTime = timestamp;
@@ -216,7 +251,9 @@ export function updateProgressBar(timestamp) {
     elements.timeTotal.textContent = formatTime(state.trackDurationMs / 1000);
   }
 
-  state.rafId = requestAnimationFrame(updateProgressBar);
+  if (state.isPlaying || state.isLoading) {
+    state.rafId = requestAnimationFrame(updateProgressBar);
+  }
 }
 
 export function handleNextTrack() {

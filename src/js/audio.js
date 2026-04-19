@@ -90,8 +90,17 @@ export async function checkMrSeparated(path) {
   return await invoke("check_mr_separated", { path });
 }
 
+export async function deleteMr(path) {
+  try {
+    await invoke("delete_mr", { path });
+  } catch (err) {
+    console.error("Failed to delete MR:", err);
+    throw err;
+  }
+}
+
 export async function getYoutubeMetadata(url) {
-  return await invoke("get_youtube_metadata", { url });
+  return await invoke("youtube_metadata_fetcher", { url });
 }
 
 export async function getAudioMetadata(path) {
@@ -108,7 +117,7 @@ export async function setVocalBalance(balance) {
 export async function startMrSeparation(path) {
   // 1. 즉시 준비 상태 등록 (백엔드 이벤트 도달 전)
   const { state } = await import('./state.js');
-  const { renderLibrary } = await import('./ui.js');
+  const { renderLibrary } = await import('./ui/library.js');
   state.activeTasks[path] = { percentage: 0, status: "Preparing", provider: "local" };
   renderLibrary(); // 배지 즉시 반영
   

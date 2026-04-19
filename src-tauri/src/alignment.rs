@@ -345,10 +345,12 @@ fn perform_alignment_internal(
 
 #[command]
 pub async fn get_waveform_summary(audio_path: String) -> Result<WaveformSummary, String> {
+    sys_log(&format!("[Alignment] Generating waveform summary for: {}", audio_path));
     let processor = AudioProcessor::new();
     let n_buckets = 2000;
     
     let (points, duration_sec) = processor.create_waveform_summary(&audio_path, n_buckets)?;
+    sys_log(&format!("[Alignment] Waveform summary generated: {} points, {:.2}s", points.len(), duration_sec));
     
     Ok(WaveformSummary { 
         points, 
@@ -680,9 +682,42 @@ impl Aligner {
 #[command]
 pub async fn save_lrc_file(audio_path: String, content: String) -> Result<(), String> {
     let audio_buf = PathBuf::from(&audio_path);
-    let lrc_path = audio_buf.with_extension("lrc");
+    let lrc_path = audio_buf.join("lyric.lrc");
     
     fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
     sys_log(&format!("[Alignment] LRC saved to {:?}", lrc_path));
     Ok(())
+}
+
+#[command]
+pub async fn load_lrc_file(audio_path: String) -> Result<String, String> {
+    let audio_buf = PathBuf::from(&audio_path);
+    
+    // 1. lyric.lrc (새로운 기본값)
+    let lrc_path = audio_buf.join("lyric.lrc");
+    if lrc_path.exists() {
+        return fs::read_to_string(&lrc_path).map_err(|e| format!("LRC 읽기 실패: {}", e));
+    }
+    
+    // 2. vocal.lrc (이전 호환성)
+    let old_vocal_lrc = audio_buf.join("vocal.lrc");
+    if old_vocal_lrc.exists() {
+        return fs::read_to_string(&old_vocal_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+    }
+    
+    // 3. 폴더명.lrc (직전 호환성)
+    let folder_name = audio_buf.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let fallback_filename = if folder_name.is_empty() { "lyrics.lrc".to_string() } else { format!("{}.lrc", folder_name) };
+    let fallback_lrc = audio_buf.join(&fallback_filename);
+    if fallback_lrc.exists() {
+        return fs::read_to_string(&fallback_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+    }
+    
+    // 4. 폴더명과 같은 레벨의 .lrc (최초 호환성)
+    let parent_lrc = audio_buf.with_extension("lrc");
+    if parent_lrc.exists() {
+        return fs::read_to_string(&parent_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+    }
+    
+    Err("LRC file not found".to_string())
 }

@@ -57,14 +57,14 @@
 
 .logo-text {
   font-family: 'SUITE', sans-serif;
-  font-size: 1.25rem;
+  font-size: 1.2rem; /* Adjusted for better two-line fit */
   font-weight: 900;
   line-height: 1.1;
   background: linear-gradient(to right, #fff, #94a3b8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  white-space: nowrap;
+  display: block;
 }
 
 .nav-group {
@@ -146,8 +146,9 @@
   position: relative;
   padding-bottom: var(--dock-height);
   width: 100%;
-  overflow: hidden;
-  min-width: 0;
+  overflow-y: hidden;
+  overflow-x: auto; /* Allow horizontal scroll instead of breaking layout */
+  min-width: 1108px !important; /* 5 grid columns: 1048px tracks + 60px library horizontal padding */
 }
 
 .top-bar {
@@ -155,14 +156,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px var(--safe-area);
+  padding: 20px var(--library-safe-area, 30px) !important;
   background: linear-gradient(to bottom, var(--bg-color), transparent);
   z-index: 50;
   flex-wrap: wrap;
   gap: 20px;
-  max-width: var(--grid-actual-width, 100%);
-  margin: 0;
-  width: 100%;
+  width: 100% !important; /* Fluid */
+  max-width: 1600px !important; /* Higher ceiling */
+  margin: 0 !important;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .view-header {
@@ -229,11 +231,32 @@ h1 {
 
 .scroll-area {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll !important; /* Force always on to prevent width jumps */
   overflow-x: hidden;
   min-width: 0;
   scrollbar-gutter: stable;
-  padding: 10px var(--safe-area) 40px var(--safe-area);
+  padding: 10px 0 40px 0; /* Horizontal padding handled by max-width/margin-auto */
+}
+
+/* Custom Floating Scrollbar (Webkit/WebView2) */
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: content-box;
 }
 
 .page-controls-wrapper {
@@ -241,15 +264,17 @@ h1 {
   top: 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-start; /* Anchor to left */
   gap: 20px;
-  padding: 10px var(--safe-area);
+  padding: 10px var(--library-safe-area, 30px);
   background: transparent;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   z-index: 110;
-  max-width: calc(var(--grid-actual-width, 100%) + (var(--safe-area) * 2));
-  margin: 0;
-  width: 100%;
+  width: 100% !important; /* Fluid */
+  max-width: 1600px !important; /* Higher ceiling */
+  margin: 0 !important;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .library-controls {
@@ -282,6 +307,19 @@ h1 {
 
 #youtube-search {
   width: 100%; /* Full width for YouTube page */
+}
+
+/* Global View Content Alignment (Locked to 30px Frame) */
+.settings-container,
+.tasks-container,
+#alignment-viewer-root,
+.song-grid {
+  width: 100% !important; /* Fluid expansion */
+  max-width: 1600px !important; /* Higher ceiling */
+  padding-left: var(--library-safe-area, 30px) !important;
+  padding-right: var(--library-safe-area, 30px) !important;
+  margin: 0 !important; /* Left anchored */
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Responsive Adjustments */

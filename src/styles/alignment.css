@@ -17,9 +17,9 @@
     display: grid;
     height: calc(100vh - 160px); 
     width: 100%;
-    grid-template-columns: minmax(260px, 1fr) minmax(400px, 3.5fr) minmax(260px, 1fr);
-    gap: 20px;
-    padding: 10px 24px 20px 24px;
+    grid-template-columns: minmax(280px, 0.8fr) minmax(400px, 3fr) minmax(280px, 0.8fr);
+    gap: 16px; /* Reduced gap for a tighter feel */
+    padding: 10px 0 20px 0; /* Already optimized in previous turn */
     box-sizing: border-box;
     color: #e2e8f0;
     background: transparent;
@@ -45,7 +45,7 @@
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 16px;
-    padding: 16px;
+    padding: 12px; /* Reduced from 16px */
     backdrop-filter: blur(25px) saturate(180%);
     -webkit-backdrop-filter: blur(25px) saturate(180%);
     display: flex;
@@ -118,7 +118,7 @@
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 16px;
-    padding: 20px;
+    padding: 14px 16px; /* Reduced from 20px */
     color: #fff;
     font-family: 'SUITE', sans-serif;
     font-size: 0.95rem;
@@ -183,7 +183,7 @@ canvas#waveform-canvas {
 }
 
 .lyric-line-item {
-    padding: 14px 18px;
+    padding: 10px 14px; /* Reduced from 14px 18px */
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.04);
@@ -283,10 +283,53 @@ canvas#waveform-canvas {
 
 .sync-controls-panel {
     background: rgba(0, 0, 0, 0.25);
-    padding: 24px;
+    padding: 16px; 
     border-radius: 24px;
     border: 1px solid rgba(255, 255, 255, 0.05);
     margin-top: 10px;
+}
+
+/* Custom Seek Bar Styling */
+.seek-bar {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 10px 0;
+}
+
+.seek-bar:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent-blue);
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(74, 158, 255, 0.6);
+    border: 2px solid #fff;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.seek-bar::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+}
+
+.seek-bar::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--accent-blue);
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(74, 158, 255, 0.6);
+    border: 2px solid #fff;
+    cursor: pointer;
 }
 
 .sync-buttons {
@@ -300,4 +343,83 @@ canvas#waveform-canvas {
 /* (The following markers were for AI features now removed) */
 .comparison-table, .badge, .badge-match, .badge-diff, .badge-error, .analysis-card, #analysis-panel-root {
     display: none;
+}
+
+/* ==========================================
+   V2 Iron-Clad Engine Styles
+   ========================================== */
+
+.v2-theme .time-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+
+.v2-theme .circle-btn {
+    border-radius: 50% !important;
+    padding: 0 !important;
+    aspect-ratio: 1/1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.v2-theme .circle-btn:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    transform: scale(1.05);
+}
+
+.v2-theme .tap-btn {
+    background: #6366f1 !important;
+    font-weight: 800;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    animation: pulse-border 2s infinite;
+}
+
+.v2-theme .status-badge {
+    background: rgba(74, 158, 255, 0.1);
+    color: var(--accent-blue);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.v2-theme .lyric-line-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.v2-theme .lyric-line-item .time-tag {
+    font-size: 0.75rem;
+    color: var(--accent-blue);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+}
+
+.v2-theme .lyric-line-item .text {
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.v2-theme .success-btn {
+    background: #10b981 !important;
+    font-weight: 800;
+    padding: 6px 16px !important;
+    font-size: 0.75rem !important;
+}
+
+.v2-theme canvas {
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: pixelated;
+    image-rendering: optimizeQuality;
 }

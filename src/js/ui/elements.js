@@ -33,10 +33,14 @@ export const elements = {
 
   // Additional Controls
   volSlider: null,
+  volSliderVal: null,
   vocalBalance: null,
+  toggleVocal: null,
+  toggleLyric: null,
   viewGridBtn: null,
   viewListBtn: null,
   viewButtonBtn: null,
+  btnResetAudio: null,
   ytFetchBtn: null,
   ytUrlInput: null,
   btnPrev: null,
@@ -53,6 +57,9 @@ export const elements = {
   // Library Manager
   managerModal: null,
   btnOpenManager: null,
+  btnManagerSave: null,
+  btnManagerCancel: null,
+  managerModalClose: null,
   managerSearchInput: null,
   managerTableBody: null,
   managerStat: null,
@@ -61,6 +68,7 @@ export const elements = {
   broadcastTasksControl: null,
   btnMetadataSearch: null,
   metadataSearchResultsModal: null,
+  searchResultsList: null,
   searchResultsClose: null,
   editVolume: null,
   editVolumeVal: null,
@@ -84,6 +92,7 @@ export const elements = {
   btnExportBackup: null,
   btnImportBackup: null,
   btnRunRescue: null,
+  searchSuggestions: null,
 };
 
 export function initDomReferences() {
@@ -145,6 +154,7 @@ export function initDomReferences() {
   elements.btnOpenManager = document.getElementById("btn-open-manager");
   elements.btnManagerSave = document.getElementById("manager-modal-save");
   elements.btnManagerCancel = document.getElementById("manager-modal-cancel");
+  elements.managerModalClose = document.getElementById("manager-modal-close");
   elements.managerSearchInput = document.getElementById("manager-search-input");
   elements.managerTableBody = document.getElementById("manager-table-body");
   elements.managerStat = document.getElementById("manager-stat");
@@ -177,4 +187,5 @@ export function initDomReferences() {
   elements.btnExportBackup = document.getElementById("btn-export-backup");
   elements.btnImportBackup = document.getElementById("btn-import-backup");
   elements.btnRunRescue = document.getElementById("btn-run-rescue");
+  elements.searchSuggestions = document.getElementById("search-suggestions");
 }

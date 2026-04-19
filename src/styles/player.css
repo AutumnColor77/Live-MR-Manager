@@ -176,25 +176,68 @@
   display: inline-block;
 }
 
-/* Loading Icon & Overlay */
-.thumb-overlay .icon-loading {
+/* Thumbnail Overlay & Icons */
+.thumb-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 5;
+  backdrop-filter: blur(2px);
+}
+
+.song-card:hover .thumb-overlay,
+.thumb-overlay.active {
+  opacity: 1;
+}
+
+.thumb-overlay svg {
   display: none;
-  animation: spin 0.8s linear infinite;
-  color: var(--accent-primary);
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+  color: #fff;
 }
 
-.thumb-overlay.loading {
-  background: rgba(0, 0, 0, 0.6) !important;
-  opacity: 1 !important;
+/* 1. Default Hover State (Not active) */
+.song-card:hover .thumb-overlay:not(.active) .icon-play {
+  display: block;
+  transform: scale(1.1);
 }
 
-.thumb-overlay.loading .icon-loading {
+/* 2. Active State (Selected/Current) */
+.thumb-overlay.active .icon-play {
   display: block;
 }
 
+/* 3. Playing State (Pause icon) */
+.thumb-overlay.active.playing .icon-play {
+  display: none;
+}
+.thumb-overlay.active.playing .icon-pause {
+  display: block;
+}
+
+/* 4. Loading State (Spinner) - Takes highest priority */
+.thumb-overlay.loading {
+  background: rgba(0, 0, 0, 0.7) !important;
+  opacity: 1 !important;
+}
+.thumb-overlay.loading .icon-loading {
+  display: block !important;
+  animation: spin 0.8s linear infinite;
+  color: var(--accent-primary);
+}
 .thumb-overlay.loading .icon-play,
 .thumb-overlay.loading .icon-pause {
-  display: none;
+  display: none !important;
 }
 
 .playing-bottom-row {
@@ -458,4 +501,99 @@ input:checked + .slider:before {
 .range-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
   background: var(--accent-primary);
+}
+
+/* --- Vocal Balance Popover (Added during refactor fix) --- */
+.vocal-item { position: relative !important; }
+.balance-popover {
+  position: absolute !important;
+  bottom: calc(100% + 15px) !important;
+  left: -10px !important;
+  width: 260px !important;
+  background: rgba(15, 15, 20, 0.98) !important;
+  backdrop-filter: blur(25px) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+  z-index: 9999 !important;
+  display: block !important;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.balance-popover.active {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateY(0) !important;
+}
+.popover-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 20px;
+  width: 12px;
+  height: 12px;
+  background: rgba(15, 15, 20, 0.98);
+  border-right: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border);
+  transform: rotate(45deg);
+}
+.popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+#vocal-balance-val {
+  color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+.popover-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.side-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+.mini-range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+}
+.mini-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: all 0.2s;
+}
+.mini-range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: var(--accent-primary);
+}
+
+/* --- UI Cleanups --- */
+.status-msg-dock {
+  display: none !important;
 }

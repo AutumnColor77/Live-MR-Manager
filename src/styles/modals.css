@@ -91,23 +91,50 @@
 }
 
 .modal-footer {
-  padding: 24px 30px;
-  background: rgba(255, 255, 255, 0.015);
+  padding: 20px 30px;
+  background: rgba(10, 10, 15, 0.4);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  backdrop-filter: blur(10px);
+  min-height: 85px;
+}
+
+.footer-left-group, .footer-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 16px;
-  backdrop-filter: blur(5px);
+}
+
+.manager-stat {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .modal-footer button {
-  padding: 6px 28px;
-  font-size: 1.05rem;
-  min-height: 48px;
-  font-weight: 600;
-  border-radius: 12px;
+  padding: 0 24px;
+  font-size: 0.95rem;
+  height: 42px;
+  font-weight: 700;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-footer button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.modal-footer button:active {
+  transform: translateY(0);
 }
 
 /* Metadata Edit Form Specifics */
@@ -225,28 +252,49 @@
 .manager-search-box {
   display: flex;
   align-items: center;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0 16px;
   gap: 12px;
   width: 420px;
-  height: 38px;
-  transition: all 0.3s;
+  height: 42px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .manager-search-box:focus-within {
+  background: rgba(255, 255, 255, 0.06);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
 }
 
 .manager-search-box svg {
   color: var(--text-dim);
-  transition: color 0.3s;
+  width: 18px;
+  height: 18px;
+  transition: color 0.3s, transform 0.3s;
 }
 
 .manager-search-box:focus-within svg {
   color: var(--accent-primary);
+  transform: scale(1.1);
+}
+
+.manager-search-box input {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 0.95rem;
+  font-weight: 500;
+  outline: none !important;
+  padding: 0;
+  height: 100%;
+}
+
+.manager-search-box input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .manager-body {

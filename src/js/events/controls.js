@@ -13,6 +13,12 @@ export function initControlListeners() {
       handlePlaybackToggle();
     };
   }
+  if (elements.dockThumb) {
+    elements.dockThumb.onclick = async () => {
+      const { handlePlaybackToggle } = await import('../player.js');
+      handlePlaybackToggle();
+    };
+  }
 
   // Prev/Next
   if (elements.btnPrev) {
@@ -88,10 +94,22 @@ export function initControlListeners() {
     if (elements.volSliderVal) setupDirectInput(elements.volSliderVal, elements.volSlider);
   }
 
-  // Vocal Balance Control
+  // Vocal Balance Control (Popover Logic)
+  const labelVocal = document.getElementById("label-vocal-balance");
+  const popoverVocal = document.getElementById("popover-vocal-balance");
+  const vocalBalanceVal = document.getElementById("vocal-balance-val");
+
+  if (labelVocal && popoverVocal) {
+    labelVocal.onclick = (e) => {
+      e.stopPropagation();
+      popoverVocal.classList.toggle("active");
+    };
+  }
+
   if (elements.vocalBalance) {
     elements.vocalBalance.oninput = (e) => {
       const val = e.target.value;
+      if (vocalBalanceVal) vocalBalanceVal.textContent = `${val}%`;
       invoke('set_vocal_balance', { balance: parseFloat(val) });
     };
 
@@ -113,8 +131,26 @@ export function initControlListeners() {
     };
     elements.playbackBar.onchange = async (e) => {
       const { seekTo } = await import('../audio.js');
+      const { updateThumbnailOverlay } = await import('../ui/components.js');
+      
       const targetMs = (parseFloat(e.target.value) / 100) * state.trackDurationMs;
-      await seekTo(targetMs);
+      state.targetProgressMs = targetMs;
+      state.currentProgressMs = targetMs;
+      
+      state.isLoading = true;
+      updateThumbnailOverlay();
+
+      try {
+        await seekTo(targetMs);
+      } catch (err) {
+        console.error("Seek failed:", err);
+      } finally {
+        state.isSeeking = false;
+        // isLoading will be updated by playback-status event from backend, 
+        // but we can force an update here just in case.
+        state.isLoading = false; 
+        updateThumbnailOverlay();
+      }
     };
   }
 
@@ -135,26 +171,27 @@ export function initControlListeners() {
   }
 
   // View Mode Toggles
+  const updateViewMode = (mode) => {
+    state.viewMode = mode;
+    localStorage.setItem("viewMode", mode);
+    
+    if (elements.viewGridBtn) elements.viewGridBtn.classList.toggle("active", mode === "grid");
+    if (elements.viewListBtn) elements.viewListBtn.classList.toggle("active", mode === "list");
+    if (elements.viewButtonBtn) elements.viewButtonBtn.classList.toggle("active", mode === "button");
+
+    if (elements.viewport) elements.viewport.setAttribute("data-view-mode", mode);
+    
+    if (elements.songGrid) {
+      elements.songGrid.classList.remove("grid-mode", "list-mode", "button-mode");
+      elements.songGrid.classList.add(`${mode}-mode`);
+      // Force display: grid for grid/button, flex for list
+      elements.songGrid.style.display = (mode === "list") ? "flex" : "grid";
+    }
+    
+    import('../ui/library.js').then(({ renderLibrary }) => renderLibrary());
+  };
+
   if (elements.viewGridBtn && elements.viewListBtn) {
-    const updateViewMode = (mode) => {
-      state.viewMode = mode;
-      localStorage.setItem("viewMode", mode);
-      
-      if (elements.viewGridBtn) elements.viewGridBtn.classList.toggle("active", mode === "grid");
-      if (elements.viewListBtn) elements.viewListBtn.classList.toggle("active", mode === "list");
-      if (elements.viewButtonBtn) elements.viewButtonBtn.classList.toggle("active", mode === "button");
-
-      if (elements.viewport) elements.viewport.setAttribute("data-view-mode", mode);
-      
-      if (elements.songGrid) {
-        elements.songGrid.classList.toggle("list-view", mode === "list");
-        elements.songGrid.classList.toggle("button-view", mode === "button");
-        elements.songGrid.style.display = (mode === "list") ? "flex" : "grid";
-      }
-      
-      import('../ui/library.js').then(({ renderLibrary }) => renderLibrary());
-    };
-
     if (elements.viewGridBtn) elements.viewGridBtn.onclick = () => updateViewMode("grid");
     if (elements.viewListBtn) elements.viewListBtn.onclick = () => updateViewMode("list");
     if (elements.viewButtonBtn) elements.viewButtonBtn.onclick = () => updateViewMode("button");
@@ -207,6 +244,13 @@ export function initControlListeners() {
       document.querySelectorAll(".custom-select").forEach(el => el.classList.remove("active"));
     }
 
+    // 4. Close Vocal Balance Popover on outside click
+    const vocalItem = e.target.closest(".vocal-item");
+    if (!vocalItem) {
+      const popover = document.getElementById("popover-vocal-balance");
+      if (popover) popover.classList.remove("active");
+    }
+
     // 3. Deselect card when clicking outside
     const card = e.target.closest(".song-card");
     const dock = e.target.closest(".control-dock");
@@ -229,8 +273,8 @@ export function initControlListeners() {
       try {
         const { getAudioMetadata, saveLibrary } = await import('../audio.js');
         const metadata = await getAudioMetadata(url);
-        state.library.push(metadata);
-        await saveLibrary(state.library);
+        state.songLibrary.push(metadata);
+        await saveLibrary(state.songLibrary);
         elements.ytUrlInput.value = "";
         const { showNotification } = await import('../utils.js');
         showNotification("추가되었습니다.", "success");
@@ -247,35 +291,6 @@ export function initControlListeners() {
     // Support Enter key on URL input
     elements.ytUrlInput.onkeydown = (e) => {
       if (e.key === "Enter") elements.ytFetchBtn.click();
-    };
-  }
-
-  // Rescue Button
-  const btnRunRescue = document.getElementById("btn-run-rescue");
-  if (btnRunRescue) {
-    btnRunRescue.onclick = async () => {
-      btnRunRescue.disabled = true;
-      btnRunRescue.textContent = "복구 중...";
-      try {
-        const count = await invoke('run_cache_rescue');
-        const { showNotification } = await import('../utils.js');
-        if (count > 0) {
-          showNotification(`성공적으로 ${count}곡을 복구했습니다.`, "success");
-          const { loadLibrary } = await import('../audio.js');
-          state.library = await loadLibrary() || [];
-          const { renderLibrary } = await import('../ui/library.js');
-          renderLibrary();
-        } else {
-          showNotification("복구할 새로운 곡이 없습니다.", "info");
-        }
-      } catch (err) {
-        const { showNotification } = await import('../utils.js');
-        showNotification("복구 중 오류가 발생했습니다.", "error");
-        console.error(err);
-      } finally {
-        btnRunRescue.disabled = false;
-        btnRunRescue.textContent = "목록 자동 복구";
-      }
     };
   }
 
@@ -339,19 +354,36 @@ export function initControlListeners() {
   // Settings Page Listeners
   if (elements.btnExportBackup) {
     elements.btnExportBackup.onclick = async () => {
-      const { exportBackup } = await import('../audio.js');
-      await exportBackup();
+      const { showNotification } = await import('../utils.js');
+      try {
+        await invoke("export_backup");
+        showNotification("라이브러리 목록이 성공적으로 백업되었습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("백업 중 오류가 발생했습니다: " + err, "error");
+        }
+      }
     };
   }
   if (elements.btnImportBackup) {
     elements.btnImportBackup.onclick = async () => {
-      const { importBackup } = await import('../audio.js');
-      await importBackup();
+      const { showNotification } = await import('../utils.js');
+      try {
+        await invoke("import_backup");
+        const { loadLibrary } = await import('../audio.js');
+        const { renderLibrary } = await import('../ui/library.js');
+        state.songLibrary = await loadLibrary() || [];
+        renderLibrary();
+        showNotification("백업본에서 없는 곡들을 성공적으로 병합했습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("복원 중 오류가 발생했습니다: " + err, "error");
+        }
+      }
     };
   }
   if (elements.btnRunRescue) {
     elements.btnRunRescue.onclick = async () => {
-      const { runCacheRescue, loadLibrary } = await import('../audio.js');
       const { showNotification } = await import('../utils.js');
       const { renderLibrary } = await import('../ui/library.js');
       
@@ -359,9 +391,11 @@ export function initControlListeners() {
       elements.btnRunRescue.classList.add("loading-btn");
       
       try {
-        const count = await runCacheRescue();
+        // This command may be unavailable on some builds; surface a clear error.
+        const count = await invoke("run_cache_rescue");
+        const { loadLibrary } = await import('../audio.js');
         showNotification(`${count}곡의 데이터를 성공적으로 복구했습니다.`, "success");
-        state.library = await loadLibrary() || [];
+        state.songLibrary = await loadLibrary() || [];
         renderLibrary();
       } catch (err) {
         showNotification("복구 중 오류가 발생했습니다: " + err, "error");
@@ -373,8 +407,12 @@ export function initControlListeners() {
 
   if (elements.toggleBroadcastMode) {
     elements.toggleBroadcastMode.onchange = async (e) => {
-      const { setBroadcastMode } = await import('../audio.js');
-      await setBroadcastMode(e.target.checked);
+      try {
+        await invoke("set_broadcast_mode", { enabled: e.target.checked });
+      } catch (err) {
+        const { showNotification } = await import('../utils.js');
+        showNotification("방송 보호 모드 변경 실패: " + err, "error");
+      }
     };
     // Initialize state
     elements.toggleBroadcastMode.checked = state.broadcastMode;
@@ -382,21 +420,57 @@ export function initControlListeners() {
   const btnOpenCache = document.getElementById("btn-open-cache");
   if (btnOpenCache) {
     btnOpenCache.onclick = async () => {
-      const { openCacheFolder } = await import('../audio.js');
-      await openCacheFolder();
+      await invoke("open_cache_folder");
     };
   }
 
   // AI Model Selection & Actions
   const aiModelSelect = document.getElementById("ai-model-select-dropdown");
+  const aiModelDesc = document.getElementById("ai-model-desc");
+  const modelDescMap = {
+    kim: "기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.",
+    inst_hq_3: "고품질 MR 추출에 특화된 모델입니다. 보컬 분리보다는 배경 음악을 깔끔하게 추출하는 데 최적화되어 있습니다.",
+  };
+
+  const hasPendingSeparations = async () => {
+    const localActive = Object.values(state.activeTasks || {}).some((task) => {
+      const s = String(task?.status || "").toLowerCase();
+      return !["finished", "cancelled", "error"].includes(s);
+    });
+    if (localActive) return true;
+    try {
+      const activePaths = await invoke("get_active_separations");
+      return Array.isArray(activePaths) && activePaths.length > 0;
+    } catch (_) {
+      return localActive;
+    }
+  };
+
+  const refreshModelUiState = async (modelId) => {
+    const { updateAiModelStatus } = await import('../ui/components.js');
+    const isReady = await invoke("check_model_ready", { modelId });
+    updateAiModelStatus(isReady);
+  };
+
   if (aiModelSelect) {
-    aiModelSelect.addEventListener("change", async (e) => {
-      const modelId = e.target.value;
-      await invoke("update_model_settings", { modelId });
-      const { checkAiModelStatus } = await import('../audio.js');
-      const { updateAiModelStatus } = await import('../ui/components.js');
-      const isReady = await checkAiModelStatus();
-      updateAiModelStatus(isReady);
+    aiModelSelect.addEventListener("click", async (e) => {
+      const option = e.target.closest(".option-item");
+      if (!option) return;
+      const modelId = option.dataset.value;
+      if (!modelId) return;
+
+      try {
+        await invoke("update_model_settings", { modelId });
+        if (aiModelDesc && modelDescMap[modelId]) {
+          aiModelDesc.textContent = modelDescMap[modelId];
+        }
+        await refreshModelUiState(modelId);
+        const { showNotification } = await import('../utils.js');
+        showNotification(modelId === "kim" ? "Kim Vocal 2 모델로 변경되었습니다." : "Inst HQ 3 모델로 변경되었습니다.", "info");
+      } catch (err) {
+        const { showNotification } = await import('../utils.js');
+        showNotification("모델 변경 실패: " + err, "error");
+      }
     });
   }
 
@@ -404,18 +478,16 @@ export function initControlListeners() {
     elements.btnDownloadModel.onclick = async () => {
       try {
         const modelId = await invoke("get_model_settings");
-        const { downloadAiModel, checkAiModelStatus } = await import('../audio.js');
-        const { updateAiModelStatus } = await import('../ui/components.js');
-        
         elements.btnDownloadModel.classList.add("loading-btn");
-        await downloadAiModel(modelId);
-        const isReady = await checkAiModelStatus();
-        updateAiModelStatus(isReady);
+        elements.btnDownloadModel.disabled = true;
+        await invoke("download_ai_model", { modelId });
+        await refreshModelUiState(modelId);
         import('../utils.js').then(m => m.showNotification("모델 다운로드 완료", "success"));
       } catch (err) {
         import('../utils.js').then(m => m.showNotification("다운로드 실패: " + err, "error"));
       } finally {
         elements.btnDownloadModel.classList.remove("loading-btn");
+        elements.btnDownloadModel.disabled = false;
       }
     };
   }
@@ -423,18 +495,28 @@ export function initControlListeners() {
   if (elements.btnDeleteModel) {
     elements.btnDeleteModel.onclick = async () => {
       try {
+        if (await hasPendingSeparations()) {
+          const { showNotification } = await import('../utils.js');
+          showNotification("분리 작업(진행/대기열)이 있는 동안에는 모델을 삭제할 수 없습니다.", "warning");
+          return;
+        }
+
         const modelId = await invoke("get_model_settings");
-        const { deleteAiModel, checkAiModelStatus } = await import('../audio.js');
-        const { updateAiModelStatus } = await import('../ui/components.js');
-        
-        await deleteAiModel(modelId);
-        const isReady = await checkAiModelStatus();
-        updateAiModelStatus(isReady);
+        elements.btnDeleteModel.disabled = true;
+        await invoke("delete_ai_model", { modelId });
+        await refreshModelUiState(modelId);
         import('../utils.js').then(m => m.showNotification("모델이 삭제되었습니다.", "info"));
       } catch (err) {
-        import('../utils.js').then(m => m.showNotification("삭제 실패", "error"));
+        import('../utils.js').then(m => m.showNotification("삭제 실패: " + err, "error"));
+      } finally {
+        elements.btnDeleteModel.disabled = false;
       }
     };
+  }
+
+  // Initialize View Mode on Load (Fixes breakage on refresh)
+  if (updateViewMode) {
+    updateViewMode(state.viewMode || "grid");
   }
 }
 

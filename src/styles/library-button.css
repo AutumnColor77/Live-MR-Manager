@@ -1,0 +1,100 @@
+/* Dashboard Button Mode (200px x 72px) - Content Specifics */
+body .song-grid.button-mode {
+  /* Inherits layout from .song-grid in library-common.css */
+  /* Fixed 200px width and 12px gap to match Grid Mode and Top Bar exactly */
+  grid-template-columns: repeat(auto-fill, 200px) !important;
+  gap: 12px !important;
+}
+
+/* Internal Row Structure */
+body .song-grid.button-mode .song-card.button-row {
+  display: grid !important;
+  grid-template-columns: 60px 1fr !important;
+  align-items: center !important;
+  width: 100% !important; /* Stretch to fill grid slot */
+  height: 72px !important;
+  padding: 6px !important;
+  gap: 12px !important;
+  border: none !important; 
+}
+
+/* Thumbnail */
+body .song-grid.button-mode .song-card.button-row .thumbnail {
+  width: 60px !important;
+  height: 60px !important;
+  border-radius: 8px !important;
+}
+
+/* Info Layout - Vertically Centered Relative to Thumbnail */
+body .song-grid.button-mode .song-card.button-row .button-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  /* Center the whole block */
+  height: 60px !important;
+  min-width: 0 !important;
+  gap: 3px !important;
+  /* Perfect 3px gap */
+}
+
+/* Title & Artist Area */
+body .song-grid.button-mode .song-card.button-row .col-info {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  gap: 4px !important;
+  /* This actually separates Title and Artist */
+}
+
+body .song-grid.button-mode .song-card.button-row .song-name {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
+}
+
+body .song-grid.button-mode .song-card.button-row .song-artist {
+  font-size: 0.7rem !important;
+  color: var(--text-muted) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1 !important;
+}
+
+/* Bottom Row */
+body .song-grid.button-mode .song-card.button-row .col-status-duration {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-top: 5px !important;
+  min-height: 16px !important;
+}
+
+/* Minimalist MR Tag */
+body .song-grid.button-mode .song-card.button-row .status-badge {
+  position: static !important;
+  font-size: 0.55rem !important;
+  padding: 0 4px !important;
+  height: 14px !important;
+  min-width: 24px !important;
+  border-radius: 3px !important;
+  background: rgba(255, 152, 0, 0.15) !important;
+  color: #ff9800 !important;
+  border: 1px solid rgba(255, 152, 0, 0.3) !important;
+  font-weight: 900 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Duration */
+body .song-grid.button-mode .song-card.button-row .duration-text {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.72rem !important;
+  color: var(--text-dim) !important;
+  margin-left: auto !important;
+}

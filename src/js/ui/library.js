@@ -19,7 +19,7 @@ export function getFilteredSongs() {
   const sortBy = elements.libSortSelect?.value || "dateNew";
   const currentTab = state.activeView || "library";
 
-  let filtered = state.library.map((s, i) => ({ ...s, originalIndex: i }));
+  let filtered = state.songLibrary.map((s, i) => ({ ...s, originalIndex: i }));
 
   // Tab Filter
   if (currentTab === "youtube") filtered = filtered.filter(s => s.source === "youtube");
@@ -89,12 +89,11 @@ export function renderLibrary() {
 
 export function addSongCard(song, index) {
   const card = document.createElement("article");
-  card.className = "song-card";
+  card.className = `song-card ${state.viewMode === "list" ? "list-row" : ""} ${state.viewMode === "button" ? "button-row" : ""}`;
   card.dataset.path = song.path;
+  card.dataset.index = index;
   const isButton = state.viewMode === "button";
   const isList = state.viewMode === "list";
-
-  if (isList) card.classList.add("list-row");
 
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
 
@@ -115,28 +114,49 @@ export function addSongCard(song, index) {
       </div>
     </div>
     
-    ${isButton ? `
-      <div class="button-content">
-        <div class="song-name" title="${song.title || ''}"><span>${song.title || '제목 정보 없음'}</span></div>
-        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
-      </div>
-      <div class="status-badge-container"></div>
-    ` : isList ? `
-      <div class="song-info-content list-layout">
+    ${isButton ? (() => {
+      const activeTask = (state.activeTasks || {})[song.path];
+      let badgeHtml = "";
+      if (activeTask && activeTask.status !== "Finished") {
+        badgeHtml = `<span class="status-badge processing sm">ING</span>`;
+      } else if (song.isSeparated || song.isMr || song.mr_path) {
+        badgeHtml = `<span class="status-badge mr sm">MR</span>`;
+      }
+
+      return `
+      <div class="song-info-content button-layout">
         <div class="col col-info">
-          <div class="info-row top-row">
-            <div class="song-name" title="${song.title || ''}"><span>${song.title || '제목 정보 없음'}</span></div>
-            <div class="status-badge-container"></div>
-          </div>
-          <div class="info-row bottom-row">
-            <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
-            <div class="duration-text">${song.duration || '--:--'}</div>
-          </div>
+          <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
+          <div class="song-artist">${song.artist || '가수 정보 없음'}</div>
+        </div>
+        <div class="col col-status-duration">
+          <div class="status-badge-wrapper">${badgeHtml}</div>
+          <span class="duration-text">${song.duration || '--:--'}</span>
+        </div>
+      </div>
+      `;
+    })() : isList ? (() => {
+      const activeTask = (state.activeTasks || {})[song.path];
+      let badgeHtml = "";
+      if (activeTask && activeTask.status !== "Finished") {
+        const status = (activeTask.status || "").toLowerCase();
+        const isWaiting = status.includes("queued") || status.includes("pending") || status.includes("starting") || status.includes("preparing");
+        badgeHtml = `<span class="status-badge ${isWaiting ? 'pending' : 'processing'}">${isWaiting ? '대기중' : '분리중'}</span>`;
+      } else if (song.isSeparated || song.isMr || song.mr_path) {
+        badgeHtml = `<span class="status-badge mr">MR</span>`;
+      }
+
+      const category = song.curationCategory || song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "");
+
+      return `
+        <div class="col col-info">
+          <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
+          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
         </div>
         <div class="col col-genre">
-          <div class="genre-list">
-            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
-          </div>
+          <div class="status-badge-wrapper">${badgeHtml}</div>
+          ${category ? `<span class="category-badge">${category}</span>` : ''}
+          <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
         </div>
         <div class="col col-tags">
           <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
@@ -145,35 +165,35 @@ export function addSongCard(song, index) {
               : '<span class="tag-no-info">태그 없음</span>'}
           </div>
         </div>
-      </div>
-    ` : `
+        <div class="col col-duration">
+          <span class="duration-text">${song.duration || '--:--'}</span>
+        </div>
+      `;
+    })() : (() => {
+      const category = song.curationCategory || song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "");
+      return `
       <div class="song-info-content grid-layout">
-        <div class="metadata-stack">
-          <div class="song-name"><span>${song.title || '제목 정보 없음'}</span></div>
-          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
-          ${(song.curationCategory || song.originalTitle) ? `
-            <div class="curation-info-badges">
-              ${song.curationCategory ? `<span class="cur-badge cat">${song.curationCategory}</span>` : ''}
-              ${song.originalTitle ? `<span class="cur-badge orig">${song.originalTitle}</span>` : ''}
-            </div>
-          ` : ''}
-          <div class="song-meta">
-            <div class="meta-badges">
-              ${(song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : ""))
-      ? `<span class="category-badge">${song.category || song.categories[0]}</span>`
-      : ''}
-              <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
-            </div>
-            <span class="duration-text">${song.duration || '--:--'}</span>
+        <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
+        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+        
+        <div class="metadata-row">
+          <div class="badge-group-inline">
+            ${category ? `<span class="category-badge">${category}</span>` : ''}
+            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
           </div>
+          <span class="duration-text">${song.duration || '--:--'}</span>
+        </div>
+
+        <div class="tag-row">
           <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
             ${song.tags && song.tags.length > 0
-      ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
-      : '<span class="tag-no-info">태그 정보 없음</span>'}
+              ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
+              : '<span class="tag-no-info">태그 정보 없음</span>'}
           </div>
         </div>
       </div>
-    `}
+      `;
+    })()}
   `;
 
   // Unified Status Badge (MR / 분리중 / 대기중)
@@ -181,7 +201,14 @@ export function addSongCard(song, index) {
 
   // Integrated click handler: Play immediately on card or thumbnail click
   const handlePlayClick = async (e) => {
-    // If context menu is active, just close it and stop further action
+    // 1. If any modal is active, block playback from library cards
+    const activeModal = document.querySelector(".modal-overlay.active");
+    if (activeModal) {
+      e.stopPropagation();
+      return;
+    }
+
+    // 2. If context menu is active, just close it and stop further action
     if (elements.contextMenu && (elements.contextMenu.classList.contains("active") || elements.contextMenu.style.display === 'flex')) {
       elements.contextMenu.classList.remove("active");
       elements.contextMenu.style.display = 'none';
@@ -208,19 +235,32 @@ export function addSongCard(song, index) {
 }
 
 
+export async function performDeleteSong(index) {
+  const song = state.songLibrary[index];
+  if (!song) return;
+
+  const { deleteSongFromDb } = await import('../audio.js');
+  try {
+    const path = song.path;
+    state.songLibrary.splice(index, 1);
+    await deleteSongFromDb(path);
+    return true;
+  } catch (err) {
+    console.error("Deletion failed:", err);
+    throw err;
+  }
+}
+
 export async function deleteSong(index) {
-  const song = state.library[index];
+  const song = state.songLibrary[index];
   if (!song) return;
   
   const { openConfirmModal } = await import('./modals.js');
   const { showNotification } = await import('../utils.js');
-  const { deleteSongFromDb } = await import('../audio.js');
 
   openConfirmModal("곡 삭제", `'${song.title}' 곡을 삭제하시겠습니까?`, async () => {
     try {
-      const path = song.path;
-      state.library.splice(index, 1);
-      await deleteSongFromDb(path);
+      await performDeleteSong(index);
       renderLibrary();
       showNotification("곡이 삭제되었습니다.", "success");
     } catch (err) {

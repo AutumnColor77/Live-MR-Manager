@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="stylesheet" href="style.css?v=6.0" />
+  <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="styles/alignment.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +11,7 @@
 </head>
 
 <body>
-  <!-- 커스텀 타이틀바 -->
+  <!-- 而ㅼ뒪? ??댄?諛?-->
   <div data-tauri-drag-region class="titlebar">
     <div class="titlebar-logo">
       <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
@@ -37,23 +37,16 @@
     </div>
   </div>
 
-  <!-- 배경 글로우 효과 -->
+  <!-- 諛곌꼍 湲濡쒖슦 ?④낵 -->
   <div class="bg-glow"></div>
 
-  <!-- 파일 드롭존 오버레이 삭제됨 (전역 기능 제거) -->
+  <!-- ?뚯씪 ?쒕∼議??ㅻ쾭?덉씠 ??젣??(?꾩뿭 湲곕뒫 ?쒓굅) -->
 
-  <!-- 사이드바 -->
+  <!-- ?ъ씠?쒕컮 -->
   <nav class="sidebar">
-    <div class="logo-container">
-      <div class="logo-main">
-        <img src="./assets/images/app-icon.png" alt="Logo" class="logo-icon">
-        <div class="logo-text-group">
-          <div class="logo-text">Live MR<br>Manager</div>
-        </div>
-      </div>
-      <div class="logo-badge-row">
-        <span class="beta-badge">BETA</span>
-      </div>
+    <div class="logo">
+      <img src="./assets/images/app-icon.png" alt="Logo" class="logo-icon">
+      <span class="logo-text">Live MR Manager</span>
     </div>
 
     <div class="nav-group">
@@ -72,7 +65,7 @@
       </div>
       <div class="nav-item" id="nav-alignment">
         <i class="icon-sync"></i>
-        <span>가사 정렬</span>
+        <span>媛???뺣젹</span>
       </div>
     </div>
 
@@ -89,7 +82,7 @@
     </div>
   </nav>
 
-  <!-- 메인 컨텐츠 영역 -->
+  <!-- 硫붿씤 而⑦뀗痢??곸뿭 -->
   <main class="viewport">
     <header class="top-bar">
       <div class="view-header">
@@ -104,11 +97,6 @@
             <button class="view-btn" id="view-list">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                 <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2z" />
-              </svg>
-            </button>
-            <button class="view-btn" id="view-button">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
               </svg>
             </button>
           </div>
@@ -133,62 +121,62 @@
     </header>
 
     <div class="page-controls-wrapper">
-      <!-- 1순위: 곡 제목/아티스트 검색란 -->
+      <!-- 1?쒖쐞: 怨??쒕ぉ/?꾪떚?ㅽ듃 寃?됰? -->
       <section class="library-controls" id="library-controls" style="display: none;">
         <div class="search-bar">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
-          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off"
+          <input type="text" id="lib-search-input" placeholder="怨??쒕ぉ, ?꾪떚?ㅽ듃 ?먮뒗 ?쒓렇 寃??.." autocomplete="off"
             role="presentation">
-          <div id="search-suggestions" class="suggestion-dropdown"></div>
+          <div id="lib-search-input-suggestions" class="suggestion-dropdown"></div>
         </div>
         <div class="filter-group">
           <div class="custom-select" id="lib-category-dropdown">
             <div class="select-trigger">
-              <span class="selected-text">전체 카테고리</span>
+              <span class="selected-text">?꾩껜 移댄뀒怨좊━</span>
               <span class="select-arrow"></span>
             </div>
             <div class="select-options">
-              <div class="option-item" data-value="all">전체 카테고리</div>
+              <div class="option-item" data-value="all">?꾩껜 移댄뀒怨좊━</div>
             </div>
             <input type="hidden" id="lib-category-filter" value="all">
           </div>
           <div class="custom-select" id="lib-genre-dropdown">
             <div class="select-trigger">
-              <span class="selected-text">전체 장르</span>
+              <span class="selected-text">?꾩껜 ?λⅤ</span>
               <span class="select-arrow"></span>
             </div>
             <div class="select-options">
-              <div class="option-item" data-value="all">전체 장르</div>
-              <div class="option-item" data-value="anime">애니송</div>
-              <div class="option-item" data-value="vocaloid">보컬로이드</div>
+              <div class="option-item" data-value="all">?꾩껜 ?λⅤ</div>
+              <div class="option-item" data-value="anime">?좊땲??/div>
+              <div class="option-item" data-value="vocaloid">蹂댁뺄濡쒖씠??/div>
               <div class="option-item" data-value="jpop">J-POP</div>
               <div class="option-item" data-value="kpop">K-POP</div>
-              <div class="option-item" data-value="rock">락/메탈</div>
-              <div class="option-item" data-value="etc">기타</div>
+              <div class="option-item" data-value="rock">??硫뷀깉</div>
+              <div class="option-item" data-value="etc">湲고?</div>
             </div>
             <input type="hidden" id="lib-genre-filter" value="all">
           </div>
 
           <div class="custom-select" id="lib-sort-dropdown">
             <div class="select-trigger">
-              <span class="selected-text">최근 추가순</span>
+              <span class="selected-text">理쒓렐 異붽???/span>
               <span class="select-arrow"></span>
             </div>
             <div class="select-options">
-              <div class="option-item selected" data-value="dateNew">최근 추가순</div>
-              <div class="option-item" data-value="dateOld">오래된순</div>
-              <div class="option-item" data-value="title">제목순 (A-Z)</div>
-              <div class="option-item" data-value="plays">재생 횟수순</div>
+              <div class="option-item selected" data-value="dateNew">理쒓렐 異붽???/div>
+              <div class="option-item" data-value="dateOld">?ㅻ옒?쒖닚</div>
+              <div class="option-item" data-value="title">?쒕ぉ??(A-Z)</div>
+              <div class="option-item" data-value="plays">?ъ깮 ?잛닔??/div>
             </div>
             <input type="hidden" id="lib-sort-select" value="dateNew">
           </div>
         </div>
       </section>
 
-      <!-- 2순위: 유튜브 주소 입력란 -->
+      <!-- 2?쒖쐞: ?좏뒠釉?二쇱냼 ?낅젰? -->
       <section class="search-section" id="youtube-search">
         <div class="yt-search-container">
           <div class="search-box">
@@ -196,26 +184,26 @@
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
+            <input type="text" class="search-input" placeholder="YouTube URL???낅젰?섏꽭??.." id="yt-url-input"
               autocomplete="off" spellcheck="false" />
           </div>
-          <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
+          <button class="primary-btn" id="yt-fetch-btn">?뺣낫 媛?몄삤湲?/button>
         </div>
       </section>
 
-      <!-- 3순위: 파일 드롭존 -->
+      <!-- 3?쒖쐞: ?뚯씪 ?쒕∼議?-->
       <section class="local-drop-section" id="local-drop-section" style="display: none;">
         <div class="drop-hint-simple">
-          <span>화면 어디든 음악 파일(MP3, WAV, FLAC)을 드래그 앤 드롭하여 추가할 수 있습니다.</span>
+          <span>?붾㈃ ?대뵒???뚯븙 ?뚯씪(MP3, WAV, FLAC)???쒕옒洹????쒕∼?섏뿬 異붽??????덉뒿?덈떎.</span>
         </div>
       </section>
     </div>
 
     <div class="scroll-area">
-      <!-- 곡 목록 그리드 -->
+      <!-- 怨?紐⑸줉 洹몃━??-->
       <div id="song-grid" class="song-grid"></div>
 
-      <!-- 설정 페이지 -->
+      <!-- ?ㅼ젙 ?섏씠吏 -->
       <div class="tab-content" id="settings-page" style="display: none;">
         <div class="settings-container" style="padding-top: 20px;">
           <section class="settings-group">
@@ -224,31 +212,30 @@
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
               </svg>
-              <h3>곡 정보 관리</h3>
+              <h3>怨??뺣낫 愿由?/h3>
             </div>
             <div class="ai-model-card">
               <div class="ai-info-left">
-                <h2 class="ai-title-large">곡 정보 일괄 수정</h2>
+                <h2 class="ai-title-large">怨??뺣낫 ?쇨큵 ?섏젙</h2>
                 <div class="ai-model-desc">
-                  엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
+                  ?묒? ?ㅽ??쇱쓽 愿由ъ옄 ?붾㈃???댁뼱 ?쇱씠釉뚮윭由ъ쓽 紐⑤뱺 怨??뺣낫瑜??쒕늿???뺤씤?섍퀬 鍮좊Ⅴ寃??섏젙?????덉뒿?덈떎.
                 </div>
               </div>
               <div class="ai-actions-right">
-                <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
+                <button id="btn-open-manager" class="btn-ai-action">愿由ъ옄 ?닿린</button>
               </div>
             </div>
 
             <div class="ai-model-card" style="margin-top: 15px;">
               <div class="ai-info-left">
-                <h2 class="ai-title-large">데이터 백업 및 복원 (병합)</h2>
+                <h2 class="ai-title-large">?곗씠??諛깆뾽 諛?蹂듭썝 (蹂묓빀)</h2>
                 <div class="ai-model-desc">
-                  현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
+                  ?꾩옱 ?쇱씠釉뚮윭由?紐⑸줉??JSON ?뚯씪濡?諛깆뾽?섍굅?? 湲곗〈 紐⑸줉? ?좎??섎㈃??諛깆뾽蹂몄뿉???녿뒗 怨〓쭔 ?덈줈 異붽??⑸땲??
                 </div>
               </div>
               <div class="ai-actions-right">
-                <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
-                <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
-                <button id="btn-run-rescue" class="btn-ai-action secondary">목록 자동 복구</button>
+                <button id="btn-export-backup" class="btn-ai-action secondary">紐⑸줉 諛깆뾽</button>
+                <button id="btn-import-backup" class="btn-ai-action">紐⑸줉 蹂듭썝</button>
               </div>
             </div>
           </section>
@@ -268,16 +255,16 @@
                 <line x1="1" y1="9" x2="4" y2="9"></line>
                 <line x1="1" y1="15" x2="4" y2="15"></line>
               </svg>
-              <h3>AI 분리 엔진</h3>
+              <h3>AI 遺꾨━ ?붿쭊</h3>
             </div>
 
-            <!-- 방송 보호 모드 -->
+            <!-- 諛⑹넚 蹂댄샇 紐⑤뱶 -->
             <div class="ai-model-card" style="margin-bottom: 20px;">
               <div class="ai-info-left">
-                <h2 class="ai-title-large">방송 제원 보호 모드 (Broadcast Safe)</h2>
+                <h2 class="ai-title-large">諛⑹넚 ?쒖썝 蹂댄샇 紐⑤뱶 (Broadcast Safe)</h2>
                 <div class="ai-model-desc">
-                  켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
-                  (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
+                  耳쒕몢硫?AI 遺꾨━ 以??곗궛 ?띾룄瑜???떠 諛⑹넚 ?꾨줈洹몃옩(OBS) 諛??꾨젅???쒕엻??諛⑹??⑸땲??<br>
+                  (踰꾩텛???ㅽ듃由щ㉧??怨좎궗???묒뾽 以묒씪 ??異붿쿇 / 泥섎━ ?띾룄 ??1.5諛?媛먯냼)
                 </div>
               </div>
               <div class="ai-actions-right" style="align-items: flex-end; justify-content: center;">
@@ -288,19 +275,19 @@
               </div>
             </div>
 
-            <!-- CUDA 설치 권장 알림 (기본 숨김) -->
+            <!-- CUDA ?ㅼ튂 沅뚯옣 ?뚮┝ (湲곕낯 ?④?) -->
             <div id="cuda-recommend-banner" class="ai-recommend-card" style="display: none;">
-              <div class="ai-recommend-icon">⚠️</div>
+              <div class="ai-recommend-icon">?좑툘</div>
               <div class="ai-recommend-content">
-                <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
+                <div class="ai-recommend-title">?깅뒫 理쒖쟻??沅뚯옣 (NVIDIA GPU 媛먯???</div>
                 <div class="ai-recommend-text">
-                  시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다.
-                  CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
+                  ?쒖뒪?쒖뿉 NVIDIA GPU媛 ?덉?留?CUDA 媛?띿씠 ?쒖꽦?붾릺吏 ?딆븯?듬땲??
+                  CUDA 12.x? cuDNN???ㅼ튂?섎㈃ 遺꾨━ ?띾룄媛 <strong>理쒕? 10諛??댁긽</strong> 鍮⑤씪吏묐땲??
                 </div>
                 <div class="ai-recommend-actions">
                   <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA
-                    다운로드</a>
-                  <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN 다운로드</a>
+                    ?ㅼ슫濡쒕뱶</a>
+                  <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN ?ㅼ슫濡쒕뱶</a>
                 </div>
               </div>
             </div>
@@ -308,58 +295,58 @@
             <div class="ai-model-card">
               <div class="ai-info-left" style="flex: 1;">
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                  <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
+                  <div id="ai-model-status" class="ai-status-badge status-offline">?곹깭 ?뺤씤 以?..</div>
                   <div id="ai-engine-provider" style="font-size: 0.8rem; opacity: 0.7; font-weight: 500;"></div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
-                  <h2 class="ai-title-large" style="margin: 0;">AI 분리 모델</h2>
+                  <h2 class="ai-title-large" style="margin: 0;">AI 遺꾨━ 紐⑤뜽</h2>
                   <div class="custom-select" id="ai-model-select-dropdown" style="min-width: 220px;">
                     <div class="select-trigger">
-                      <span class="selected-text" id="selected-model-text">Kim Vocal 2 (기본/고속)</span>
+                      <span class="selected-text" id="selected-model-text">Kim Vocal 2 (湲곕낯/怨좎냽)</span>
                       <span class="select-arrow"></span>
                     </div>
                     <div class="select-options">
-                      <div class="option-item selected" data-value="kim">Kim Vocal 2 (기본/고속)</div>
-                      <div class="option-item" data-value="inst_hq_3">Inst HQ 3 (고품질 반주/MR)</div>
+                      <div class="option-item selected" data-value="kim">Kim Vocal 2 (湲곕낯/怨좎냽)</div>
+                      <div class="option-item" data-value="inst_hq_3">Inst HQ 3 (怨좏뭹吏?諛섏＜/MR)</div>
                     </div>
                   </div>
                 </div>
                 <div id="ai-model-desc" class="ai-model-desc">
-                  기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.
+                  湲곕낯 怨좎꽦??蹂댁뺄??紐⑤뜽?낅땲?? 諛곌꼍 諛섏＜(MR)??怨좏뭹吏?遺꾨━媛 ?꾩슂?섎떎硫?Inst HQ 3 紐⑤뜽??沅뚯옣?⑸땲??
                 </div>
               </div>
               <div class="ai-actions-right">
-                <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
-                <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
-                <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
+                <button id="btn-download-model" class="btn-ai-action">紐⑤뜽 ?ㅼ슫濡쒕뱶</button>
+                <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">紐⑤뜽 ??젣</button>
+                <button id="btn-open-cache" class="btn-ai-action secondary">MR ?대뜑 ?닿린</button>
               </div>
             </div>
           </section>
         </div>
       </div>
 
-      <!-- 액티브 태스크 섹션 -->
+      <!-- ?≫떚釉??쒖뒪???뱀뀡 -->
       <div class="tab-content" id="tasks-page" style="display: none;">
         <div class="tasks-container">
           <div id="active-tasks-list" class="tasks-list">
 
-            <!-- 태스크 아이템이 동적으로 추가됨 -->
-            <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
+            <!-- ?쒖뒪???꾩씠?쒖씠 ?숈쟻?쇰줈 異붽???-->
+            <div class="no-tasks">?꾩옱 吏꾪뻾 以묒씤 ?묒뾽???놁뒿?덈떎.</div>
           </div>
         </div>
       </div>
 
-      <!-- 가사 정렬 모듈 섹션 -->
+      <!-- 媛???뺣젹 紐⑤뱢 ?뱀뀡 -->
       <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
         <div id="alignment-viewer-root" style="height: 100%;"></div>
       </div>
     </div>
   </main>
 
-  <!-- 퍼포머 컨트롤 도크 (하단 고정) -->
+  <!-- ?쇳룷癒?而⑦듃濡??꾪겕 (?섎떒 怨좎젙) -->
   <footer class="control-dock">
     <div class="dock-inner">
-      <!-- 현재 재생 중인 곡 정보 -->
+      <!-- ?꾩옱 ?ъ깮 以묒씤 怨??뺣낫 -->
       <div class="mini-thumb" id="dock-thumb">
         <img src="" alt="thumbnail" style="width: 100%; height: 100%; object-fit: cover; display: none;">
         <div class="thumb-overlay" id="thumb-overlay">
@@ -400,7 +387,7 @@
             </button>
           </div>
 
-          <div class="song-name" id="dock-title">재생 중인 곡 없음</div>
+          <div class="song-name" id="dock-title">?ъ깮 以묒씤 怨??놁쓬</div>
           <div class="song-artist" id="dock-artist"></div>
         </div>
 
@@ -415,31 +402,16 @@
             <span id="time-current">0:00</span> / <span id="time-total">0:00</span>
           </div>
         </div>
-        <div id="system-status-msg" class="status-msg-dock"></div>
       </div>
 
-      <!-- AI 처리 섹션 -->
+      <!-- AI 泥섎━ ?뱀뀡 -->
       <div class="ai-processing">
-        <div class="ai-item vocal-item" title="Vocal/Inst Balance Control">
-          <span class="ai-label clickable" id="label-vocal-balance">VOCAL</span>
+        <div class="ai-item" title="Roformer Stem Separation">
+          <span class="ai-label">VOCAL</span>
           <label class="switch">
             <input type="checkbox" id="toggle-vocal" checked>
             <span class="slider round"></span>
           </label>
-          
-          <!-- Mini Popover for Balance -->
-          <div class="balance-popover" id="popover-vocal-balance">
-            <div class="popover-arrow"></div>
-            <div class="popover-header">
-              <span>VOCAL BALANCE</span>
-              <span id="vocal-balance-val">50%</span>
-            </div>
-            <div class="popover-body">
-              <span class="side-label">MR</span>
-              <input type="range" id="vocal-balance" min="0" max="100" value="50" class="mini-range-slider">
-              <span class="side-label">VOC</span>
-            </div>
-          </div>
         </div>
         <div class="ai-item" title="WhisperX Lyrics Sync">
           <span class="ai-label">LYRIC</span>
@@ -450,7 +422,7 @@
         </div>
       </div>
 
-      <!-- 실시간 오디오 제어 (2단 구성) -->
+      <!-- ?ㅼ떆媛??ㅻ뵒???쒖뼱 (2??援ъ꽦) -->
       <div class="audio-panel">
         <div class="audio-controls-main">
           <div class="control-row">
@@ -469,7 +441,7 @@
               <input type="range" min="0.5" max="2.0" step="0.05" value="1.0" class="range-slider" id="tempo-slider">
             </div>
 
-            <button class="btn-audio-reset" id="btn-reset-audio" title="피치/템포 초기화">
+            <button class="btn-audio-reset" id="btn-reset-audio" title="?쇱튂/?쒗룷 珥덇린??>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
@@ -478,7 +450,7 @@
             </button>
           </div>
 
-          <!-- 하단: 마스터 볼륨 (일렬 정렬) -->
+          <!-- ?섎떒: 留덉뒪??蹂쇰ⅷ (?쇰젹 ?뺣젹) -->
           <div class="volume-inline-row">
             <span class="inline-label">VOLUME</span>
             <input type="range" min="0" max="120" value="100" class="range-slider volume-slider" id="master-volume-slider">
@@ -487,81 +459,81 @@
         </div>
       </div>
     </div>
-    <!-- 하단 풀-위드 재생바 삭제됨 (기능 이동) -->
+    <!-- ?섎떒 ?-?꾨뱶 ?ъ깮諛???젣??(湲곕뒫 ?대룞) -->
   </footer>
 
   <div id="context-menu" class="context-menu">
-    <div class="context-menu-item" id="menu-play">재생</div>
-    <div class="context-menu-item" id="menu-separate">MR 분리</div>
-    <div class="context-menu-item" id="menu-delete-mr">MR 삭제</div>
-    <div class="context-menu-item" id="menu-edit">정보 수정</div>
-    <div class="context-menu-item" id="menu-delete">삭제</div>
+    <div class="context-menu-item" id="menu-play">?ъ깮</div>
+    <div class="context-menu-item" id="menu-separate">MR 遺꾨━</div>
+    <div class="context-menu-item" id="menu-delete-mr">MR ??젣</div>
+    <div class="context-menu-item" id="menu-edit">?뺣낫 ?섏젙</div>
+    <div class="context-menu-item" id="menu-delete">??젣</div>
   </div>
 
   <div id="notification-container" class="notification-container"></div>
 
-  <!-- 곡 정보 편집 모달 -->
+  <!-- 怨??뺣낫 ?몄쭛 紐⑤떖 -->
   <div id="metadata-modal" class="modal-overlay">
     <div class="modal-content">
       <header class="modal-header">
-        <h3>곡 정보 수정</h3>
+        <h3>怨??뺣낫 ?섏젙</h3>
         <button class="close-btn" id="modal-close">&times;</button>
       </header>
       <div class="modal-body modal-body-grid">
-        <!-- 좌측 컬럼 -->
+        <!-- 醫뚯륫 而щ읆 -->
         <div class="modal-col">
           <div class="input-group">
-            <label>제목</label>
+            <label>?쒕ぉ</label>
             <input type="text" id="edit-title" autocomplete="off">
             <div id="edit-title-suggestions" class="suggestion-dropdown"></div>
           </div>
           <div class="input-group">
-            <label>아티스트</label>
+            <label>?꾪떚?ㅽ듃</label>
             <div style="position: relative;">
-              <input type="text" id="edit-artist" placeholder="아티스트명 입력" autocomplete="off">
+              <input type="text" id="edit-artist" placeholder="?꾪떚?ㅽ듃紐??낅젰" autocomplete="off">
               <div id="edit-artist-suggestions" class="suggestion-dropdown"></div>
             </div>
           </div>
           <div class="input-group">
-            <label>카테고리</label>
-            <input type="text" id="edit-category" placeholder="예: 애창곡, 벌칙곡, 미션곡 등" autocomplete="off">
+            <label>移댄뀒怨좊━</label>
+            <input type="text" id="edit-category" placeholder="?? ?좎갹怨? 踰뚯튃怨? 誘몄뀡怨??? autocomplete="off">
             <div id="edit-category-suggestions" class="suggestion-dropdown"></div>
           </div>
           <div class="input-group">
-            <label>장르</label>
+            <label>?λⅤ</label>
             <div class="combo-box">
               <div class="custom-select" id="edit-genre-dropdown" style="flex: 1;">
                 <div class="select-trigger">
-                  <span class="selected-text">장르 선택...</span>
+                  <span class="selected-text">?λⅤ ?좏깮...</span>
                   <span class="select-arrow"></span>
                 </div>
                 <div class="select-options">
-                  <div class="option-item" data-value="">장르 선택...</div>
+                  <div class="option-item" data-value="">?λⅤ ?좏깮...</div>
                   <div class="option-item" data-value="pop">POP</div>
-                  <div class="option-item" data-value="ballad">발라드</div>
-                  <div class="option-item" data-value="dance">댄스</div>
-                  <div class="option-item" data-value="rock">락/메탈</div>
-                  <div class="option-item" data-value="etc">기타</div>
+                  <div class="option-item" data-value="ballad">諛쒕씪??/div>
+                  <div class="option-item" data-value="dance">?꾩뒪</div>
+                  <div class="option-item" data-value="rock">??硫뷀깉</div>
+                  <div class="option-item" data-value="etc">湲고?</div>
                 </div>
                 <input type="hidden" id="edit-genre-select" value="">
               </div>
-              <input type="text" id="edit-genre-custom" placeholder="직접 입력..." autocomplete="off" spellcheck="false">
+              <input type="text" id="edit-genre-custom" placeholder="吏곸젒 ?낅젰..." autocomplete="off" spellcheck="false">
             </div>
           </div>
         </div>
 
-        <!-- 우측 컬럼 -->
+        <!-- ?곗륫 而щ읆 -->
         <div class="modal-col">
           <div class="input-group">
-            <label>태그 (쉼표로 구분)</label>
-            <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브" autocomplete="off">
+            <label>?쒓렇 (?쇳몴濡?援щ텇)</label>
+            <input type="text" id="edit-tags" placeholder="?? ?좊굹?? 怨좎쓬, ?쇱씠釉? autocomplete="off">
             <div id="edit-tags-suggestions" class="suggestion-dropdown"></div>
           </div>
           <div class="input-group mr-toggle-group">
             <label class="mr-checkbox-label">
               <span class="mr-badge-preview">MR</span>
               <input type="checkbox" id="edit-is-mr">
-              <span class="mr-checkbox-text">이 곡은 이미 MR(인스트루먼탈)입니다</span>
+              <span class="mr-checkbox-text">??怨≪? ?대? MR(?몄뒪?몃（癒쇳깉)?낅땲??/span>
             </label>
           </div>
           <div class="control-group">
@@ -578,60 +550,41 @@
               <input type="range" min="0" max="120" value="100" class="range-slider volume-slider" id="edit-volume">
             </div>
           </div>
-          <div class="input-group">
-            <label>썸네일 URL</label>
-            <input type="text" id="edit-thumbnail-url" placeholder="https://..." autocomplete="off">
-          </div>
-          <!-- Curation Fields (Added for stability) -->
-          <div class="curation-edit-group" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
-            <div class="input-group">
-              <label>원문 (Curation)</label>
-              <input type="text" id="edit-curation-original" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-            <div class="input-group">
-              <label>카테고리</label>
-              <input type="text" id="edit-curation-category" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-            <div class="input-group">
-              <label>번역문</label>
-              <input type="text" id="edit-curation-translated" readonly style="background: rgba(255,255,255,0.03);">
-            </div>
-          </div>
         </div>
       </div>
       <footer class="modal-footer" style="justify-content: space-between;">
-        <button class="secondary-btn" id="btn-metadata-search" style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">곡 정보 검색</button>
+        <button class="secondary-btn" id="btn-metadata-search" style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">怨??뺣낫 寃??/button>
         <div style="display: flex; gap: 10px;">
-          <button class="secondary-btn" id="modal-cancel">취소</button>
-          <button class="primary-btn" id="modal-save">저장</button>
+          <button class="secondary-btn" id="modal-cancel">痍⑥냼</button>
+          <button class="primary-btn" id="modal-save">???/button>
         </div>
       </footer>
     </div>
   </div>
 
-  <!-- 커스텀 확인(Confirm) 모달 -->
+  <!-- 而ㅼ뒪? ?뺤씤(Confirm) 紐⑤떖 -->
   <div id="confirm-modal" class="modal-overlay">
     <div class="modal-content confirm-box">
       <header class="modal-header">
-        <h3 id="confirm-title">확인</h3>
+        <h3 id="confirm-title">?뺤씤</h3>
         <button class="close-btn" id="confirm-close-icon">&times;</button>
       </header>
       <div class="modal-body">
         <p id="confirm-message" style="font-size: 1.1rem; text-align: center; margin: 20px 0;"></p>
       </div>
       <footer class="modal-footer" style="justify-content: center; gap: 15px;">
-        <button class="secondary-btn" id="confirm-cancel" style="min-width: 100px;">취소</button>
-        <button class="primary-btn danger-btn" id="confirm-ok" style="min-width: 100px;">확인</button>
+        <button class="secondary-btn" id="confirm-cancel" style="min-width: 100px;">痍⑥냼</button>
+        <button class="primary-btn danger-btn" id="confirm-ok" style="min-width: 100px;">?뺤씤</button>
       </footer>
     </div>
   </div>
 
-  <!-- AI 모델 다운로드 오버레이 -->
+  <!-- AI 紐⑤뜽 ?ㅼ슫濡쒕뱶 ?ㅻ쾭?덉씠 -->
   <div id="model-download-overlay" class="modal-overlay">
     <div class="modal-content download-box">
-      <div class="download-icon">🤖</div>
-      <h3>AI 엔진 초기설정 중...</h3>
-      <p>최초 1회 AI 모델 다운로드가 필요합니다. (약 67MB)</p>
+      <div class="download-icon">?쨼</div>
+      <h3>AI ?붿쭊 珥덇린?ㅼ젙 以?..</h3>
+      <p>理쒖큹 1??AI 紐⑤뜽 ?ㅼ슫濡쒕뱶媛 ?꾩슂?⑸땲?? (??67MB)</p>
       <div class="download-progress-container">
         <div class="download-progress-bar" id="model-download-bar"></div>
       </div>
@@ -639,26 +592,26 @@
     </div>
   </div>
 
-  <!-- 라이브러리 일괄 관리자 모달 -->
+  <!-- ?쇱씠釉뚮윭由??쇨큵 愿由ъ옄 紐⑤떖 -->
   <div id="library-manager-modal" class="modal-overlay">
     <div class="modal-content manager-modal">
       <header class="modal-header">
         <div class="header-main-info">
-          <h3>곡 정보 관리자</h3>
+          <h3>怨??뺣낫 愿由ъ옄</h3>
           <div class="manager-search-box">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off"
+            <input type="text" id="manager-search-input" placeholder="怨??쒕ぉ, ?꾪떚?ㅽ듃濡??쇨큵 寃??.." autocomplete="off"
               spellcheck="false">
           </div>
         </div>
         <button class="close-btn" id="manager-modal-close">&times;</button>
       </header>
       <div class="manager-tab-nav">
-        <button class="manager-tab-btn active" data-tab="list">곡 정보 목록</button>
-        <button class="manager-tab-btn" data-tab="curation">번역 사전 관리</button>
+        <button class="manager-tab-btn active" data-tab="list">怨??뺣낫 紐⑸줉</button>
+        <button class="manager-tab-btn" data-tab="curation">踰덉뿭 ?ъ쟾 愿由?/button>
       </div>
       
       <!-- Tab 1: Song List -->
@@ -666,18 +619,17 @@
         <div class="table-container">
           <table id="manager-table">
             <colgroup id="manager-table-colgroup">
-              <col style="width: 45px;"><col><col><col><col><col><col style="width: 80px;"><col style="width: 80px;">
+              <col><col><col><col><col><col><col>
             </colgroup>
             <thead>
               <tr>
-                <th class="text-center"><input type="checkbox" id="manager-select-all"></th>
-                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="text-center">태그 <div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="text-center">작업</th>
+                <th class="sortable text-center" data-sort="title">?쒕ぉ <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="artist">?꾪떚?ㅽ듃 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="category">移댄뀒怨좊━ <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="genre">?λⅤ <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="text-center">?쒓렇 <div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="duration">湲몄씠 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="text-center">?묒뾽</th>
               </tr>
             </thead>
             <tbody id="manager-table-body">
@@ -691,64 +643,61 @@
       <div class="modal-body manager-body" id="manager-tab-curation">
         <div class="curation-container">
           <div class="curation-left">
-            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">미분류 태그 리스트</h4>
+            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">誘몃텇瑜??쒓렇 由ъ뒪??/h4>
             <div id="unclassified-tags-list" class="unclassified-list">
               <!-- Dynamically populated -->
-              <div style="padding: 20px; text-align: center; color: #888;">데이터를 불러오는 중...</div>
+              <div style="padding: 20px; text-align: center; color: #888;">?곗씠?곕? 遺덈윭?ㅻ뒗 以?..</div>
             </div>
             <div class="flex-row gap-sm mt-sm">
-               <button class="secondary-btn btn-sm flex-1" id="btn-refresh-unmapped">새로고침</button>
-               <button class="secondary-btn btn-sm flex-1" id="btn-copy-unmapped">목록 복사 (AI용)</button>
+               <button class="secondary-btn btn-sm flex-1" id="btn-refresh-unmapped">?덈줈怨좎묠</button>
+               <button class="secondary-btn btn-sm flex-1" id="btn-copy-unmapped">紐⑸줉 蹂듭궗 (AI??</button>
             </div>
           </div>
           <div class="curation-right">
-            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">번역어 등록</h4>
+            <h4 style="margin-bottom: 12px; font-weight: 600; color: var(--accent-primary);">踰덉뿭???깅줉</h4>
             <div class="curation-form">
               <div class="input-group">
-                <label>원본 태그 (English)</label>
-                <input type="text" id="curation-original" readonly placeholder="왼쪽에서 선택하세요" style="background: rgba(255,255,255,0.05);">
+                <label>?먮낯 ?쒓렇 (English)</label>
+                <input type="text" id="curation-original" readonly placeholder="?쇱そ?먯꽌 ?좏깮?섏꽭?? style="background: rgba(255,255,255,0.05);">
               </div>
               <div class="input-group">
-                <label>분류</label>
+                <label>遺꾨쪟</label>
                 <div class="custom-select-wrapper" style="width: 100%;">
                   <select id="curation-category" class="custom-select-native" style="width: 100%; padding: 10px; border-radius: 8px; background: #1a1a1a; color: white; border: 1px solid rgba(255,255,255,0.1);">
-                    <option value="genre">장르 (Genre)</option>
-                    <option value="tag">태그 (Tag)</option>
+                    <option value="genre">?λⅤ (Genre)</option>
+                    <option value="tag">?쒓렇 (Tag)</option>
                   </select>
                 </div>
               </div>
               <div class="input-group">
-                <label>번역어 (Korean)</label>
-                <input type="text" id="curation-translated" placeholder="예: 몽환적인, 록, 시티팝">
+                <label>踰덉뿭??(Korean)</label>
+                <input type="text" id="curation-translated" placeholder="?? 紐쏀솚?곸씤, 濡? ?쒗떚??>
               </div>
-              <button class="primary-btn btn-md w-full mt-xs" id="btn-save-mapping">사전에 등록</button>
+              <button class="primary-btn btn-md w-full mt-xs" id="btn-save-mapping">?ъ쟾???깅줉</button>
             </div>
             
             <div class="ai-bridge-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05);">
-              <h4 style="margin-bottom: 8px; font-size: 0.95rem;">💡 AI 일괄 작업 가이드</h4>
-              <p style="font-size: 0.85rem; color: #aaa; line-height: 1.5;">[목록 복사] 버튼을 눌러 미분류 태그들을 AI(Antigravity)에게 전달하세요. 대량의 번역 데이터를 한 번에 만들어 드립니다.</p>
+              <h4 style="margin-bottom: 8px; font-size: 0.95rem;">?뮕 AI ?쇨큵 ?묒뾽 媛?대뱶</h4>
+              <p style="font-size: 0.85rem; color: #aaa; line-height: 1.5;">[紐⑸줉 蹂듭궗] 踰꾪듉???뚮윭 誘몃텇瑜??쒓렇?ㅼ쓣 AI(Antigravity)?먭쾶 ?꾨떖?섏꽭?? ??됱쓽 踰덉뿭 ?곗씠?곕? ??踰덉뿉 留뚮뱾???쒕┰?덈떎.</p>
             </div>
           </div>
         </div>
       </div>
       <footer class="modal-footer manager-footer">
-        <div class="footer-left-group">
-          <div id="manager-stat" class="manager-stat">Total 0 Songs</div>
-          <button class="secondary-btn btn-sm danger-text" id="btn-manager-del-selected" style="margin-left: 15px; border-color: rgba(239, 68, 68, 0.3);">선택 삭제</button>
-        </div>
+        <div id="manager-stat">Total 0 Songs</div>
         <div class="footer-actions">
-          <button class="primary-btn btn-md" id="manager-modal-save">저장</button>
-          <button class="secondary-btn btn-md" id="manager-modal-cancel">닫기</button>
+          <button class="primary-btn btn-md" id="manager-modal-save">???/button>
+          <button class="secondary-btn btn-md" id="manager-modal-cancel">?リ린</button>
         </div>
       </footer>
     </div>
   </div>
 
-  <!-- 온라인 검색 결과 선택 모달 -->
+  <!-- ?⑤씪??寃??寃곌낵 ?좏깮 紐⑤떖 -->
   <div id="metadata-search-results-modal" class="modal-overlay">
     <div class="modal-content" style="max-width: 500px;">
       <header class="modal-header">
-        <h3>검색 결과 선택</h3>
+        <h3>寃??寃곌낵 ?좏깮</h3>
         <button class="close-btn" id="search-results-close">&times;</button>
       </header>
       <div class="modal-body">

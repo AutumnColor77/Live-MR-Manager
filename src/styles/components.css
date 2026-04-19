@@ -373,3 +373,12 @@
   width: 100%;
   height: 100%;
 }
+
+/* --- Manager Modal Helpers --- */
+.footer-left-group {
+  display: flex;
+  align-items: center;
+}
+.danger-text {
+  color: #ef4444 !important;
+}

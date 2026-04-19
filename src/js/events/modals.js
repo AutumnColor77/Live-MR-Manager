@@ -14,7 +14,7 @@ export function initModalListeners() {
       const idx = state.editingSongIndex;
       if (idx === null) return;
       
-      const song = state.library[idx];
+      const song = state.songLibrary[idx];
       const updated = {
         ...song,
         title: document.getElementById("edit-title").value,
@@ -31,7 +31,7 @@ export function initModalListeners() {
 
       try {
         await invoke('update_song_metadata', { song: updated });
-        state.library[idx] = updated;
+        state.songLibrary[idx] = updated;
         const { renderLibrary } = await import('../ui/library.js');
         renderLibrary();
         const { closeEditModal } = await import('../ui/modals.js');
@@ -68,13 +68,19 @@ export function initModalListeners() {
     elements.btnManagerSave.onclick = async () => {
       const { saveManagerChanges } = await import('../ui/manager.js');
       await saveManagerChanges();
-      const { closeManagerModal } = await import('../ui/modals.js');
+      const { closeManagerModal } = await import('../ui/manager.js');
       closeManagerModal();
     };
   }
   if (elements.btnManagerCancel) {
     elements.btnManagerCancel.onclick = async () => {
-      const { closeManagerModal } = await import('../ui/modals.js');
+      const { closeManagerModal } = await import('../ui/manager.js');
+      closeManagerModal();
+    };
+  }
+  if (elements.managerModalClose) {
+    elements.managerModalClose.onclick = async () => {
+      const { closeManagerModal } = await import('../ui/manager.js');
       closeManagerModal();
     };
   }
@@ -91,7 +97,7 @@ export function initModalListeners() {
       elements.searchResultsList.innerHTML = `
         <div class="loading-container" style="text-align:center; padding:20px;">
           <div class="spinner"></div>
-          <div style="margin-top:10px;">검색 중...</div>
+          <div style="margin-top:10px;">온라인에서 곡 정보를 검색 중입니다...</div>
         </div>
       `;
 
@@ -99,30 +105,38 @@ export function initModalListeners() {
         const results = await invoke("search_track_metadata", { query });
         elements.searchResultsList.innerHTML = "";
         if (results.length === 0) {
-          elements.searchResultsList.innerHTML = '<div style="padding:20px; text-align:center;">검색 결과가 없습니다.</div>';
+          elements.searchResultsList.innerHTML = '<div class="loading-container" style="color: #666;">검색 결과가 없습니다.</div>';
           return;
         }
 
         results.forEach(res => {
           const item = document.createElement("div");
           item.className = "search-result-item";
+          const isUnknownGenre = !res.genre || res.genre.toLowerCase() === "unknown" || res.genre.toLowerCase() === "unknown genre";
+          const genreHtml = !isUnknownGenre
+            ? `<div class="track-genre-preview">${res.genre}</div>`
+            : "";
+          const tagsHtml = res.tags && res.tags.length > 0
+            ? `<div class="track-tags-preview">${res.tags.map(t => `<span class="tag-badge-mini">${t}</span>`).join("")}</div>`
+            : "";
           item.innerHTML = `
-            <img src="${res.thumbnail || ''}" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">
-            <div class="res-info">
-              <div class="res-title">${res.title}</div>
-              <div class="res-artist">${res.artist}</div>
+            <div class="search-result-info">
+              <div class="track-name">${res.name || res.title || ""}</div>
+              <div class="artist-name">${res.artist || ""}</div>
+              ${genreHtml}
             </div>
+            ${tagsHtml}
           `;
           item.onclick = () => {
-            document.getElementById("edit-title").value = res.title;
-            document.getElementById("edit-artist").value = res.artist;
+            document.getElementById("edit-title").value = res.name || res.title || "";
+            document.getElementById("edit-artist").value = res.artist || "";
             if (res.thumbnail) document.getElementById("edit-thumbnail-url").value = res.thumbnail;
             elements.metadataSearchResultsModal.classList.remove("active");
           };
           elements.searchResultsList.appendChild(item);
         });
       } catch (err) {
-        elements.searchResultsList.innerHTML = `<div style="padding:20px; color:var(--danger-color);">검색 실패: ${err}</div>`;
+        elements.searchResultsList.innerHTML = '<div class="loading-container" style="color: var(--accent-red);">검색 중 오류가 발생했습니다.</div>';
       }
     };
   }
