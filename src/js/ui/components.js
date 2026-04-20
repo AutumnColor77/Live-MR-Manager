@@ -111,12 +111,33 @@ export function updateTaskUI() {
   }).join("");
 }
 
-export function updateAiTogglesState() {
-  if (elements.toggleVocal) {
-    elements.toggleVocal.checked = state.vocalEnabled;
+export function updateAiTogglesState(song = null) {
+  if (!elements.toggleVocal) return;
+
+  // If no song provided, find from state
+  const targetSong = song || (state.selectedTrackIndex !== -1 ? state.songLibrary[state.selectedTrackIndex] : state.currentTrack);
+
+  // Requirement: Enable ONLY if separated MR exists
+  const hasSeparatedMr = targetSong && (targetSong.isSeparated || targetSong.mr_path);
+  const canToggleVocal = !!hasSeparatedMr;
+
+  elements.toggleVocal.checked = state.vocalEnabled;
+  elements.toggleVocal.disabled = !canToggleVocal;
+
+  const vocalItem = elements.toggleVocal.closest('.vocal-item');
+  if (vocalItem) {
+    vocalItem.classList.toggle('disabled', !canToggleVocal);
   }
+
+  // If disabled, ensure balance popover is closed
+  if (!canToggleVocal) {
+    const popover = document.getElementById("popover-vocal-balance");
+    if (popover) popover.classList.remove("active");
+  }
+
   if (elements.toggleLyric) {
     elements.toggleLyric.checked = state.lyricsEnabled;
+    // Lyric toggle is independent per user feedback
   }
 }
 

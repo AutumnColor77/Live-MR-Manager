@@ -102,6 +102,8 @@ export function initControlListeners() {
   if (labelVocal && popoverVocal) {
     labelVocal.onclick = (e) => {
       e.stopPropagation();
+      // Only show popover if vocal toggle is enabled (per user request)
+      if (elements.toggleVocal && elements.toggleVocal.disabled) return;
       popoverVocal.classList.toggle("active");
     };
   }

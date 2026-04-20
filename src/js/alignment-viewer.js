@@ -61,11 +61,15 @@ export class ForcedAlignmentViewer {
                         </div>
                         <div class="waveform-canvas-container" style="position: relative;">
                             <canvas id="waveform-canvas"></canvas>
-                            <div id="waveform-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; z-index: 10; border-radius: 8px;">
-                                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#4a9eff" stroke-width="3" style="animation: waveform-spin 1s linear infinite;">
-                                    <circle cx="12" cy="12" r="10" stroke-opacity="0.2" />
-                                    <path d="M12 2a10 10 0 0 1 10 10" />
-                                </svg>
+                            <div id="waveform-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); flex-direction: column; justify-content: center; align-items: center; z-index: 10; border-radius: 8px;">
+                                <div class="loader-spinner" style="position: relative; width: 48px; height: 48px; margin-bottom: 12px;">
+                                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#4a9eff" stroke-width="3" style="animation: waveform-spin 1s linear infinite;">
+                                        <circle cx="12" cy="12" r="10" stroke-opacity="0.2" />
+                                        <path d="M12 2a10 10 0 0 1 10 10" />
+                                    </svg>
+                                </div>
+                                <div id="loader-text" style="color: white; font-size: 0.9rem; font-weight: 500;">소리 데이터 준비 중...</div>
+                                <div id="loader-progress" style="margin-top: 8px; color: #4a9eff; font-family: monospace; font-size: 0.8rem; display: none;">0%</div>
                                 <style>
                                     @keyframes waveform-spin { 100% { transform: rotate(360deg); } }
                                 </style>
@@ -232,6 +236,20 @@ export class ForcedAlignmentViewer {
             this.state.isPlaying = (status && status.toLowerCase() === 'playing');
             this.updatePlayButton();
         });
+
+        // 유튜브 다운로드 진행률 리스너 추가
+        window._alignmentUnlistenDownload = listen('youtube-download-progress', (event) => {
+            if (!this.state.isProcessing) return;
+            const { percentage } = event.payload;
+            const loaderText = document.getElementById('loader-text');
+            const loaderProgress = document.getElementById('loader-progress');
+            
+            if (loaderText) loaderText.innerText = '유튜브 음원 다운로드 중...';
+            if (loaderProgress) {
+                loaderProgress.style.display = 'block';
+                loaderProgress.innerText = `${Math.floor(percentage)}%`;
+            }
+        });
     }
 
     async loadAudio(path) {
@@ -244,11 +262,18 @@ export class ForcedAlignmentViewer {
         this.drawWaveform();
 
         const loader = document.getElementById('waveform-loader');
+        const loaderText = document.getElementById('loader-text');
+        const loaderProgress = document.getElementById('loader-progress');
+        
         if (loader) loader.style.display = 'flex';
+        if (loaderText) loaderText.innerText = '오디오 준비 중...';
+        if (loaderProgress) loaderProgress.style.display = 'none';
 
         try {
+            console.log("[Alignment] Loading audio:", path);
             // Get duration immediately from backend
             const ms = await this.invoke('play_track', { path, durationMs: 0, playNow: false });
+            console.log("[Alignment] play_track success, duration:", ms);
             this.state.duration = ms / 1000;
             this.updateTimeDisplay();
 
@@ -257,20 +282,21 @@ export class ForcedAlignmentViewer {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
                 if (lrcContent && lrcContent.trim()) {
                     this.parseLrcString(lrcContent);
-                } else {
-                    document.getElementById('lyrics-input').value = '';
-                    this.parseLyrics();
                 }
+                // 파일이 없거나 비어있는 경우 기존 가사를 유지합니다.
             } catch (err) {
-                document.getElementById('lyrics-input').value = '';
-                this.parseLyrics();
+                console.log("[Alignment] LRC load failed or not found:", err);
+                // 기존 가사를 유지하며 수동 작업을 진행할 수 있게 합니다.
             }
 
             this.drawWaveform();
 
             // Background waveform (파형 후순위 비동기 로드)
-            const waveformPath = path; // 이제 원본 오디오 파일 경로를 직접 사용합니다.
+            if (loaderText) loaderText.innerText = '파형 생성 중...';
+            
+            const waveformPath = path;
             this.invoke('get_waveform_summary', { audioPath: waveformPath }).then(summary => {
+                console.log("[Alignment] Waveform load success:", summary ? summary.points.length : 0);
                 if (summary) {
                     this.state.waveformPoints = summary.points;
                     if (!this.state.duration) {
@@ -279,16 +305,20 @@ export class ForcedAlignmentViewer {
                     }
                     this.drawWaveform();
                 }
-            }).catch(e => console.error("Waveform load failed:", e))
+            }).catch(e => {
+                console.error("[Alignment] Waveform load failed:", e);
+                showNotification('파형 로드 실패: ' + e, 'warning');
+            })
             .finally(() => {
                 this.state.isProcessing = false;
                 if (loader) loader.style.display = 'none';
             });
 
         } catch (e) {
+            console.error("[Alignment] loadAudio general failure:", e);
             this.state.isProcessing = false;
             if (loader) loader.style.display = 'none';
-            showNotification('오디오 로드 실패', 'error');
+            showNotification('오디오 로드 실패: ' + e, 'error');
         }
     }
 
@@ -434,9 +464,9 @@ export class ForcedAlignmentViewer {
     togglePlayback() { this.invoke('toggle_playback'); }
 
     formatTime(sec) {
-        if (sec === undefined || sec === null || sec === 0 || isNaN(sec)) return "--:--.-";
-        const m = Math.floor(sec / 60);
-        const s = (sec % 60).toFixed(1);
+        if (sec === undefined || sec === null || isNaN(sec)) return "--:--.-";
+        const m = Math.floor(Math.abs(sec) / 60);
+        const s = (Math.abs(sec) % 60).toFixed(1);
         return `${m.toString().padStart(2, '0')}:${s.padStart(4, '0')}`;
     }
 
@@ -544,7 +574,8 @@ export class ForcedAlignmentViewer {
     }
 
     handleTap() {
-        if (!this.state.isPlaying) return;
+        // 일시정지 상태에서도 수동으로 찍을 수 있도록 허용 (단, 음원은 로드되어 있어야 함)
+        if (this.state.duration <= 0) return;
         const idx = this.state.currentSyncIndex;
         if (idx < 0 || idx >= this.state.segments.length) return;
         

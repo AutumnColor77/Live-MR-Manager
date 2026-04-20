@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use crate::audio_player::sys_log;
-use tauri::{command, AppHandle, Emitter};
+use tauri::{command, AppHandle, Emitter, Manager};
 use ndarray::Array2;
 use unicode_normalization::UnicodeNormalization;
 use std::collections::HashMap;
@@ -370,18 +370,60 @@ fn perform_alignment_internal(
 }
 
 #[command]
-pub async fn get_waveform_summary(audio_path: String) -> Result<WaveformSummary, String> {
+pub async fn get_waveform_summary(handle: AppHandle, audio_path: String) -> Result<WaveformSummary, String> {
     sys_log(&format!("[Alignment] Generating waveform summary for: {}", audio_path));
+    
+    // 유튜브 URL인 경우 실제 파일 경로로 해소
+    let resolved_path = resolve_audio_path(&handle, &audio_path).await?;
+    sys_log(&format!("[Alignment] Resolved path for waveform: {:?}", resolved_path));
+
     let processor = AudioProcessor::new();
     let n_buckets = 2000;
     
-    let (points, duration_sec) = processor.create_waveform_summary(&audio_path, n_buckets)?;
+    let (points, duration_sec) = processor.create_waveform_summary(&resolved_path, n_buckets)?;
     sys_log(&format!("[Alignment] Waveform summary generated: {} points, {:.2}s", points.len(), duration_sec));
     
     Ok(WaveformSummary { 
         points, 
         duration_sec
     })
+}
+
+/// 유튜브 URL 등을 실제 로컬 오디오 파일 경로로 변환합니다.
+async fn resolve_audio_path(handle: &AppHandle, path: &str) -> Result<PathBuf, String> {
+    if !path.starts_with("http") {
+        let p = PathBuf::from(path);
+        if p.exists() { return Ok(p); }
+        return Err(format!("파일을 찾을 수 없습니다: {}", path));
+    }
+
+    let paths = crate::state::AppPaths::from_handle(handle);
+    
+    // 1. 이미 분리된 파일이 있는지 확인 (vocal.wav 우선)
+    let cache_key = urlencoding::encode(path).to_string();
+    let separated_dir = paths.separated.join(&cache_key);
+    let vocal_wav = separated_dir.join("vocal.wav");
+    if vocal_wav.exists() {
+        return Ok(vocal_wav);
+    }
+
+    // 2. temp 폴더에 다운로드된 m4a 파일이 있는지 확인
+    // yt_id.m4a 형식이므로 id를 추출해야 함
+    let metadata = crate::youtube::YoutubeManager::get_video_metadata(path).await.map_err(|e| e.to_string())?;
+    if let Some(id) = metadata.id {
+        let temp_m4a = paths.temp.join(format!("yt_{}.m4a", id));
+        if temp_m4a.exists() {
+            return Ok(temp_m4a);
+        }
+        
+        // 3. 없으면 다운로드 시도 (사용자 요청에 따라)
+        sys_log(&format!("[Alignment] Audio file not found for {}, starting download...", path));
+        let window = handle.get_webview_window("main").ok_or("메인 윈도우를 찾을 수 없습니다")?;
+        let downloaded = crate::youtube::YoutubeManager::download_audio(&window, path, temp_m4a.clone(), true).await?;
+        return Ok(downloaded);
+    }
+
+    Err("유튜브 오디오 경로를 해소할 수 없습니다.".into())
 }
 
 pub struct WordTimestamp {
@@ -706,9 +748,24 @@ impl Aligner {
 }
 
 #[command]
-pub async fn save_lrc_file(audio_path: String, content: String) -> Result<(), String> {
-    let audio_buf = PathBuf::from(&audio_path);
-    let lrc_path = audio_buf.join("lyric.lrc");
+pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<(), String> {
+    let base_path = if audio_path.starts_with("http") {
+        let paths = crate::state::AppPaths::from_handle(&handle);
+        let cache_key = urlencoding::encode(&audio_path).to_string();
+        paths.separated.join(&cache_key)
+    } else {
+        PathBuf::from(&audio_path)
+    };
+
+    if !base_path.exists() {
+        fs::create_dir_all(&base_path).map_err(|e| e.to_string())?;
+    }
+    
+    let lrc_path = if base_path.is_dir() {
+        base_path.join("lyric.lrc")
+    } else {
+        base_path.with_extension("lrc")
+    };
     
     fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
     sys_log(&format!("[Alignment] LRC saved to {:?}", lrc_path));
@@ -716,33 +773,38 @@ pub async fn save_lrc_file(audio_path: String, content: String) -> Result<(), St
 }
 
 #[command]
-pub async fn load_lrc_file(audio_path: String) -> Result<String, String> {
-    let audio_buf = PathBuf::from(&audio_path);
+pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
+    let base_path = if audio_path.starts_with("http") {
+        let paths = crate::state::AppPaths::from_handle(&handle);
+        let cache_key = urlencoding::encode(&audio_path).to_string();
+        paths.separated.join(&cache_key)
+    } else {
+        PathBuf::from(&audio_path)
+    };
     
+    if !base_path.exists() {
+        return Err("LRC file not found".to_string());
+    }
+
     // 1. lyric.lrc (새로운 기본값)
-    let lrc_path = audio_buf.join("lyric.lrc");
+    let lrc_path = if base_path.is_dir() { base_path.join("lyric.lrc") } else { base_path.with_extension("lrc") };
     if lrc_path.exists() {
         return fs::read_to_string(&lrc_path).map_err(|e| format!("LRC 읽기 실패: {}", e));
     }
     
-    // 2. vocal.lrc (이전 호환성)
-    let old_vocal_lrc = audio_buf.join("vocal.lrc");
-    if old_vocal_lrc.exists() {
-        return fs::read_to_string(&old_vocal_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
-    }
-    
-    // 3. 폴더명.lrc (직전 호환성)
-    let folder_name = audio_buf.file_name().unwrap_or_default().to_string_lossy().to_string();
-    let fallback_filename = if folder_name.is_empty() { "lyrics.lrc".to_string() } else { format!("{}.lrc", folder_name) };
-    let fallback_lrc = audio_buf.join(&fallback_filename);
-    if fallback_lrc.exists() {
-        return fs::read_to_string(&fallback_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
-    }
-    
-    // 4. 폴더명과 같은 레벨의 .lrc (최초 호환성)
-    let parent_lrc = audio_buf.with_extension("lrc");
-    if parent_lrc.exists() {
-        return fs::read_to_string(&parent_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+    // 2. vocal.lrc (이전 호환성 - 폴더인 경우만)
+    if base_path.is_dir() {
+        let old_vocal_lrc = base_path.join("vocal.lrc");
+        if old_vocal_lrc.exists() {
+            return fs::read_to_string(&old_vocal_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+        }
+        
+        let folder_name = base_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let fallback_filename = if folder_name.is_empty() { "lyrics.lrc".to_string() } else { format!("{}.lrc", folder_name) };
+        let fallback_lrc = base_path.join(&fallback_filename);
+        if fallback_lrc.exists() {
+            return fs::read_to_string(&fallback_lrc).map_err(|e| format!("LRC 읽기 실패: {}", e));
+        }
     }
     
     Err("LRC file not found".to_string())

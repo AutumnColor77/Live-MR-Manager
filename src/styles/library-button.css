@@ -22,7 +22,8 @@ body .song-grid.button-mode .song-card.button-row {
 body .song-grid.button-mode .song-card.button-row .thumbnail {
   width: 60px !important;
   height: 60px !important;
-  border-radius: 8px !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
 }
 
 /* Info Layout - Vertically Centered Relative to Thumbnail */

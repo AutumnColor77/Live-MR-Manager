@@ -7,6 +7,18 @@ import { elements } from './elements.js';
 export function openLibraryManager() {
   if (!elements.managerModal) return;
   elements.managerModal.classList.add("active");
+  
+  // Reset tabs to default (Song List)
+  const tabBtns = document.querySelectorAll(".manager-tab-btn");
+  const tabBodies = document.querySelectorAll(".manager-body");
+  
+  tabBtns.forEach(b => b.classList.toggle("active", b.dataset.tab === "list"));
+  tabBodies.forEach(c => {
+    const isList = c.id === "manager-tab-list";
+    c.classList.toggle("active", isList);
+    c.style.display = isList ? "flex" : "none";
+  });
+
   renderManagerTable();
   initTableResizing();
   initManagerEvents();
@@ -191,9 +203,12 @@ export function initManagerEvents() {
     btnCopy.onclick = () => {
       const list = elements.unclassifiedTagsList;
       if (!list) return;
-      const text = Array.from(list.querySelectorAll(".tag-item")).map(t => t.textContent.trim()).join("\n");
+      // Extract only .tag-name text, excluding .tag-count
+      const text = Array.from(list.querySelectorAll(".tag-name"))
+        .map(t => t.textContent.trim())
+        .join("\n");
       navigator.clipboard.writeText(text);
-      import('../utils.js').then(m => m.showNotification("클립보드에 복사되었습니다.", "info"));
+      import('../utils.js').then(m => m.showNotification("태그 목록이 클립보드에 복사되었습니다.", "info"));
     };
   }
   if (btnSaveMap) {
@@ -223,16 +238,40 @@ export function initManagerEvents() {
 
 async function updateUnmappedTags() {
   const { invoke } = await import('../tauri-bridge.js');
-  const tags = await invoke("get_unclassified_tags");
-  if (elements.unclassifiedTagsList) {
-    elements.unclassifiedTagsList.innerHTML = tags.map(t => `<div class="tag-item">${t}</div>`).join("");
+  const { showNotification } = await import('../utils.js');
+  
+  if (!elements.unclassifiedTagsList) return;
+
+  try {
+    // tags is a HashMap<String, usize> -> { "tag": count }
+    const tags = await invoke("get_unclassified_tags");
+    
+    // Convert to array and sort by count descending
+    const tagEntries = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+
+    if (tagEntries.length === 0) {
+      elements.unclassifiedTagsList.innerHTML = `<div style="padding: 20px; text-align: center; color: #888;">미분류 태그가 없습니다.</div>`;
+      return;
+    }
+
+    elements.unclassifiedTagsList.innerHTML = tagEntries.map(([name, count]) => `
+      <div class="tag-item" title="Frequency: ${count}">
+        <span class="tag-name">${name}</span>
+        <span class="tag-count" style="font-size: 0.75rem; opacity: 0.5; margin-left: 6px;">(${count})</span>
+      </div>
+    `).join("");
     
     // Clicking a tag fills the "Original" field
     elements.unclassifiedTagsList.querySelectorAll(".tag-item").forEach(item => {
       item.onclick = () => {
-        if (elements.curationOriginal) elements.curationOriginal.value = item.textContent.trim();
+        const tagName = item.querySelector(".tag-name").textContent.trim();
+        if (elements.curationOriginal) elements.curationOriginal.value = tagName;
       };
     });
+  } catch (err) {
+    console.error("[Curation] Failed to fetch tags:", err);
+    showNotification("태그 목록을 불러오지 못했습니다.", "error");
+    elements.unclassifiedTagsList.innerHTML = `<div style="padding: 20px; text-align: center; color: #ff6b6b;">데이터 로드 실패</div>`;
   }
 }
 

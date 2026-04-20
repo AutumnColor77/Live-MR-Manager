@@ -2,7 +2,7 @@
 .manager-tab-nav {
   display: flex;
   gap: 10px;
-  padding: 0 30px;
+  padding: 0;
   background: #1a1a20;
   border-bottom: 1px solid var(--glass-border);
 }
@@ -55,6 +55,8 @@
   border-radius: 14px;
   padding: 20px;
   border: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
 }
 
 .curation-right {
@@ -63,6 +65,8 @@
   border-radius: 14px;
   padding: 24px;
   border: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
 }
 
 .unclassified-list {
@@ -79,4 +83,14 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   cursor: pointer;
+}
+
+.curation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.curation-form .input-group {
+  gap: 2px;
 }

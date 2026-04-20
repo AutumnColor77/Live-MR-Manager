@@ -194,7 +194,6 @@ async function initApp() {
     /* 취소 / 닫기 계열 버튼 (다크 그레이) */
     .modal-content button.cancel-btn,
     .modal-content button[id*="cancel"],
-    .modal-content button[id*="close"],
     .modal-content button[id*="no"] {
       background: rgba(255, 255, 255, 0.08) !important;
       color: #e2e8f0 !important;
@@ -290,6 +289,9 @@ async function initApp() {
   
   // Initialize Drag & Drop
   initSortable();
+
+  // Initialize AI Toggles State (Disabled by default if no selection)
+  updateAiTogglesState(null);
 
   console.log("[App] Initialization Complete.");
 }

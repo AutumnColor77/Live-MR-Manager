@@ -69,7 +69,6 @@
 
 .close-btn:hover {
   color: #fff;
-  transform: rotate(90deg);
 }
 
 .modal-body {
@@ -237,7 +236,7 @@
   height: 85vh;
   display: flex !important;
   flex-direction: column !important;
-  padding: 0 !important;
+  padding: 30px !important;
 }
 
 .header-main-info {
@@ -296,9 +295,14 @@
 }
 
 .manager-body {
+  display: none !important;
   flex: 1;
   overflow: hidden;
   padding: 0 !important;
+}
+
+.manager-body.active {
+  display: flex !important;
 }
 
 .table-container {
