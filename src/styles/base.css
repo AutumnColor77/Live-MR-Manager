@@ -4,38 +4,46 @@
   font-weight: 300;
   src: url('../assets/fonts/SUITE-Light.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 400;
   src: url('../assets/fonts/SUITE-Regular.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 500;
   src: url('../assets/fonts/SUITE-Medium.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 600;
   src: url('../assets/fonts/SUITE-SemiBold.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 700;
   src: url('../assets/fonts/SUITE-Bold.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 800;
   src: url('../assets/fonts/SUITE-ExtraBold.ttf') format('truetype');
 }
+
 @font-face {
   font-family: 'SUITE';
   font-weight: 900;
   src: url('../assets/fonts/SUITE-Heavy.ttf') format('truetype');
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -93,7 +101,8 @@
   background-clip: content-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   width: 100vw;
@@ -116,7 +125,7 @@ html, body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9999;
+  z-index: 30000;
   padding: 0 12px;
   backdrop-filter: blur(20px);
 }
@@ -178,13 +187,25 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-overlay {

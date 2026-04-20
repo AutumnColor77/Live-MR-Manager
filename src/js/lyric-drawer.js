@@ -88,7 +88,7 @@ export function updateLyrics(segments) {
             <div class="drawer-empty-msg">
                 <p>정렬된 가사가 없습니다.</p>
                 <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 10px;">
-                    Lyric Sync 모드에서 가사 싱크를 생성하세요.
+                    Lyric Sync 모드에서<br>가사 싱크를 생성하세요.
                 </p>
             </div>
         `;

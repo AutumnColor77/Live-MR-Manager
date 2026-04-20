@@ -1,4 +1,5 @@
 /* --- Modal System Styles (Restored) --- */
+/* [Rule] 모든 모달의 간격은 상하좌우 30px (Titlebar/Dock 기준 포함) */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -7,28 +8,48 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px);
-  z-index: 11000;
+  z-index: 20000; /* Normal state: behind titlebar(30k) and dock(25k) */
   display: none;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+  padding: 0 30px; /* Horizontal safe area */
+  padding-top: calc(var(--titlebar-height) + 30px);
+  padding-bottom: calc(var(--dock-height) + 30px);
+  transition: z-index 0s;
+}
+
+/* Elevate modal ONLY when a dropdown is active so it can overlap the dock */
+.modal-overlay:has(.custom-select.active) {
+  z-index: 26000;
 }
 
 .modal-overlay.active {
   display: flex;
 }
 
-#confirm-modal { z-index: 11510; }
-#model-download-overlay { z-index: 11600; }
+#confirm-modal {
+  z-index: 20001;
+}
+
+#model-download-overlay {
+  z-index: 20002;
+}
 
 .modal-content {
+  pointer-events: auto;
   background: rgba(22, 22, 30, 0.9);
   backdrop-filter: blur(25px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 24px;
   width: 100%;
   max-width: 500px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  overflow: hidden;
+  overflow: visible;
+  padding: 32px; /* Standard internal padding */
   animation: modalScale 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -37,8 +58,15 @@
 }
 
 @keyframes modalScale {
-  from { opacity: 0; transform: scale(0.9) translateY(20px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .modal-header {
@@ -59,16 +87,28 @@
 }
 
 .close-btn {
-  background: none;
-  border: none;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   color: var(--text-dim);
-  font-size: 1.5rem;
+  font-size: 1.1rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
 }
 
 .close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .modal-body {
@@ -76,6 +116,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  overflow: visible;
 }
 
 .modal-body-grid {
@@ -99,7 +140,8 @@
   align-items: center !important;
 }
 
-.footer-left-group, .footer-actions {
+.footer-left-group,
+.footer-actions {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -139,7 +181,7 @@
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
 }
 
 .input-group label {
@@ -148,14 +190,16 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin-bottom: 2px;
+  margin-bottom: 0px;
+  padding-left: 8px;
 }
 
 .input-group input[type="text"] {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 12px 16px;
+  height: 44px;
+  padding: 0 16px;
   color: #fff;
   font-size: 0.95rem;
   font-weight: 500;
@@ -190,14 +234,21 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  width: max-content !important;
-  white-space: nowrap !important;
+  width: 100% !important;
+  box-sizing: border-box;
 }
 
 .mr-checkbox-label:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 193, 7, 0.4);
   transform: translateY(-1px);
+}
+
+.mr-checkbox-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  /* Prevent any interaction */
 }
 
 .mr-badge-preview {
@@ -252,7 +303,7 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-.custom-checkbox-wrapper input:checked ~ .checkbox-checkmark {
+.custom-checkbox-wrapper input:checked~.checkbox-checkmark {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   border-color: transparent;
   box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
@@ -271,7 +322,7 @@
   transform: rotate(45deg);
 }
 
-.custom-checkbox-wrapper input:checked ~ .checkbox-checkmark:after {
+.custom-checkbox-wrapper input:checked~.checkbox-checkmark:after {
   display: block;
 }
 
@@ -303,6 +354,7 @@
   display: flex !important;
   flex-direction: column !important;
   padding: 30px !important;
+  overflow: hidden !important;
 }
 
 .header-main-info {
@@ -466,6 +518,23 @@
   border-radius: 4px;
   color: #ccc;
   white-space: nowrap;
+}
+
+.track-genre-preview {
+  font-size: 0.75rem;
+  color: #fbbf24;
+  font-weight: 600;
+  margin-top: 4px;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+border: 1px solid rgba(255, 255, 255, 0.1);
+border-radius: 4px;
+color: #ccc;
+white-space: nowrap;
 }
 
 .track-genre-preview {

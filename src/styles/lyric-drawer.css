@@ -3,7 +3,7 @@
     --lyric-card-width: 200px;
     --lyric-drawer-width: min(calc(var(--lyric-card-width) + 30px), 90vw);
     --lyric-drawer-top: calc(var(--titlebar-height) + 120px);
-    --lyric-drawer-bottom-gap: 30px;
+    --lyric-drawer-bottom-gap: 0px;
     --lyric-handle-width: 24px;
     /* Reserve one lane minus right safe-area already present in grid */
     --lyric-reserved-width: max(0px, calc(var(--lyric-card-width) + var(--library-grid-gap, 12px) - var(--library-safe-area, 30px)));

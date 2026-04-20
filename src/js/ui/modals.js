@@ -53,14 +53,29 @@ export function openEditModal(song, index) {
   // MR Checkbox initialization
   const mrCheckbox = document.getElementById("edit-is-mr");
   if (mrCheckbox) {
-    mrCheckbox.checked = !!(song.is_mr || song.isMr || song.is_separated || song.isSeparated);
+    const isSeparated = !!(song.is_separated || song.isSeparated);
+    mrCheckbox.checked = isSeparated || !!(song.is_mr || song.isMr);
+    mrCheckbox.disabled = isSeparated;
+    
+    // Add visual feedback for disabled state
+    const label = mrCheckbox.closest(".mr-checkbox-label");
+    if (label) label.classList.toggle("disabled", isSeparated);
   }
 
   elements.metadataModal.classList.add("active");
 }
 
 export function closeEditModal() {
-  if (elements.metadataModal) elements.metadataModal.classList.remove("active");
+  if (elements.metadataModal) {
+    elements.metadataModal.classList.remove("active");
+    // Reset disabled state for next open
+    const mrCheckbox = document.getElementById("edit-is-mr");
+    if (mrCheckbox) {
+      mrCheckbox.disabled = false;
+      const label = mrCheckbox.closest(".mr-checkbox-label");
+      if (label) label.classList.remove("disabled");
+    }
+  }
   state.editingSongIndex = null;
 }
 

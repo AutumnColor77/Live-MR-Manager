@@ -17,7 +17,16 @@ export class ForcedAlignmentViewer {
             isProcessing: false,
             isSeeking: false,
             currentSyncIndex: -1,
-            isSyncMode: false
+            isSyncMode: false,
+            zoomLevel: 1.0,
+            scrollTime: 0,
+            isPanning: false,
+            lastPanX: 0,
+            isScrolling: false,
+            isResizing: false,
+            resizeTarget: null,
+            hoveringTarget: null,
+            selectedTarget: null
         };
 
         this.initUI();
@@ -69,14 +78,28 @@ export class ForcedAlignmentViewer {
                                         <path d="M12 2a10 10 0 0 1 10 10" />
                                     </svg>
                                 </div>
-                                <div id="loader-text" style="color: white; font-size: 0.9rem; font-weight: 500;">소리 데이터 준비 중...</div>
+                                <div id="loader-text" style="color: white; font-size: 0.9rem; font-weight: 500;"></div>
                                 <div id="loader-progress" style="margin-top: 8px; color: #4a9eff; font-family: monospace; font-size: 0.8rem; display: none;">0%</div>
                                 <style>
                                     @keyframes waveform-spin { 100% { transform: rotate(360deg); } }
                                 </style>
                             </div>
+                             
+                             <!-- Floating Zoom Controls -->
+                             <div class="waveform-zoom-controls">
+                                 <button id="zoom-out-btn" class="zoom-btn" title="축소 (Ctrl + Wheel Down)">-</button>
+                                 <button id="zoom-in-btn" class="zoom-btn" title="확대 (Ctrl + Wheel Up)">+</button>
+                             </div>
                         </div>
-                        <div class="seek-bar-container" style="padding: 0; margin-top: -2px; margin-bottom: 4px;">
+
+                        <!-- Waveform Scrollbar -->
+                        <div class="waveform-scrollbar-wrapper">
+                            <div id="waveform-scrollbar-track" class="waveform-scrollbar-track">
+                                <div id="waveform-scrollbar-thumb" class="waveform-scrollbar-thumb"></div>
+                            </div>
+                        </div>
+
+                        <div class="seek-bar-container" style="padding: 0; margin-top: 4px; margin-bottom: 4px;">
                             <input type="range" id="seek-bar" class="seek-bar" value="0" step="0.1" style="width: 100%; margin: 0;">
                         </div>
                         <div class="sync-controls-panel">
@@ -130,6 +153,172 @@ export class ForcedAlignmentViewer {
             lyricsInput.addEventListener('input', () => this.parseLyrics());
         }
 
+        // Zoom Controls
+        get('zoom-in-btn').onclick = () => this.handleZoom(1.5);
+        get('zoom-out-btn').onclick = () => this.handleZoom(1 / 1.5);
+
+        // Waveform Events (Zoom & Pan)
+        this.canvas.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+                this.handleZoom(zoomFactor, e.offsetX);
+            }
+        }, { passive: false });
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                if (this.state.hoveringTarget) {
+                    this.state.isResizing = true;
+                    this.state.resizeTarget = this.state.hoveringTarget;
+                    this.state.selectedTarget = this.state.hoveringTarget;
+                    
+                    const seg = this.state.segments[this.state.selectedTarget.index];
+                    const targetTime = this.state.selectedTarget.type === 'start' ? seg.start : seg.end;
+                    this.seekTo(targetTime);
+                } else {
+                    if (this.state.duration <= 0) return;
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const targetTime = this.xToTime(x);
+                    this.seekTo(targetTime);
+                    this.state.selectedTarget = null;
+                }
+                this.drawWaveform();
+            } else if (e.button === 2) { // Right click for panning
+                this.state.isPanning = true;
+                this.state.lastPanX = e.clientX;
+                this.canvas.style.cursor = 'grabbing';
+            }
+        });
+
+        this.canvas.addEventListener('mousemove', (e) => {
+            if (this.state.isPanning || this.state.isScrolling || this.state.isResizing) return;
+
+            const x = e.offsetX;
+            const hitThreshold = 8; // Pixels
+            let found = null;
+
+            this.state.segments.forEach((seg, idx) => {
+                const xStart = this.timeToX(seg.start);
+                const xEnd = this.timeToX(seg.end);
+
+                if (Math.abs(x - xStart) < hitThreshold) found = { index: idx, type: 'start' };
+                else if (Math.abs(x - xEnd) < hitThreshold) found = { index: idx, type: 'end' };
+            });
+
+            this.state.hoveringTarget = found;
+            this.canvas.style.cursor = found ? 'col-resize' : 'default';
+            this.drawWaveform(); // Redraw to show boundary highlight
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (this.state.isResizing && this.state.resizeTarget) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const newTime = Math.max(0, Math.min(this.state.duration, this.xToTime(x)));
+                
+                const seg = this.state.segments[this.state.resizeTarget.index];
+                if (this.state.resizeTarget.type === 'start') {
+                    seg.start = Math.min(newTime, seg.end - 0.05);
+                } else {
+                    seg.end = Math.max(newTime, seg.start + 0.05);
+                }
+                
+                this.drawWaveform();
+                this.renderLyricList(); 
+            }
+
+            if (this.state.isPanning) {
+                const dx = e.clientX - this.state.lastPanX;
+                this.state.lastPanX = e.clientX;
+
+                const visibleDuration = this.state.duration / this.state.zoomLevel;
+                const timePerPixel = visibleDuration / this.canvas.width;
+                const deltaTime = dx * timePerPixel;
+
+                this.state.scrollTime = Math.max(0, Math.min(this.state.duration - visibleDuration, this.state.scrollTime - deltaTime));
+                this.drawWaveform();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (this.state.isPanning) {
+                this.state.isPanning = false;
+                this.canvas.style.cursor = 'default';
+            }
+            this.state.isScrolling = false;
+            this.state.isResizing = false;
+            this.state.resizeTarget = null;
+        });
+
+        window.addEventListener('keydown', (e) => {
+            // Ignore if typing in input/textarea
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+
+            if (this.state.selectedTarget) {
+                const seg = this.state.segments[this.state.selectedTarget.index];
+                if (!seg) return;
+
+                const step = e.shiftKey ? 0.1 : 0.01;
+                let changed = false;
+
+                if (e.key === 'ArrowLeft') {
+                    if (this.state.selectedTarget.type === 'start') {
+                        seg.start = Math.max(0, seg.start - step);
+                    } else {
+                        seg.end = Math.max(seg.start + 0.05, seg.end - step);
+                    }
+                    changed = true;
+                } else if (e.key === 'ArrowRight') {
+                    if (this.state.selectedTarget.type === 'start') {
+                        seg.start = Math.min(seg.end - 0.05, seg.start + step);
+                    } else {
+                        seg.end = Math.min(this.state.duration, seg.end + step);
+                    }
+                    changed = true;
+                } else if (e.key === 'Escape' || e.key === 'Enter') {
+                    this.state.selectedTarget = null;
+                    changed = true;
+                }
+
+                if (changed) {
+                    e.preventDefault();
+                    this.drawWaveform();
+                    this.renderLyricList();
+                }
+            } else if (e.code === 'Space') {
+                // Global spacebar tap
+                e.preventDefault();
+                this.handleTap();
+            }
+        });
+
+        // Scrollbar Interaction
+        const thumb = get('waveform-scrollbar-thumb');
+        const track = get('waveform-scrollbar-track');
+        if (thumb && track) {
+            thumb.onmousedown = (e) => {
+                e.preventDefault();
+                this.state.isScrolling = true;
+                this.state.lastScrollX = e.clientX;
+            };
+
+            window.addEventListener('mousemove', (e) => {
+                if (this.state.isScrolling && this.state.duration > 0) {
+                    const rect = track.getBoundingClientRect();
+                    const deltaX = e.clientX - rect.left;
+                    const percent = Math.max(0, Math.min(1, deltaX / rect.width));
+                    
+                    const visibleDuration = this.state.duration / this.state.zoomLevel;
+                    this.state.scrollTime = Math.max(0, Math.min(this.state.duration - visibleDuration, percent * this.state.duration));
+                    this.drawWaveform();
+                }
+            });
+        }
+
+
         const bar = get('seek-bar');
         
         // 드래그 중 실시간 업데이트 (파형 및 시간)
@@ -146,55 +335,16 @@ export class ForcedAlignmentViewer {
         bar.addEventListener('change', async () => {
             try {
                 if (this.state.duration > 0) {
-                    const ms = Math.floor(this.state.currentTime * 1000);
-                    // JSON.stringify에서는 BigInt를 처리할 수 없으므로 일반 Number를 사용합니다.
-                    await this.invoke('seek_to', { positionMs: ms });
+                    await this.seekTo(this.state.currentTime);
                 }
             } catch (err) {
                 console.error("Seek failed:", err);
             } finally {
-                // 탐색이 완료되면 다시 재생 진행 상태를 수신할 수 있도록 변경
                 setTimeout(() => { 
                     this.state.isSeeking = false; 
                 }, 100);
             }
         });
-
-        // 파형 캔버스 클릭 시 이동하는 로직 추가
-        if (this.canvas) {
-            this.canvas.addEventListener('mousedown', (e) => {
-                if (this.state.duration <= 0) return;
-                const rect = this.canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const ratio = Math.max(0, Math.min(1, x / rect.width));
-                
-                this.state.isSeeking = true;
-                this.state.currentTime = ratio * this.state.duration;
-                this.updateTimeDisplay();
-                this.drawWaveform();
-            });
-
-            this.canvas.addEventListener('mouseup', async () => {
-                if (!this.state.isSeeking) return;
-                try {
-                    const ms = Math.floor(this.state.currentTime * 1000);
-                    await this.invoke('seek_to', { positionMs: ms });
-                } catch (err) {
-                    console.error("Seek failed:", err);
-                } finally {
-                    setTimeout(() => { 
-                        this.state.isSeeking = false; 
-                    }, 100);
-                }
-            });
-        }
-
-        window.onkeydown = (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                this.handleTap();
-            }
-        };
     }
 
     async setupBackendListeners() {
@@ -267,7 +417,7 @@ export class ForcedAlignmentViewer {
         const loaderProgress = document.getElementById('loader-progress');
         
         if (loader) loader.style.display = 'flex';
-        if (loaderText) loaderText.innerText = '오디오 준비 중...';
+
         if (loaderProgress) loaderProgress.style.display = 'none';
 
         try {
@@ -278,14 +428,21 @@ export class ForcedAlignmentViewer {
             this.state.duration = ms / 1000;
             this.updateTimeDisplay();
 
-            // Try to load existing LRC file (가사 우선 로드)
+            // 가사 데이터 초기화
+            this.state.segments = [];
+            this.state.currentSyncIndex = 0;
+            this.state.isSyncMode = false;
+            const inputElement = document.getElementById('lyrics-input');
+            if (inputElement) inputElement.value = '';
+            this.renderLyricList();
+
+            // Try to load existing LRC file
             try {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
                 if (lrcContent && lrcContent.trim()) {
                     this.state.segments = parseLrc(lrcContent, this.state.duration);
                     
                     const rawLyrics = this.state.segments.map(s => s.text);
-                    const inputElement = document.getElementById('lyrics-input');
                     if (inputElement) inputElement.value = rawLyrics.join('\n');
                     
                     let nextIdx = this.state.segments.findIndex(s => s.start === 0);
@@ -295,16 +452,14 @@ export class ForcedAlignmentViewer {
                     this.state.isSyncMode = true;
                     this.renderLyricList();
                 }
-                // 파일이 없거나 비어있는 경우 기존 가사를 유지합니다.
             } catch (err) {
                 console.log("[Alignment] LRC load failed or not found:", err);
-                // 기존 가사를 유지하며 수동 작업을 진행할 수 있게 합니다.
             }
 
             this.drawWaveform();
 
             // Background waveform (파형 후순위 비동기 로드)
-            if (loaderText) loaderText.innerText = '파형 생성 중...';
+
             
             const waveformPath = path;
             this.invoke('get_waveform_summary', { audioPath: waveformPath }).then(summary => {
@@ -343,6 +498,47 @@ export class ForcedAlignmentViewer {
         if (display) {
             display.innerText = `${this.formatTime(this.state.currentTime)} / ${this.formatTime(this.state.duration)}`;
         }
+        this.drawWaveform();
+    }
+
+    async seekTo(time) {
+        if (!this.state.currentPath || this.state.duration <= 0) return;
+        
+        this.state.currentTime = Math.max(0, Math.min(this.state.duration, time));
+        this.updateTimeDisplay();
+        
+        try {
+            await this.invoke('play_track', { 
+                path: this.state.currentPath, 
+                durationMs: Math.floor(this.state.currentTime * 1000), 
+                playNow: this.state.isPlaying 
+            });
+        } catch (err) {
+            console.error("[Alignment] seekTo error:", err);
+        }
+    }
+
+    timeToX(time) {
+        if (!this.canvas || this.state.duration <= 0) return 0;
+        const visibleDuration = this.state.duration / this.state.zoomLevel;
+        return ((time - this.state.scrollTime) / visibleDuration) * this.canvas.width;
+    }
+
+    xToTime(x) {
+        if (!this.canvas || this.state.duration <= 0) return 0;
+        const visibleDuration = this.state.duration / this.state.zoomLevel;
+        return (x / this.canvas.width) * visibleDuration + this.state.scrollTime;
+    }
+
+    updateScrollbar() {
+        const thumb = document.getElementById('waveform-scrollbar-thumb');
+        if (!thumb || this.state.duration <= 0) return;
+
+        const thumbWidth = (1 / this.state.zoomLevel) * 100;
+        const thumbLeft = (this.state.scrollTime / this.state.duration) * 100;
+
+        thumb.style.width = `${Math.max(thumbWidth, 2)}%`;
+        thumb.style.left = `${thumbLeft}%`;
     }
 
     updatePlayButton() {
@@ -358,12 +554,65 @@ export class ForcedAlignmentViewer {
         const { width, height } = this.canvas;
         this.ctx.clearRect(0, 0, width, height);
 
+        if (this.state.duration <= 0) return;
+
+        this.updateScrollbar();
+
+        const visibleDuration = this.state.duration / this.state.zoomLevel;
+        const startTime = this.state.scrollTime;
+        const endTime = startTime + visibleDuration;
+
         // 1. Segments
         this.state.segments.forEach((seg, idx) => {
-            const x1 = (seg.start / this.state.duration) * width;
-            const x2 = (seg.end / this.state.duration) * width;
+            if (seg.end < startTime || seg.start > endTime) return;
+            const x1 = this.timeToX(seg.start);
+            const x2 = this.timeToX(seg.end);
+            
+            // Fill background
             this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.1)';
-            this.ctx.fillRect(x1, 0, x2 - x1, height);
+            this.ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
+            
+            // Default subtle boundary lines
+            this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.3)';
+            this.ctx.lineWidth = 1;
+            [x1, x2].forEach(bx => {
+                if (bx >= 0 && bx <= width) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(bx, 0);
+                    this.ctx.lineTo(bx, height);
+                    this.ctx.stroke();
+                }
+            });
+
+            // Boundary Highlighting (on hover)
+            const ht = this.state.hoveringTarget;
+            if (ht && ht.index === idx) {
+                this.ctx.strokeStyle = '#4a9eff';
+                this.ctx.lineWidth = 2;
+                const bx = ht.type === 'start' ? x1 : x2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(bx, 0);
+                this.ctx.lineTo(bx, height);
+                this.ctx.stroke();
+            }
+
+            // Selected Boundary Highlight (Yellow)
+            const st = this.state.selectedTarget;
+            if (st && st.index === idx) {
+                this.ctx.strokeStyle = '#fbbf24'; // Amber/Yellow
+                this.ctx.lineWidth = 3;
+                const bx = st.type === 'start' ? x1 : x2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(bx, 0);
+                this.ctx.lineTo(bx, height);
+                this.ctx.stroke();
+                
+                // Show timestamp tooltip-like text
+                this.ctx.fillStyle = '#fbbf24';
+                this.ctx.font = 'bold 12px Inter';
+                const timeStr = (st.type === 'start' ? seg.start : seg.end).toFixed(2) + 's';
+                this.ctx.fillText(timeStr, bx + 5, 20);
+            }
         });
 
         // 2. Waveform
@@ -372,25 +621,47 @@ export class ForcedAlignmentViewer {
             this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
             const points = this.state.waveformPoints;
             for (let i = 0; i < width; i++) {
-                const idx = Math.floor((i / width) * points.length);
-                const p = points[idx];
-                if (p) {
-                    this.ctx.moveTo(i, (1 + p[0]) * height / 2);
-                    this.ctx.lineTo(i, (1 + p[1]) * height / 2);
+                const targetTime = this.xToTime(i);
+                const idx = Math.floor((targetTime / this.state.duration) * points.length);
+                if (idx >= 0 && idx < points.length) {
+                    const p = points[idx];
+                    if (p) {
+                        this.ctx.moveTo(i, (1 + p[0] * 0.8) * height / 2);
+                        this.ctx.lineTo(i, (1 + p[1] * 0.8) * height / 2);
+                    }
                 }
             }
             this.ctx.stroke();
         }
 
         // 3. Playhead
-        if (this.state.duration > 0) {
-            const px = (this.state.currentTime / this.state.duration) * width;
+        if (this.state.currentTime >= startTime && this.state.currentTime <= endTime) {
+            const px = this.timeToX(this.state.currentTime);
             this.ctx.strokeStyle = '#ef4444';
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
-            this.ctx.moveTo(px, 0); this.ctx.lineTo(px, height);
+            this.ctx.moveTo(px, 0);
+            this.ctx.lineTo(px, height);
             this.ctx.stroke();
         }
+    }
+
+    handleZoom(factor, mouseX = null) {
+        if (this.state.duration <= 0) return;
+
+        const oldZoom = this.state.zoomLevel;
+        const newZoom = Math.max(1, Math.min(200, oldZoom * factor));
+        if (oldZoom === newZoom) return;
+
+        const focusX = mouseX !== null ? mouseX : this.canvas.width / 2;
+        const focusTime = this.xToTime(focusX);
+
+        this.state.zoomLevel = newZoom;
+        const newVisibleDuration = this.state.duration / newZoom;
+        let newScrollTime = focusTime - (focusX / this.canvas.width) * newVisibleDuration;
+        
+        this.state.scrollTime = Math.max(0, Math.min(this.state.duration - newVisibleDuration, newScrollTime));
+        this.drawWaveform();
     }
 
     // --- Helpers & Others ---
@@ -667,7 +938,7 @@ export class ForcedAlignmentViewer {
             });
             const content = lrcLines.join('\n');
             const savedPath = await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
-            showNotification(`LRC 저장 완료: ${savedPath}`, 'success');
+            showNotification('가사 싱크 저장 완료', 'success');
         } catch (err) {
             console.error(err);
             showNotification('LRC 저장 실패: ' + err, 'error');

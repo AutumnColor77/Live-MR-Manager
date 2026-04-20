@@ -620,3 +620,123 @@ canvas#waveform-canvas {
 .alignment-track-list::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
 }
+
+/* 11. Alignment Track Selection Modal - Search Bar Overrides */
+#alignment-track-modal .search-bar {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 0 !important;
+    padding: 0 4px !important;
+    height: 44px !important;
+    box-shadow: none !important;
+    margin-bottom: 12px !important;
+    flex: none !important;
+}
+
+#alignment-track-modal .search-bar:focus-within {
+    border-bottom-color: var(--accent-blue) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#alignment-track-modal .search-bar input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding-left: 8px !important;
+    font-size: 1rem !important;
+    height: 100% !important;
+}
+#alignment-track-modal .modal-content {
+    height: 80vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#alignment-track-modal .modal-body {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+
+.alignment-track-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+}
+
+/* 12. Waveform Zoom & Scrollbar Styles */
+.waveform-canvas-container {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+
+.waveform-zoom-controls {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 5;
+}
+
+.zoom-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.8);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.zoom-btn:hover {
+    background: var(--accent-blue);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.zoom-btn:active {
+    transform: scale(0.95);
+}
+
+.waveform-scrollbar-wrapper {
+    margin: 8px 0;
+    padding: 0 4px;
+}
+
+.waveform-scrollbar-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.waveform-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.waveform-scrollbar-thumb:hover {
+    background: rgba(74, 158, 255, 0.4);
+}
+

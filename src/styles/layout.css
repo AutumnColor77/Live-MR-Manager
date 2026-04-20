@@ -168,7 +168,7 @@
   justify-content: space-between;
   padding: 20px var(--library-safe-area, 30px) !important;
   background: linear-gradient(to bottom, var(--bg-color), transparent);
-  z-index: 50;
+  z-index: 1100;
   flex-wrap: wrap;
   gap: 20px;
   width: 100% !important; /* Fluid */
@@ -280,7 +280,7 @@ h1 {
   background: transparent;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: 110;
+  z-index: 1100;
   width: 100% !important; /* Fluid */
   max-width: 1600px !important; /* Higher ceiling */
   margin: 0 !important;

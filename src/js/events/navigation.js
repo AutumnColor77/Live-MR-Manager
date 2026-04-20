@@ -77,7 +77,17 @@ export function switchTab(tabId) {
     if (alignmentPage) alignmentPage.style.display = "block";
     // Initialize alignment viewer if needed
     initAlignmentViewer().then(() => {
-      if (alignmentViewer) alignmentViewer.resize();
+      if (alignmentViewer) {
+        alignmentViewer.resize();
+        
+        // Auto-load currently playing track from library if viewer is empty
+        if (!alignmentViewer.state.currentPath && state.currentTrack) {
+          alignmentViewer.loadAudio(state.currentTrack.path);
+          // Sync UI display name immediately
+          const nameEl = document.getElementById('selected-track-name');
+          if (nameEl) nameEl.innerText = state.currentTrack.title || "Unknown Title";
+        }
+      }
     });
   } else {
     elements.viewport?.classList.remove("alignment-mode");
@@ -100,7 +110,7 @@ function getTabTitle(tabId) {
     youtube: "YouTube",
     local: "My Files",
     settings: "Settings",
-    tasks: "Active Tasks",
+    tasks: "AI Processing",
     alignment: "Lyric Sync"
   };
   return titles[tabId] || "Live MR Manager";

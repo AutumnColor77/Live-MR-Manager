@@ -95,7 +95,7 @@
   min-width: 140px;
   user-select: none;
   cursor: pointer;
-  z-index: 100;
+  z-index: 1200;
 }
 
 .select-trigger {
@@ -103,13 +103,14 @@
   backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
   border-radius: 10px;
-  padding: 10px 16px;
+  height: 44px;
+  padding: 0 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
@@ -133,7 +134,7 @@
   display: none;
   flex-direction: column;
   gap: 4px;
-  z-index: 101;
+  z-index: 1201;
   box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
   max-height: 200px;
   overflow-y: auto;
