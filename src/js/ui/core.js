@@ -3,6 +3,7 @@
  */
 import { state, getAllGenres, getAllCategories } from '../state.js';
 import { elements } from './elements.js';
+import { invoke } from '../tauri-bridge.js';
 
 export async function updateGenreDropdowns() {
   const genres = ["전체", ...(await getAllGenres())];
