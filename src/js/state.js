@@ -33,6 +33,10 @@ export const state = {
   lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
   broadcastMode: localStorage.getItem("broadcastMode") === "true",
   lastColumns: 0,
+  
+  // Real-time Lyrics
+  currentLyrics: [],
+  currentLyricIndex: -1,
 };
 
 export const DEFAULT_CATEGORIES = [

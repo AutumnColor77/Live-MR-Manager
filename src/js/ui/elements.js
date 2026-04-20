@@ -93,6 +93,8 @@ export const elements = {
   btnImportBackup: null,
   btnRunRescue: null,
   searchSuggestions: null,
+  lyricDrawer: null,
+  lyricDrawerTrigger: null,
 };
 
 export function initDomReferences() {
@@ -185,4 +187,6 @@ export function initDomReferences() {
   elements.btnImportBackup = document.getElementById("btn-import-backup");
   elements.btnRunRescue = document.getElementById("btn-run-rescue");
   elements.searchSuggestions = document.getElementById("search-suggestions");
+  elements.lyricDrawer = document.getElementById("lyric-drawer");
+  elements.lyricDrawerTrigger = document.getElementById("lyric-drawer-trigger");
 }

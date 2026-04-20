@@ -9,6 +9,7 @@ import {
   togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack, 
   setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated 
 } from './audio.js';
+import { loadLyricsForTrack } from './lyrics.js';
 
 function parseDurationToMs(duration) {
   if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
@@ -115,6 +116,16 @@ export async function selectTrack(index) {
   state.isLoading = true;
   state.targetProgressMs = 0;
   state.currentProgressMs = 0;
+  
+  // Load Lyrics for the selected track
+  loadLyricsForTrack(song.path, parseDurationToMs(song.duration) / 1000).then(lyrics => {
+    state.currentLyrics = lyrics;
+    state.currentLyricIndex = -1;
+    // Trigger drawer update if it's initialized
+    import('./lyric-drawer.js').then(m => {
+        if (m.updateLyrics) m.updateLyrics(lyrics);
+    });
+  });
 
   const durationHintMs = parseDurationToMs(song.duration);
   if (durationHintMs > 0) {

@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="style.css?v=6.0" />
   <link rel="stylesheet" href="styles/alignment.css" />
+  <link rel="stylesheet" href="styles/lyric-drawer.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live MR Manager | Performer Dash</title>
@@ -70,14 +71,14 @@
         <i class="icon-folder"></i>
         <span>My Files</span>
       </div>
-      <div class="nav-item" id="nav-alignment">
-        <i class="icon-sync"></i>
-        <span>가사 정렬</span>
-      </div>
     </div>
 
     <div class="nav-group secondary">
       <label class="nav-label">System</label>
+      <div class="nav-item" id="nav-alignment">
+        <i class="icon-sync"></i>
+        <span>Lyric Sync</span>
+      </div>
       <div class="nav-item no-icon" id="nav-tasks">
         <span>Active Tasks</span>
         <span class="task-count" id="task-badge" style="display: none;">0</span>
@@ -91,7 +92,8 @@
 
   <!-- 메인 컨텐츠 영역 -->
   <main class="viewport">
-    <header class="top-bar">
+    <div class="view-main">
+      <header class="top-bar">
       <div class="view-header">
         <div class="title-row">
           <h1 id="view-title">Library</h1>
@@ -349,11 +351,30 @@
         </div>
       </div>
 
-      <!-- 가사 정렬 모듈 섹션 -->
+      <!-- Lyric Sync 모듈 섹션 -->
       <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
         <div id="alignment-viewer-root" style="height: 100%;"></div>
       </div>
+    </div> <!-- End of view-main -->
+
+    <!-- Lyric Sliding Drawer -->
+    <div id="lyric-drawer" class="lyric-drawer">
+      <div class="drawer-header">
+        <h2>LYRICS</h2>
+        <button class="drawer-close" id="lyric-drawer-close">&times;</button>
+      </div>
+      <div class="drawer-content">
+        <p>정렬된 가사가 여기에 표시됩니다.</p>
+        <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 20px;">
+          (가사 데이터 연동 시 이곳에 출력됩니다)
+        </p>
+      </div>
     </div>
+
+    <!-- Floating Toggle Handle -->
+    <button id="lyric-drawer-trigger" class="lyric-drawer-trigger" title="가사 보기">
+      <span>LYRICS</span>
+    </button>
   </main>
 
   <!-- 퍼포머 컨트롤 도크 (하단 고정) -->
@@ -743,7 +764,7 @@
     </div>
   </div>
 
-  <!-- 가사 정렬용 음원 선택 모달 -->
+  <!-- Lyric Sync용 음원 선택 모달 -->
   <div id="alignment-track-modal" class="modal-overlay">
     <div class="modal-content" style="max-width: 600px;">
       <header class="modal-header">

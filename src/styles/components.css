@@ -47,42 +47,7 @@
 .btn-lg { height: var(--btn-h-lg); padding: 0 32px; font-size: 1rem; border-radius: 14px; }
 .btn-xl { height: var(--btn-h-xl); padding: 0 40px; font-size: 1.1rem; border-radius: 16px; }
 
-/* --- Badge Components --- */
-.category-badge,
-.genre-badge,
-.tag-badge {
-  font-size: 0.75rem;
-  font-weight: 800;
-  padding: 5px 12px;
-  border-radius: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.category-badge {
-  background: rgba(59, 130, 246, 0.15);
-  color: var(--accent-primary);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-}
-
-.genre-badge {
-  background: rgba(139, 92, 246, 0.15);
-  color: var(--accent-secondary);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-}
-
-.tag-badge {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  text-transform: uppercase;
-  padding: 4px 10px;
-  font-size: 0.7rem;
-  border-radius: 6px;
-}
+/* --- Layout Utilities --- */
 
 /* Curation Info Badges (Long blue-ish badges) */
 .curation-info-badges {

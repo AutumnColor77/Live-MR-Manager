@@ -1,0 +1,210 @@
+/* Lyric Sliding Drawer & Floating Toggle Button Styles */
+:root {
+    --lyric-card-width: 200px;
+    --lyric-drawer-width: min(calc(var(--lyric-card-width) + 30px), 90vw);
+    --lyric-drawer-top: calc(var(--titlebar-height) + 120px);
+    --lyric-drawer-bottom-gap: 30px;
+    --lyric-handle-width: 32px;
+    /* Reserve one lane minus right safe-area already present in grid */
+    --lyric-reserved-width: max(0px, calc(var(--lyric-card-width) + var(--library-grid-gap, 12px) - var(--library-safe-area, 30px)));
+}
+
+/* 1. Floating Toggle Button (Handle) */
+.lyric-drawer-trigger {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--lyric-handle-width);
+    height: 120px;
+    background: var(--accent-primary);
+    background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
+    color: white;
+    border: none;
+    border-radius: 12px 0 0 12px;
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    writing-mode: vertical-lr; /* Vertical text */
+    text-orientation: mixed;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    box-shadow: -4px 0 15px rgba(0, 0, 0, 0.3);
+    transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                width 0.2s ease,
+                padding-right 0.2s ease,
+                border-radius 0.2s ease;
+}
+
+.lyric-drawer-trigger:hover {
+    width: 40px;
+    padding-right: 8px;
+}
+
+.lyric-drawer-trigger span {
+    transform: rotate(180deg);
+}
+
+/* 2. Sliding Drawer */
+.lyric-drawer {
+    position: fixed;
+    top: var(--lyric-drawer-top);
+    right: 0;
+    bottom: calc(var(--dock-height) + var(--lyric-drawer-bottom-gap));
+    width: var(--lyric-drawer-width);
+    background: var(--glass-bg);
+    border-left: 1px solid var(--glass-border);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.25s ease,
+                visibility 0.25s ease;
+    z-index: 998;
+    box-shadow: -12px 0 30px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+    pointer-events: none;
+}
+
+body.drawer-open .lyric-drawer {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+body.drawer-open .lyric-drawer-trigger {
+    /* Keep handle outside drawer edge (original UX) */
+    right: var(--lyric-drawer-width);
+    border-radius: 12px 0 0 12px;
+}
+
+/* Avoid extra layout jitter while drawer is open */
+body.drawer-open .lyric-drawer-trigger:hover {
+    width: var(--lyric-handle-width);
+    padding-right: 0;
+}
+
+/* Root fix: observer uses scroll-area width to compute columns */
+.scroll-area {
+    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.drawer-open .scroll-area {
+    width: calc(100% - var(--lyric-reserved-width));
+}
+
+/*
+ * Let ResizeObserver-driven column logic decide layout.
+ * Do not hard-lock grid width while drawer is open.
+ */
+body.drawer-open .song-grid {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+
+/* 5. Drawer Content */
+.drawer-header {
+    padding: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.drawer-header h2 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--accent-primary);
+    margin: 0;
+    letter-spacing: 1px;
+}
+
+.drawer-close {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.drawer-content {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    color: var(--text-dim);
+    line-height: 1.8;
+    text-align: center;
+}
+
+/* 6. Lyric Items in Drawer */
+.drawer-lyric-item {
+    padding: 6px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    margin-bottom: 6px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    cursor: default; /* No click-to-seek in drawer */
+}
+
+.drawer-lyric-item.active {
+    background: rgba(74, 158, 255, 0.12);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 20px rgba(74, 158, 255, 0.1);
+}
+
+.drawer-lyric-item.active .lyric-text {
+    color: #fff;
+    font-weight: 700;
+}
+
+.lyric-text {
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.5;
+    transition: color 0.2s;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+}
+
+.drawer-empty-msg {
+    padding-top: 60px;
+    text-align: center;
+    color: var(--text-dim);
+    opacity: 0.7;
+}
+
+/* Scrollbar for Drawer Content */
+.drawer-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.drawer-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+/* Re-applying Premium Glow */
+.lyric-drawer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(to bottom, transparent, var(--accent-primary), transparent);
+    opacity: 0.3;
+}
+

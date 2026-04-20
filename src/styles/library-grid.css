@@ -13,15 +13,14 @@ body .song-grid.grid-mode .song-card {
   padding: 16px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 12px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  width: 200px !important; /* STRICTLY FIXED SIZE */
+  gap: 10px !important; /* v0.6.2 기준 살짝 좁은 간격 */
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  width: 200px !important; 
   height: auto !important;
 }
 
 body .song-grid.grid-mode .song-card:hover {
-  /* Inherits premium hover from library-common.css (border, shadow) */
-  transform: translateY(-8px) !important; /* Slightly more lift for large cards */
+  transform: translateY(-8px) scale(1.03) !important;
 }
 
 /* Thumbnail with Overlay Badge */
@@ -47,16 +46,37 @@ body .song-grid.grid-mode .song-card .status-badge {
 body .song-grid.grid-mode .song-card .song-info-content {
   display: flex !important;
   flex-direction: column !important;
-  gap: 8px !important;
+  gap: 4px !important; /* v0.6.2 기준 촘촘한 디자인 */
 }
 
 body .song-grid.grid-mode .song-card .song-name {
-  font-size: 1.1rem !important;
+  font-size: 15px !important; /* v0.6.2 정밀 수치 */
   font-weight: 700 !important;
   color: #fff !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+  line-height: 1.4 !important;
+}
+
+body .song-grid.grid-mode .song-card .song-artist-badge {
+  font-size: 13px !important;
+  color: var(--accent-primary) !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+  padding: 2px 10px !important;
+  border-radius: 4px !important;
+  width: fit-content !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 100% !important;
+  line-height: 1.4 !important;
+}
+
+body .song-grid.grid-mode .song-card .song-artist-badge.no-info {
+  color: var(--text-dim) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  font-style: italic !important;
 }
 
 /* Category & Duration Row (Same Line) */
@@ -86,6 +106,13 @@ body .song-grid.grid-mode .song-card .duration-text {
 
 /* Tag Section at the bottom */
 body .song-grid.grid-mode .song-card .tag-row {
+  margin-top: 4px !important;
+}
+
+body .song-grid.grid-mode .song-card .tag-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important; /* v0.6.2 정밀 간격 */
   margin-top: 4px !important;
 }
 

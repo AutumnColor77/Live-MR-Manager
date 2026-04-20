@@ -1,6 +1,7 @@
 import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
+import { parseLrc } from './lyrics.js';
 
 export class ForcedAlignmentViewer {
     constructor(containerId) {
@@ -97,7 +98,7 @@ export class ForcedAlignmentViewer {
                 <aside class="lyric-sidebar">
                     <div class="alignment-card">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <h3>가사 정렬 결과</h3>
+                            <h3>Lyric Sync 결과</h3>
                             <button id="save-lrc-btn" class="sync-save-btn">저장</button>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
@@ -281,7 +282,18 @@ export class ForcedAlignmentViewer {
             try {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
                 if (lrcContent && lrcContent.trim()) {
-                    this.parseLrcString(lrcContent);
+                    this.state.segments = parseLrc(lrcContent, this.state.duration);
+                    
+                    const rawLyrics = this.state.segments.map(s => s.text);
+                    const inputElement = document.getElementById('lyrics-input');
+                    if (inputElement) inputElement.value = rawLyrics.join('\n');
+                    
+                    let nextIdx = this.state.segments.findIndex(s => s.start === 0);
+                    if (nextIdx === -1) nextIdx = this.state.segments.length;
+                    this.state.currentSyncIndex = nextIdx;
+                    
+                    this.state.isSyncMode = true;
+                    this.renderLyricList();
                 }
                 // 파일이 없거나 비어있는 경우 기존 가사를 유지합니다.
             } catch (err) {
@@ -478,51 +490,8 @@ export class ForcedAlignmentViewer {
         this.drawWaveform();
     }
 
-    parseLrcString(lrcContent) {
-        const lines = lrcContent.split('\n');
-        const segments = [];
-        let rawLyrics = [];
-        const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
-        
-        lines.forEach(line => {
-            const match = timeRegex.exec(line);
-            if (match) {
-                const min = parseInt(match[1]);
-                const sec = parseFloat(match[2]);
-                const timeStr = match[0];
-                const text = line.replace(timeStr, '').trim();
-                segments.push({ text, start: min * 60 + sec, end: 0 });
-                rawLyrics.push(text);
-            } else if (line.trim()) {
-                segments.push({ text: line.trim(), start: 0, end: 0 });
-                rawLyrics.push(line.trim());
-            }
-        });
-        
-        // Calculate end times
-        for (let i = 0; i < segments.length - 1; i++) {
-            if (segments[i].start > 0 && segments[i+1].start > 0) {
-                segments[i].end = segments[i+1].start;
-            } else {
-                segments[i].end = 0;
-            }
-        }
-        if (segments.length > 0) {
-            segments[segments.length - 1].end = this.state.duration > 0 ? this.state.duration : 0;
-        }
+    // Removed parseLrcString as it is now handled by centralized lyrics.js utility
 
-        this.state.segments = segments;
-        // The first line without a start time is the sync index
-        let nextIdx = segments.findIndex(s => s.start === 0);
-        if (nextIdx === -1) nextIdx = segments.length;
-        this.state.currentSyncIndex = nextIdx;
-        
-        const inputElement = document.getElementById('lyrics-input');
-        if (inputElement) inputElement.value = rawLyrics.join('\n');
-        
-        this.state.isSyncMode = true;
-        this.renderLyricList();
-    }
 
     parseLyrics() {
         const lyrics = document.getElementById('lyrics-input').value.trim();
@@ -697,8 +666,8 @@ export class ForcedAlignmentViewer {
                 return `[${min}:${sec}]${s.text}`;
             });
             const content = lrcLines.join('\n');
-            await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
-            showNotification('LRC 파일이 성공적으로 저장되었습니다.', 'success');
+            const savedPath = await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
+            showNotification(`LRC 저장 완료: ${savedPath}`, 'success');
         } catch (err) {
             console.error(err);
             showNotification('LRC 저장 실패: ' + err, 'error');

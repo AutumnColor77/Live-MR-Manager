@@ -748,28 +748,30 @@ impl Aligner {
 }
 
 #[command]
-pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<(), String> {
-    let base_path = if audio_path.starts_with("http") {
+pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<String, String> {
+    let lrc_path = if audio_path.starts_with("http") {
         let paths = crate::state::AppPaths::from_handle(&handle);
         let cache_key = urlencoding::encode(&audio_path).to_string();
-        paths.separated.join(&cache_key)
+        let base_dir = paths.separated.join(&cache_key);
+        if !base_dir.exists() {
+            fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
+        }
+        base_dir.join("lyric.lrc")
     } else {
-        PathBuf::from(&audio_path)
+        let audio_file = PathBuf::from(&audio_path);
+        if !audio_file.exists() {
+            return Err(format!("원본 오디오 파일을 찾을 수 없습니다: {}", audio_path));
+        }
+        if !audio_file.is_file() {
+            return Err(format!("오디오 경로가 파일이 아닙니다: {}", audio_path));
+        }
+        audio_file.with_extension("lrc")
     };
 
-    if !base_path.exists() {
-        fs::create_dir_all(&base_path).map_err(|e| e.to_string())?;
-    }
-    
-    let lrc_path = if base_path.is_dir() {
-        base_path.join("lyric.lrc")
-    } else {
-        base_path.with_extension("lrc")
-    };
-    
     fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-    sys_log(&format!("[Alignment] LRC saved to {:?}", lrc_path));
-    Ok(())
+    let saved_path = lrc_path.to_string_lossy().to_string();
+    sys_log(&format!("[Alignment] LRC saved to {}", saved_path));
+    Ok(saved_path)
 }
 
 #[command]

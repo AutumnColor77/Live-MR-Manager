@@ -43,6 +43,15 @@ export function switchTab(tabId) {
   
   if (elements.settingsPage) elements.settingsPage.style.display = tabId === "settings" ? "block" : "none";
   if (elements.tasksPage) elements.tasksPage.style.display = tabId === "tasks" ? "block" : "none";
+
+  // Lyric Drawer control: Only show on music tabs
+  if (elements.lyricDrawerTrigger) {
+    elements.lyricDrawerTrigger.style.display = isMusicTab ? "flex" : "none";
+  }
+  // Close drawer if moving to a non-music (system) tab
+  if (!isMusicTab && document.body.classList.contains('drawer-open')) {
+    document.body.classList.remove('drawer-open');
+  }
   
   if (elements.songGrid) {
     const isFlexMode = (state.viewMode === "list");
@@ -92,7 +101,7 @@ function getTabTitle(tabId) {
     local: "My Files",
     settings: "Settings",
     tasks: "Active Tasks",
-    alignment: "Lyric Alignment"
+    alignment: "Lyric Sync"
   };
   return titles[tabId] || "Live MR Manager";
 }

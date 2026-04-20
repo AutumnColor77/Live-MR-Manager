@@ -290,6 +290,10 @@ async function initApp() {
   // Initialize Drag & Drop
   initSortable();
 
+  // Initialize Lyric Drawer
+  const { initLyricDrawer } = await import('./js/lyric-drawer.js');
+  initLyricDrawer();
+
   // Initialize AI Toggles State (Disabled by default if no selection)
   updateAiTogglesState(null);
 
