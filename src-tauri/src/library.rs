@@ -63,6 +63,7 @@ pub async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
             source: "local".into(), path: path.clone(), pitch: Some(0.0), tempo: Some(1.0), volume: Some(100.0),
             artist: artist_id3, tags: None, genre: Some(genre), categories: None, play_count: Some(0),
             date_added: Some(now), is_mr: Some(false), is_separated: Some(false),
+            has_lyrics: Some(false),
             original_title: None, translated_title: None, curation_category: None,
         }
     };
@@ -108,6 +109,11 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
         let norm = row.get::<_, String>(1).unwrap_or_default().replace("\\", "/").to_lowercase();
         let cache_dir = paths.separated.join(urlencoding::encode(&norm).to_string());
         let is_separated = cache_dir.join("vocal.wav").exists() && cache_dir.join("inst.wav").exists();
+        
+        // Check for .lrc file in the same folder
+        let track_path = row.get::<_, String>(1).unwrap_or_default();
+        let lrc_path = std::path::Path::new(&track_path).with_extension("lrc");
+        let has_lyrics = lrc_path.exists();
 
         Ok(SongMetadata {
             id: row.get(0).ok(), path: row.get(1)?, title: row.get(2)?, thumbnail: row.get::<_, String>(3).unwrap_or_default(),
@@ -116,6 +122,7 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
             play_count: row.get::<_, u32>(10).ok(), date_added: row.get::<_, u64>(11).ok(),
             is_mr: Some(row.get::<_, i64>(12).unwrap_or(0) != 0), genre, tags, categories,
             is_separated: Some(is_separated),
+            has_lyrics: Some(has_lyrics),
             original_title: row.get(16).ok(),
             translated_title: row.get(17).ok(),
             curation_category: row.get(18).ok(),

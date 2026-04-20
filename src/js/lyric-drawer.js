@@ -13,12 +13,23 @@ export function initLyricDrawer() {
 
     if (!trigger) return;
 
-    const updateDrawerWidthVars = () => {
+    const resizer = document.getElementById('lyric-drawer-resizer');
+    let isResizing = false;
+    let startX, startWidth;
+
+    const minWidth = 230;
+    const initialWidth = parseInt(localStorage.getItem('lyricDrawerWidth')) || 230;
+    document.documentElement.style.setProperty('--lyric-drawer-width', `${initialWidth}px`);
+    document.documentElement.style.setProperty('--lyric-reserved-width', `${Math.max(0, initialWidth - 18)}px`);
+
+    const updateDrawerWidthVars = (width) => {
         if (!drawer) return;
-        const drawerWidth = Math.ceil(drawer.getBoundingClientRect().width);
-        if (drawerWidth > 0) {
-            document.documentElement.style.setProperty('--lyric-drawer-width', `${drawerWidth}px`);
-        }
+        document.documentElement.style.setProperty('--lyric-drawer-width', `${width}px`);
+        // Subtract a bit more to ensure the grid doesn't feel too squeezed
+        // Each column is 200px + 12px gap = 212px.
+        // We want to reserve exactly enough for the drawer to overlap the 'blank' space.
+        document.documentElement.style.setProperty('--lyric-reserved-width', `${width}px`);
+        localStorage.setItem('lyricDrawerWidth', width);
     };
 
     const updateDrawerBounds = () => {
@@ -36,22 +47,85 @@ export function initLyricDrawer() {
         }
 
         document.documentElement.style.setProperty('--lyric-drawer-top', `${Math.round(drawerTop)}px`);
-        updateDrawerWidthVars();
+    };
+
+    if (resizer) {
+        resizer.onmousedown = (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = parseInt(getComputedStyle(drawer).width);
+            body.style.cursor = 'ew-resize';
+            body.classList.add('is-resizing');
+            e.preventDefault();
+        };
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const deltaX = startX - e.clientX;
+            const newWidth = Math.max(minWidth, startWidth + deltaX);
+            updateDrawerWidthVars(newWidth);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                body.style.cursor = '';
+                body.classList.remove('is-resizing');
+            }
+        });
+    }
+
+    const openDrawer = () => {
+        body.classList.add('drawer-open');
+        updateDrawerBounds();
+
+        // Sync with bottom toggle button if exists
+        const toggle = document.getElementById('toggle-lyric');
+        if (toggle && !toggle.checked) {
+            toggle.checked = true;
+            state.lyricsEnabled = true;
+            localStorage.setItem("lyricsEnabled", true);
+            // Notify audio engine that lyrics are enabled
+            import('./audio.js').then(({ toggleAiFeature }) => {
+                toggleAiFeature("lyric", true);
+            });
+        }
+    };
+
+    const closeDrawer = () => {
+        body.classList.remove('drawer-open');
+        updateDrawerBounds();
+
+        // Sync with bottom toggle button if exists
+        const toggle = document.getElementById('toggle-lyric');
+        if (toggle && toggle.checked) {
+            toggle.checked = false;
+            state.lyricsEnabled = false;
+            localStorage.setItem("lyricsEnabled", false);
+            // Notify audio engine that lyrics are disabled
+            import('./audio.js').then(({ toggleAiFeature }) => {
+                toggleAiFeature("lyric", false);
+            });
+        }
     };
 
     const toggleDrawer = () => {
-        body.classList.toggle('drawer-open');
-        updateDrawerBounds();
+        if (body.classList.contains('drawer-open')) {
+            closeDrawer();
+        } else {
+            openDrawer();
+        }
     };
 
     trigger.onclick = toggleDrawer;
 
     if (closeBtn) {
-        closeBtn.onclick = () => {
-            body.classList.remove('drawer-open');
-            updateDrawerBounds();
-        };
+        closeBtn.onclick = closeDrawer;
     }
+
+    // Attach to window for external control if needed, or just export
+    window.openLyricDrawer = openDrawer;
+    window.closeLyricDrawer = closeDrawer;
 
     // Optional: Close drawer on Escape key
     window.addEventListener('keydown', (e) => {
@@ -85,11 +159,15 @@ export function updateLyrics(segments) {
 
     if (!segments || segments.length === 0) {
         container.innerHTML = `
-            <div class="drawer-empty-msg">
-                <p>정렬된 가사가 없습니다.</p>
-                <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 10px;">
-                    Lyric Sync 모드에서<br>가사 싱크를 생성하세요.
+            <div class="drawer-empty-msg" style="padding: 40px 20px; text-align: center;">
+                <div style="font-size: 2.5rem; margin-bottom: 20px; opacity: 0.5;">🎵</div>
+                <p style="font-weight: 700; font-size: 1.1rem; margin-bottom: 8px;">정렬된 가사가 없습니다.</p>
+                <p style="font-size: 0.85rem; opacity: 0.6; line-height: 1.6; margin-bottom: 24px;">
+                    이 곡에 등록된 가사 싱크가 없습니다.<br>Lyric Sync 모드에서 가사를 정렬해 보세요.
                 </p>
+                <button class="primary-btn btn-md" style="width: 100%;" onclick="if(window.switchToTab) window.switchToTab('alignment')">
+                    가사 싱크 등록하러 가기
+                </button>
             </div>
         `;
         return;

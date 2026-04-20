@@ -14,19 +14,29 @@ import { showNotification } from './js/utils.js';
 
 import { invoke, appWindow } from './js/tauri-bridge.js';
 
+// Expose navigation to global for cross-module usage
+window.switchToTab = switchTab;
+
+// Register permanent error listeners to bridge JS errors to terminal IMMEDIATELY
+window.addEventListener('error', (event) => {
+  console.error("[Fatal Error]", event.error || event.message);
+  invoke('remote_js_log', { msg: `[JS Error] ${event.message} at ${event.filename}:${event.lineno}` }).catch(() => {});
+});
+window.addEventListener('unhandledrejection', (event) => {
+  console.error("[Fatal Promise Error]", event.reason);
+  invoke('remote_js_log', { msg: `[JS Unhandled Promise] ${event.reason ? event.reason.toString() : 'Unknown'}` }).catch(() => {});
+});
+
+console.log("[JS] main.js loaded and executing...");
+
 async function initApp() {
   console.log("[App] Initializing...");
 
+  // 0. Setup custom titlebar immediately (Don't wait for backend)
+  setupTitlebar();
+
   // Expose task cancellation to global window for UI components
   window.cancelTask = cancelSeparation;
-
-  // Register permanent error listeners to bridge JS errors to terminal
-  window.addEventListener('error', (event) => {
-    invoke('remote_js_log', { msg: `[Error] ${event.message} at ${event.filename}:${event.lineno}` }).catch(() => {});
-  });
-  window.addEventListener('unhandledrejection', (event) => {
-    invoke('remote_js_log', { msg: `[Unhandled Promise] ${event.reason ? event.reason.toString() : 'Unknown'}` }).catch(() => {});
-  });
   
   // Fix manual input font/layout shift (fallback for locked CSS)
   const style = document.createElement('style');
@@ -231,90 +241,89 @@ async function initApp() {
     console.log(`[App] Loaded ${state.songLibrary.length} songs.`);
   } catch (err) {
     console.error("Failed to load library:", err);
-    showNotification("라이브러리를 불러오는데 실패했습니다.", "error");
   }
 
   // 3. Initialize Event Listeners
-  initAllEvents();
+  try {
+    initAllEvents();
+  } catch (err) {
+    console.error("Failed to initialize events:", err);
+  }
 
   // 4. Set Initial UI State
-  const initialTab = "library";
-  switchTab(initialTab);
-  
-  await updateGenreDropdowns();
-  await updateCategoryDropdown();
-  updateSortDropdown();
-  
-  // Initialize View Mode UI based on saved state
-  if (elements.songGrid) {
-    elements.songGrid.classList.toggle("list-view", state.viewMode === "list");
-    elements.songGrid.style.display = (state.viewMode === "list") ? "flex" : "grid";
+  try {
+    const initialTab = "library";
+    switchTab(initialTab);
+    
+    await updateGenreDropdowns();
+    await updateCategoryDropdown();
+    updateSortDropdown();
+  } catch (err) {
+    console.error("Failed to set initial UI state:", err);
   }
+  
+  // 5. Initialize View Mode UI
+  try {
+    if (elements.songGrid) {
+      elements.songGrid.classList.toggle("list-view", state.viewMode === "list");
+      elements.songGrid.style.display = (state.viewMode === "list") ? "flex" : "grid";
+    }
+  } catch (err) {}
 
-  const gridBtn = document.getElementById("view-grid");
-  const listBtn = document.getElementById("view-list");
-  if (gridBtn && listBtn) {
-    gridBtn.classList.toggle("active", state.viewMode === "grid");
-    listBtn.classList.toggle("active", state.viewMode === "list");
-  }
-
-  // Check AI Model
+  // 6. Check AI Model & GPU
   try {
     state.isAiModelReady = await checkAiModelStatus();
     updateAiModelStatus(state.isAiModelReady);
-    console.log(`[App] AI Model Ready: ${state.isAiModelReady}`);
-  } catch (err) {
-    console.error("AI Model check failed", err);
-    updateAiModelStatus(false);
-  }
-
-  // 6. Check GPU Recommendation (NVIDIA/CUDA)
-  try {
     const gpuStatus = await invoke("get_gpu_recommendation");
     updateGpuStatus(gpuStatus);
-  } catch (err) {
-    console.error("GPU Status check failed", err);
-  }
+  } catch (err) {}
 
-  // Initial volume sync
-  if (elements.volSlider) {
-    elements.volSlider.value = state.masterVolume;
-    if (elements.volSliderVal) elements.volSliderVal.textContent = state.masterVolume;
-  }
-  await invoke("set_master_volume", { volume: state.masterVolume });
-  await invoke("set_volume", { volume: parseFloat(state.prevVolume) });
+  // 7. Initial volume sync
+  try {
+    if (elements.volSlider) {
+      elements.volSlider.value = state.masterVolume;
+      if (elements.volSliderVal) elements.volSliderVal.textContent = state.masterVolume;
+    }
+    await invoke("set_master_volume", { volume: state.masterVolume });
+  } catch (err) {}
 
-  // Setup custom titlebar
-  setupTitlebar();
+  // 8. Setup Smooth Grid Resize & DragDrop
+  try {
+    setupGridResizeObserver();
+    initSortable();
+  } catch (err) {}
 
-  // Setup Smooth Grid Resize
-  setupGridResizeObserver();
-  
-  // Initialize Drag & Drop
-  initSortable();
+  // 9. Initialize Lyric Drawer (Last, to prevent blocking)
+  try {
+    import('./js/lyric-drawer.js').then(({ initLyricDrawer }) => {
+      initLyricDrawer();
+    }).catch(err => console.error("Lyric Drawer init failed:", err));
+  } catch (err) {}
 
-  // Initialize Lyric Drawer
-  const { initLyricDrawer } = await import('./js/lyric-drawer.js');
-  initLyricDrawer();
-
-  // Initialize AI Toggles State (Disabled by default if no selection)
-  updateAiTogglesState(null);
+  // 10. Final UI Sync
+  try {
+    updateAiTogglesState(null);
+  } catch (err) {}
 
   console.log("[App] Initialization Complete.");
 }
 
 function setupTitlebar() {
   // appWindow is imported from tauri-bridge.js
+  console.log("[Titlebar] Setting up event listeners...");
 
   document.getElementById('titlebar-minimize')?.addEventListener('click', async () => {
+    console.log("[Titlebar] Minimize clicked");
     try { await appWindow.minimize(); } catch (e) { console.error(e); }
   });
 
   document.getElementById('titlebar-maximize')?.addEventListener('click', async () => {
+    console.log("[Titlebar] Maximize/Restore clicked");
     try { await appWindow.toggleMaximize(); } catch (e) { console.error(e); }
   });
 
   document.getElementById('titlebar-close')?.addEventListener('click', async () => {
+    console.log("[Titlebar] Close clicked");
     try { await appWindow.close(); } catch (e) { console.error(e); }
   });
 }

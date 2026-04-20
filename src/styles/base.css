@@ -144,6 +144,7 @@ body {
 .titlebar-actions {
   display: flex;
   height: 100%;
+  pointer-events: auto;
 }
 
 .titlebar-button {

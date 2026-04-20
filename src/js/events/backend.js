@@ -57,9 +57,9 @@ export async function setupBackendListeners() {
         state.targetProgressMs = 0;
         state.rafId = null;
         
-        // Reset backend position to 0 so it can be replayed
-        const { seekTo } = await import('../audio.js');
-        await seekTo(0);
+        // Reload track in paused state at 0:00 so it can be replayed
+        const { playTrack } = await import('../audio.js');
+        await playTrack(state.currentTrack.path, state.trackDurationMs, false);
 
         // Force UI reset to 0:00
         const { elements } = await import('../ui/elements.js');
@@ -71,6 +71,15 @@ export async function setupBackendListeners() {
         updateThumbnailOverlay();
         updatePlayButton();
       }
+
+      // Sync overlay state on stop/finish
+      const { invoke } = await import('../tauri-bridge.js');
+      invoke('update_overlay_state', {
+        title: state.currentTrack?.title || "",
+        artist: state.currentTrack?.artist || "",
+        thumbnail: state.currentTrack?.thumbnail || "",
+        isPlaying: false
+      });
     }
 
     // 3. Status Message in Dock (Removed text as per user request)

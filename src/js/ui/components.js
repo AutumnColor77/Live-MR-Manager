@@ -140,8 +140,15 @@ export function updateAiTogglesState(song = null) {
   }
 
   if (elements.toggleLyric) {
+    const hasLyrics = !!(targetSong && targetSong.hasLyrics);
     elements.toggleLyric.checked = state.lyricsEnabled;
-    // Lyric toggle is independent per user feedback
+    elements.toggleLyric.disabled = false; // Always enabled for user guidance
+
+    const lyricItem = elements.toggleLyric.closest('.ai-item');
+    if (lyricItem) {
+      lyricItem.classList.remove('disabled');
+      lyricItem.title = hasLyrics ? "AI 가사 싱크 활성" : "가사 싱크를 생성해 보세요!";
+    }
   }
 }
 

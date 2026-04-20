@@ -309,10 +309,19 @@ export function initControlListeners() {
   }
   if (elements.toggleLyric) {
     elements.toggleLyric.onchange = async (e) => {
-      const isEnabled = e.target.checked;
-      state.lyricsEnabled = isEnabled;
-      localStorage.setItem("lyricsEnabled", isEnabled);
-      // Logic for lyrics display would go here
+      const enabled = e.target.checked;
+      state.lyricsEnabled = enabled;
+      localStorage.setItem("lyricsEnabled", enabled);
+      
+      const { toggleAiFeature } = await import('../audio.js');
+      await toggleAiFeature("lyric", enabled);
+
+      // Sync with Lyric Drawer
+      if (enabled) {
+        if (typeof window.openLyricDrawer === 'function') window.openLyricDrawer();
+      } else {
+        if (typeof window.closeLyricDrawer === 'function') window.closeLyricDrawer();
+      }
     };
   }
 

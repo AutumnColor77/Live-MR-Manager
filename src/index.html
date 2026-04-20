@@ -45,11 +45,12 @@
 
 <body>
   <!-- 커스텀 타이틀바 -->
-  <div data-tauri-drag-region class="titlebar">
-    <div class="titlebar-logo">
+  <div class="titlebar">
+    <div class="titlebar-logo" data-tauri-drag-region>
       <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
       MR Manager
     </div>
+    <div data-tauri-drag-region class="titlebar-drag-handle" style="flex: 1; height: 100%;"></div>
     <div class="titlebar-actions">
       <div class="titlebar-button" id="titlebar-minimize">
         <svg viewBox="0 0 10 1" width="12" height="12">
@@ -596,6 +597,7 @@
 
       <!-- Lyric Sliding Drawer -->
       <div id="lyric-drawer" class="lyric-drawer">
+        <div id="lyric-drawer-resizer" class="drawer-resizer"></div>
         <div class="drawer-header">
           <h2>가사</h2>
           <button class="drawer-close" id="lyric-drawer-close">&times;</button>

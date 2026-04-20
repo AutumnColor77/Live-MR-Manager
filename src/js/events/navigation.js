@@ -80,6 +80,7 @@ export function switchTab(tabId) {
     const isFlexMode = (state.viewMode === "list");
     // Use !important to override CSS !important when hiding
     if (isMusicTab) {
+      elements.songGrid.style.removeProperty("display");
       elements.songGrid.style.display = isFlexMode ? "flex" : "grid";
     } else {
       elements.songGrid.style.setProperty("display", "none", "important");

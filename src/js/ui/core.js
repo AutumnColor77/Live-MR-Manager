@@ -43,9 +43,19 @@ const CARD_WIDTH = 200;
 const LIBRARY_H_PADDING = 60;
 
 function computeGridColumns(containerWidth) {
-  const inner = Math.max(0, containerWidth - LIBRARY_H_PADDING);
+  const isDrawerOpen = document.body.classList.contains('drawer-open');
+  // 30px left + (10px right if drawer open, else 30px right)
+  const currentPadding = isDrawerOpen ? 40 : LIBRARY_H_PADDING;
+  const inner = Math.max(0, containerWidth - currentPadding);
   const slot = CARD_WIDTH + GRID_GAP;
-  return Math.max(1, Math.floor((inner + GRID_GAP) / slot));
+  // Add 2px tolerance to avoid dropping columns due to sub-pixel rounding
+  const columns = Math.max(1, Math.floor((inner + GRID_GAP + 2) / slot));
+  
+  if (isDrawerOpen) {
+    invoke('remote_js_log', { msg: `[Grid Layout] Width: ${Math.round(containerWidth)}, Padding: ${currentPadding}, Columns: ${columns}` }).catch(() => {});
+  }
+  
+  return columns;
 }
 
 export function setupGridResizeObserver() {
@@ -62,47 +72,44 @@ export function setupGridResizeObserver() {
       if (width <= 0) continue;
       
       const columns = computeGridColumns(width);
+      const isDrawerOpen = document.body.classList.contains('drawer-open');
       
-      if (columns > 0 && state.lastColumns !== columns) {
-        // 1. [First] Capture current positions
-        const cards = Array.from(elements.songGrid.querySelectorAll('.song-card'));
-        const firstPositions = cards.map(card => {
-          const rect = card.getBoundingClientRect();
-          return { id: card.dataset.index, left: rect.left, top: rect.top };
-        });
+      // Re-apply if columns changed OR if drawer is open (to keep CSS vars in sync with resize)
+      if (columns > 0 && (state.lastColumns !== columns || isDrawerOpen)) {
+        const columnsChanged = state.lastColumns !== columns;
+        let cards = [];
+        let firstPositions = [];
+        
+        if (columnsChanged) {
+          cards = Array.from(elements.songGrid.querySelectorAll('.song-card'));
+          firstPositions = cards.map(card => {
+            const rect = card.getBoundingClientRect();
+            return { id: card.dataset.index, left: rect.left, top: rect.top };
+          });
+        }
 
-        // 2. [Last] Apply new layout
         state.lastColumns = columns;
         elements.songGrid.style.gridTemplateColumns = `repeat(${columns}, ${CARD_WIDTH}px)`;
-
-        // Update the global CSS variable for other components to align with the grid
         const actualWidth = columns * CARD_WIDTH + (columns - 1) * GRID_GAP;
         document.documentElement.style.setProperty('--grid-actual-width', `${actualWidth}px`);
 
-        // 3. [Invert & Play] Trigger animation in next frame to allow layout shift
-        requestAnimationFrame(() => {
-          cards.forEach((card, i) => {
-            const first = firstPositions[i];
-            const last = card.getBoundingClientRect();
-            if (!first) return;
-
-            const dx = first.left - last.left;
-            const dy = first.top - last.top;
-
-            if (dx === 0 && dy === 0) return;
-
-            // Invert: Set to old position immediately (no transition)
-            card.style.transition = 'none';
-            card.style.transform = `translate(${dx}px, ${dy}px)`;
-
-            // Force reflow
-            card.offsetHeight;
-
-            // Play: Trigger smooth move to new position
-            card.style.transition = ''; // Restore CSS transition
-            card.style.transform = '';
+        if (columnsChanged && cards.length > 0) {
+          requestAnimationFrame(() => {
+            cards.forEach((card, i) => {
+              const first = firstPositions[i];
+              if (!first) return;
+              const last = card.getBoundingClientRect();
+              const dx = first.left - last.left;
+              const dy = first.top - last.top;
+              if (dx === 0 && dy === 0) return;
+              card.style.transition = 'none';
+              card.style.transform = `translate(${dx}px, ${dy}px)`;
+              card.offsetHeight;
+              card.style.transition = '';
+              card.style.transform = '';
+            });
           });
-        });
+        }
       }
     }
   });

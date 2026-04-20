@@ -74,6 +74,33 @@
     pointer-events: none;
 }
 
+.drawer-resizer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 8px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 1000;
+    transition: background 0.2s;
+}
+
+.drawer-resizer:hover {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+.drawer-resizer::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
 body.drawer-open .lyric-drawer {
     transform: translateX(0);
     opacity: 1;
@@ -102,14 +129,14 @@ body.drawer-open .scroll-area {
     width: calc(100% - var(--lyric-reserved-width));
 }
 
-/*
- * Let ResizeObserver-driven column logic decide layout.
- * Do not hard-lock grid width while drawer is open.
- */
+
+/* Ensure grid fits perfectly */
 body.drawer-open .song-grid {
     width: 100% !important;
-    max-width: 100% !important;
+    max-width: none !important;
     min-width: 0 !important;
+    /* Reduce right padding to the bare minimum to save space for cards */
+    padding-right: 10px !important; 
 }
 
 

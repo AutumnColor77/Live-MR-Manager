@@ -89,6 +89,7 @@ pub struct SongMetadata {
     pub date_added: Option<u64>,
     pub is_mr: Option<bool>,
     pub is_separated: Option<bool>,
+    pub has_lyrics: Option<bool>,
     pub original_title: Option<String>,
     pub translated_title: Option<String>,
     pub curation_category: Option<String>,

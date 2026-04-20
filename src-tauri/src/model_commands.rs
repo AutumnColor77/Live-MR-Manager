@@ -138,6 +138,7 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
                 play_count: Some(0), 
                 date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
                 is_mr: Some(false), is_separated: Some(false),
+                has_lyrics: Some(false),
                 original_title: None, translated_title: None, curation_category: None,
             })
         },

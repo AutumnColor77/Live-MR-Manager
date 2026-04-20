@@ -48,10 +48,14 @@ export async function seekTo(positionMs) {
   }
 }
 
-export async function playTrack(path, duration_ms = 0) {
+export async function playTrack(path, duration_ms = 0, playNow = true) {
   try {
     // play_track in backend emits events for progress/status
-    await invoke("play_track", { path, durationMs: Math.floor(duration_ms) });
+    await invoke("play_track", { 
+      path, 
+      durationMs: Math.floor(duration_ms),
+      playNow: playNow 
+    });
   } catch (err) {
     console.error("Play track failed:", err);
     throw err;
