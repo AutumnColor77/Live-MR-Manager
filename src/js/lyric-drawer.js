@@ -19,18 +19,18 @@ export function initLyricDrawer() {
 
     const minWidth = 230;
     const initialWidth = parseInt(localStorage.getItem('lyricDrawerWidth')) || 230;
-    document.documentElement.style.setProperty('--lyric-drawer-width', `${initialWidth}px`);
-    document.documentElement.style.setProperty('--lyric-reserved-width', `${Math.max(0, initialWidth - 18)}px`);
 
     const updateDrawerWidthVars = (width) => {
         if (!drawer) return;
         document.documentElement.style.setProperty('--lyric-drawer-width', `${width}px`);
-        // Subtract a bit more to ensure the grid doesn't feel too squeezed
-        // Each column is 200px + 12px gap = 212px.
-        // We want to reserve exactly enough for the drawer to overlap the 'blank' space.
-        document.documentElement.style.setProperty('--lyric-reserved-width', `${width}px`);
+        // Subtract 30px (safe area) from reserved width.
+        // This allows the drawer to overlap the grid's padding, effectively gaining 30px of space for cards.
+        const reserved = Math.max(0, width - 30);
+        document.documentElement.style.setProperty('--lyric-reserved-width', `${reserved}px`);
         localStorage.setItem('lyricDrawerWidth', width);
     };
+
+    updateDrawerWidthVars(initialWidth);
 
     const updateDrawerBounds = () => {
         const titlebarHeight = parseFloat(

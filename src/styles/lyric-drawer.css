@@ -129,14 +129,12 @@ body.drawer-open .scroll-area {
     width: calc(100% - var(--lyric-reserved-width));
 }
 
-
-/* Ensure grid fits perfectly */
+/* Ensure grid fits perfectly without extra gaps */
 body.drawer-open .song-grid {
     width: 100% !important;
     max-width: none !important;
     min-width: 0 !important;
-    /* Reduce right padding to the bare minimum to save space for cards */
-    padding-right: 10px !important; 
+    padding-right: 0 !important; 
 }
 
 
