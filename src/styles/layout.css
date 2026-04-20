@@ -57,13 +57,15 @@
 
 .logo-text {
   font-family: 'SUITE', sans-serif;
-  font-size: 1.2rem; /* Adjusted for better two-line fit */
+  font-size: 1.25rem;
   font-weight: 900;
   line-height: 1.1;
+  letter-spacing: -0.5px;
   background: linear-gradient(to right, #fff, #94a3b8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  -webkit-font-smoothing: subpixel-antialiased;
   display: block;
 }
 

@@ -4,7 +4,7 @@
     --lyric-drawer-width: min(calc(var(--lyric-card-width) + 30px), 90vw);
     --lyric-drawer-top: calc(var(--titlebar-height) + 120px);
     --lyric-drawer-bottom-gap: 30px;
-    --lyric-handle-width: 32px;
+    --lyric-handle-width: 24px;
     /* Reserve one lane minus right safe-area already present in grid */
     --lyric-reserved-width: max(0px, calc(var(--lyric-card-width) + var(--library-grid-gap, 12px) - var(--library-safe-area, 30px)));
 }
@@ -16,7 +16,7 @@
     top: 50%;
     transform: translateY(-50%);
     width: var(--lyric-handle-width);
-    height: 120px;
+    height: 90px;
     background: var(--accent-primary);
     background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
     color: white;
@@ -29,7 +29,7 @@
     justify-content: center;
     writing-mode: vertical-lr; /* Vertical text */
     text-orientation: mixed;
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     font-weight: 800;
     letter-spacing: 2px;
     box-shadow: -4px 0 15px rgba(0, 0, 0, 0.3);
@@ -40,7 +40,7 @@
 }
 
 .lyric-drawer-trigger:hover {
-    width: 40px;
+    width: 30px;
     padding-right: 8px;
 }
 
@@ -122,11 +122,11 @@ body.drawer-open .song-grid {
 }
 
 .drawer-header h2 {
-    font-size: 1.2rem;
+    font-size: 1rem;
     font-weight: 800;
-    color: var(--accent-primary);
+    color: #fff;
     margin: 0;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .drawer-close {
