@@ -56,8 +56,44 @@ export const appWindow = isTauri ? window.__TAURI__.window.getCurrentWindow() : 
   minimize: async () => console.log("[Mock-Window] Minimize"),
   maximize: async () => console.log("[Mock-Window] Maximize"),
   toggleMaximize: async () => console.log("[Mock-Window] Toggle Maximize"),
-  close: async () => console.log("[Mock-Window] Close")
+  close: async () => console.log("[Mock-Window] Close"),
+  isVisible: async () => false,
+  hide: async () => {},
+  show: async () => {},
+  setFocus: async () => {}
 };
+
+/**
+ * Safe emit wrapper
+ */
+export async function emit(event, payload) {
+  if (isTauri) {
+    return await window.__TAURI__.event.emit(event, payload);
+  }
+  console.log(`[Mock-Emit] ${event}`, payload);
+}
+
+/**
+ * Safe Window management
+ */
+export function getCurrentWindow() {
+  if (isTauri) return window.__TAURI__.window.getCurrentWindow();
+  return appWindow;
+}
+
+export async function getAllWindows() {
+  if (isTauri) return await window.__TAURI__.window.getAllWindows();
+  return [appWindow];
+}
+
+export class WebviewWindow {
+  constructor(label, options) {
+    if (isTauri) {
+      return new window.__TAURI__.webviewWindow.WebviewWindow(label, options);
+    }
+    console.log(`[Mock-WebviewWindow] Created: ${label}`, options);
+  }
+}
 
 /**
  * Export core for legacy access if needed, but discouraged

@@ -16,6 +16,7 @@ mod library;
 mod audio_commands;
 mod model_commands;
 mod system;
+mod overlay_server;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,6 +32,10 @@ pub fn run() {
             let _ = &*crate::state::DB;
             
             crate::audio_commands::start_playback_progress_loop(app.handle().clone());
+            
+            // Start the OBS Overlay WebSocket server
+            tauri::async_runtime::spawn(crate::overlay_server::start_overlay_server());
+            
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -67,7 +72,9 @@ pub fn run() {
             alignment::save_lrc_file, alignment::load_lrc_file,
             system::remote_js_log,            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
-            metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db
+            metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db,
+            overlay_server::update_overlay_state,
+            overlay_server::update_overlay_style
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

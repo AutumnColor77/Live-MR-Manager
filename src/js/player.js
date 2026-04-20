@@ -10,6 +10,7 @@ import {
   setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated 
 } from './audio.js';
 import { loadLyricsForTrack } from './lyrics.js';
+import { emit, invoke, convertFileSrc as bridgeConvertFileSrc } from './tauri-bridge.js';
 
 function parseDurationToMs(duration) {
   if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
@@ -68,10 +69,31 @@ export async function handlePlaybackToggle() {
     updatePlayButton();
     
     if (state.isPlaying) {
+      if (state.currentTrack) {
+        emit('track-change', {
+          title: state.currentTrack.title,
+          artist: state.currentTrack.artist,
+          thumbnail: state.currentTrack.thumbnail
+        });
+        invoke('update_overlay_state', {
+          title: state.currentTrack.title,
+          artist: state.currentTrack.artist,
+          thumbnail: state.currentTrack.thumbnail,
+          isPlaying: true
+        });
+      }
       if (!state.rafId) {
         state.lastRafTime = performance.now();
         state.rafId = requestAnimationFrame(updateProgressBar);
       }
+    } else {
+      emit('playback-stop', {});
+      invoke('update_overlay_state', {
+        title: state.currentTrack?.title || "",
+        artist: state.currentTrack?.artist || "",
+        thumbnail: state.currentTrack?.thumbnail || "",
+        isPlaying: false
+      });
     }
   } catch (error) {
     console.error("Playback toggle failed:", error);
@@ -207,6 +229,19 @@ export async function selectTrack(index) {
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");
     
+    emit('track-change', {
+      title: song.title,
+      artist: song.artist,
+      thumbnail: song.thumbnail
+    });
+    
+    invoke('update_overlay_state', {
+      title: song.title,
+      artist: song.artist,
+      thumbnail: song.thumbnail,
+      isPlaying: true
+    });
+
     state.lastRafTime = performance.now();
     if (!state.rafId) {
       state.rafId = requestAnimationFrame(updateProgressBar);

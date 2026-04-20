@@ -9,6 +9,38 @@
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live MR Manager | Performer Dash</title>
+  <style>
+    /* --- Color Palette UI --- */
+    .color-palette-wrapper { display: flex; flex-direction: column; }
+    .color-palette-container { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .color-swatch {
+      width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+      border: 2px solid transparent; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+    }
+    .color-swatch:hover { transform: scale(1.15); border-color: rgba(255, 255, 255, 0.2); }
+    .color-swatch.selected { border-color: #fff; box-shadow: 0 0 15px rgba(255, 255, 255, 0.3); }
+    .color-swatch.selected::after {
+      content: ""; position: absolute; top: -4px; left: -4px; right: -4px; bottom: -4px;
+      border-radius: 11px; border: 1px solid var(--accent-primary); opacity: 0.5;
+    }
+    .hex-input-wrapper {
+      display: flex; align-items: center; background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+      padding: 0 8px; height: 32px; width: 100px;
+    }
+    .hex-hash { color: var(--text-dim); font-size: 0.8rem; margin-right: 2px; }
+    .hex-text-input {
+      background: transparent; border: none; color: #fff; font-family: monospace;
+      font-size: 0.85rem; width: 100%; outline: none; text-transform: uppercase;
+    }
+    .btn-custom-color-picker {
+      width: 32px; height: 32px; border-radius: 8px; background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-dim);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;
+    }
+    .btn-custom-color-picker:hover { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+  </style>
 </head>
 
 <body>
@@ -58,34 +90,87 @@
     </div>
 
     <div class="nav-group">
-      <label class="nav-label">Main</label>
+      <label class="nav-label">미디어</label>
       <div class="nav-item active" id="nav-library">
-        <i class="icon-library"></i>
-        <span>Library</span>
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+        </i>
+        <span>라이브러리</span>
       </div>
       <div class="nav-item" id="nav-youtube">
-        <i class="icon-youtube"></i>
-        <span>YouTube</span>
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path>
+            <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
+          </svg>
+        </i>
+        <span>유튜브</span>
       </div>
       <div class="nav-item" id="nav-local">
-        <i class="icon-folder"></i>
-        <span>My Files</span>
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </i>
+        <span>내 파일</span>
       </div>
     </div>
 
     <div class="nav-group secondary">
-      <label class="nav-label">System</label>
+      <label class="nav-label">스튜디오</label>
       <div class="nav-item" id="nav-alignment">
-        <i class="icon-sync"></i>
-        <span>Lyric Sync</span>
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </i>
+        <span>가사 싱크</span>
       </div>
-      <div class="nav-item no-icon" id="nav-tasks">
-        <span>AI Processing</span>
+
+      <div class="nav-item" id="nav-tasks">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <line x1="9" y1="1" x2="9" y2="4"></line>
+            <line x1="15" y1="1" x2="15" y2="4"></line>
+            <line x1="9" y1="20" x2="9" y2="23"></line>
+            <line x1="15" y1="20" x2="15" y2="23"></line>
+            <line x1="20" y1="9" x2="23" y2="9"></line>
+            <line x1="20" y1="15" x2="23" y2="15"></line>
+            <line x1="1" y1="9" x2="4" y2="9"></line>
+            <line x1="1" y1="15" x2="4" y2="15"></line>
+          </svg>
+        </i>
+        <span>AI 프로세싱</span>
         <span class="task-count" id="task-badge" style="display: none;">0</span>
       </div>
 
-      <div class="nav-item no-icon" id="nav-settings">
-        <span>Settings</span>
+      <div class="nav-item" id="nav-overlay">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </i>
+        <span>OBS 오버레이</span>
+      </div>
+
+      <div class="nav-item" id="nav-settings">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </i>
+        <span>설정</span>
       </div>
     </div>
   </nav>
@@ -94,287 +179,444 @@
   <main class="viewport">
     <div class="view-main">
       <header class="top-bar">
-      <div class="view-header">
-        <div class="title-row">
-          <h1 id="view-title">Library</h1>
-          <div class="view-controls" id="view-controls">
-            <button class="view-btn active" id="view-grid" title="그리드 모드">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zM13 3h8v8h-8V3zm0 10h8v8h-8v-8z" />
-              </svg>
-            </button>
-            <button class="view-btn" id="view-list" title="리스트 모드">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M4 6h2v2H4V6zm5 0h11v2H9V6zm-5 5h2v2H4v-2zm5 0h11v2H9v-2zm-5 5h2v2H4v-2zm5 0h11v2H9v-2z" />
-              </svg>
-            </button>
-            <button class="view-btn" id="view-button" title="버튼 모드">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M3 4h8v6H3V4zm10 0h8v6h-8V4zm0 10h8v6h-8v-6zM3 14h8v6H3v-6z" />
-              </svg>
-            </button>
-          </div>
-          <!-- [NEW] Broadcast Toggle in same line with title -->
-          <div id="broadcast-tasks-control" style="display: none;">
-            <div
-              style="display: flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.08); padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255, 193, 7, 0.25);">
-              <span
-                style="font-size: 0.75rem; font-weight: 700; color: #ffc107; text-transform: uppercase; letter-spacing: 0.5px;">Broadcast
-                Safe</span>
-              <label class="switch" style="transform: scale(0.85); margin-top: 2px;">
-                <input type="checkbox" id="toggle-broadcast-mode-tasks">
-                <span class="slider round"></span>
-              </label>
+        <div class="view-header">
+          <div class="title-row">
+            <h1 id="view-title">Library</h1>
+            <div class="view-controls" id="view-controls">
+              <button class="view-btn active" id="view-grid" title="그리드 모드">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zM13 3h8v8h-8V3zm0 10h8v8h-8v-8z" />
+                </svg>
+              </button>
+              <button class="view-btn" id="view-list" title="리스트 모드">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path d="M4 6h2v2H4V6zm5 0h11v2H9V6zm-5 5h2v2H4v-2zm5 0h11v2H9v-2zm-5 5h2v2H4v-2zm5 0h11v2H9v-2z" />
+                </svg>
+              </button>
+              <button class="view-btn" id="view-button" title="버튼 모드">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path d="M3 4h8v6H3V4zm10 0h8v6h-8V4zm0 10h8v6h-8v-6zM3 14h8v6H3v-6z" />
+                </svg>
+              </button>
             </div>
-          </div>
-        </div>
-        <div id="view-subtitle" class="view-subtitle"></div>
-      </div>
-
-
-    </header>
-
-    <div class="page-controls-wrapper">
-      <!-- 1순위: 곡 제목/아티스트 검색란 -->
-      <section class="library-controls" id="library-controls" style="display: none;">
-        <div class="search-bar">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-          <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off"
-            role="presentation">
-          <div id="search-suggestions" class="suggestion-dropdown"></div>
-        </div>
-        <div class="filter-group">
-          <div class="custom-select" id="lib-category-dropdown">
-            <div class="select-trigger">
-              <span class="selected-text">전체 카테고리</span>
-              <span class="select-arrow"></span>
-            </div>
-            <div class="select-options">
-              <div class="option-item" data-value="all">전체 카테고리</div>
-            </div>
-            <input type="hidden" id="lib-category-filter" value="all">
-          </div>
-          <div class="custom-select" id="lib-genre-dropdown">
-            <div class="select-trigger">
-              <span class="selected-text">전체 장르</span>
-              <span class="select-arrow"></span>
-            </div>
-            <div class="select-options">
-              <div class="option-item" data-value="all">전체 장르</div>
-              <div class="option-item" data-value="anime">애니송</div>
-              <div class="option-item" data-value="vocaloid">보컬로이드</div>
-              <div class="option-item" data-value="jpop">J-POP</div>
-              <div class="option-item" data-value="kpop">K-POP</div>
-              <div class="option-item" data-value="rock">락/메탈</div>
-              <div class="option-item" data-value="etc">기타</div>
-            </div>
-            <input type="hidden" id="lib-genre-filter" value="all">
-          </div>
-
-          <div class="custom-select" id="lib-sort-dropdown">
-            <div class="select-trigger">
-              <span class="selected-text">최근 추가순</span>
-              <span class="select-arrow"></span>
-            </div>
-            <div class="select-options">
-              <div class="option-item selected" data-value="dateNew">최근 추가순</div>
-              <div class="option-item" data-value="dateOld">오래된순</div>
-              <div class="option-item" data-value="title">제목순 (A-Z)</div>
-              <div class="option-item" data-value="plays">재생 횟수순</div>
-            </div>
-            <input type="hidden" id="lib-sort-select" value="dateNew">
-          </div>
-        </div>
-      </section>
-
-      <!-- 2순위: 유튜브 주소 입력란 -->
-      <section class="search-section" id="youtube-search">
-        <div class="yt-search-container">
-          <div class="search-box">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
-              autocomplete="off" spellcheck="false" />
-          </div>
-          <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
-        </div>
-      </section>
-
-      <!-- 3순위: 파일 드롭존 -->
-      <section class="local-drop-section" id="local-drop-section" style="display: none;">
-        <div class="drop-hint-simple">
-          <span>화면 어디든 음악 파일(MP3, WAV, FLAC)을 드래그 앤 드롭하여 추가할 수 있습니다.</span>
-        </div>
-      </section>
-    </div>
-
-    <div class="scroll-area">
-      <!-- 곡 목록 그리드 -->
-      <div id="song-grid" class="song-grid"></div>
-
-      <!-- 설정 페이지 -->
-      <div class="tab-content" id="settings-page" style="display: none;">
-        <div class="settings-container">
-          <section class="settings-group">
-            <div class="group-header">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-              <h3>곡 정보 관리</h3>
-            </div>
-            <div class="ai-model-card">
-              <div class="ai-info-left">
-                <h2 class="ai-title-large">곡 정보 일괄 수정</h2>
-                <div class="ai-model-desc">
-                  엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
-                </div>
-              </div>
-              <div class="ai-actions-right">
-                <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
-              </div>
-            </div>
-
-            <div class="ai-model-card" style="margin-top: 15px;">
-              <div class="ai-info-left">
-                <h2 class="ai-title-large">데이터 백업 및 복원 (병합)</h2>
-                <div class="ai-model-desc">
-                  현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
-                </div>
-              </div>
-              <div class="ai-actions-right">
-                <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
-                <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
-                <button id="btn-run-rescue" class="btn-ai-action secondary">목록 자동 복구</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-group">
-            <div class="group-header">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-                <rect x="9" y="9" width="6" height="6"></rect>
-                <line x1="9" y1="1" x2="9" y2="4"></line>
-                <line x1="15" y1="1" x2="15" y2="4"></line>
-                <line x1="9" y1="20" x2="9" y2="23"></line>
-                <line x1="15" y1="20" x2="15" y2="23"></line>
-                <line x1="20" y1="9" x2="23" y2="9"></line>
-                <line x1="20" y1="15" x2="23" y2="15"></line>
-                <line x1="1" y1="9" x2="4" y2="9"></line>
-                <line x1="1" y1="15" x2="4" y2="15"></line>
-              </svg>
-              <h3>AI 분리 엔진</h3>
-            </div>
-
-            <!-- 방송 보호 모드 -->
-            <div class="ai-model-card" style="margin-bottom: 20px;">
-              <div class="ai-info-left">
-                <h2 class="ai-title-large">방송 제원 보호 모드 (Broadcast Safe)</h2>
-                <div class="ai-model-desc">
-                  켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
-                  (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
-                </div>
-              </div>
-              <div class="ai-actions-right" style="align-items: flex-end; justify-content: center;">
-                <label class="switch" style="transform: scale(1.2); transform-origin: right center;">
-                  <input type="checkbox" id="toggle-broadcast-mode">
+            <!-- [NEW] Broadcast Toggle in same line with title -->
+            <div id="broadcast-tasks-control" style="display: none;">
+              <div
+                style="display: flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.08); padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255, 193, 7, 0.25);">
+                <span
+                  style="font-size: 0.75rem; font-weight: 700; color: #ffc107; text-transform: uppercase; letter-spacing: 0.5px;">방송 제원 보호</span>
+                <label class="switch" style="transform: scale(0.85); margin-top: 2px;">
+                  <input type="checkbox" id="toggle-broadcast-mode-tasks">
                   <span class="slider round"></span>
                 </label>
               </div>
             </div>
+          </div>
+          <div id="view-subtitle" class="view-subtitle"></div>
+        </div>
 
-            <!-- CUDA 설치 권장 알림 (기본 숨김) -->
-            <div id="cuda-recommend-banner" class="ai-recommend-card" style="display: none;">
-              <div class="ai-recommend-icon">⚠️</div>
-              <div class="ai-recommend-content">
-                <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
-                <div class="ai-recommend-text">
-                  시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다.
-                  CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
-                </div>
-                <div class="ai-recommend-actions">
-                  <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA
-                    다운로드</a>
-                  <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN 다운로드</a>
-                </div>
+
+      </header>
+
+      <div class="page-controls-wrapper">
+        <!-- 1순위: 곡 제목/아티스트 검색란 -->
+        <section class="library-controls" id="library-controls" style="display: none;">
+          <div class="search-bar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input type="text" id="lib-search-input" placeholder="곡 제목, 아티스트 또는 태그 검색..." autocomplete="off"
+              role="presentation">
+            <div id="search-suggestions" class="suggestion-dropdown"></div>
+          </div>
+          <div class="filter-group">
+            <div class="custom-select" id="lib-category-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">전체 카테고리</span>
+                <span class="select-arrow"></span>
               </div>
+              <div class="select-options">
+                <div class="option-item" data-value="all">전체 카테고리</div>
+              </div>
+              <input type="hidden" id="lib-category-filter" value="all">
+            </div>
+            <div class="custom-select" id="lib-genre-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">전체 장르</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item" data-value="all">전체 장르</div>
+                <div class="option-item" data-value="anime">애니송</div>
+                <div class="option-item" data-value="vocaloid">보컬로이드</div>
+                <div class="option-item" data-value="jpop">J-POP</div>
+                <div class="option-item" data-value="kpop">K-POP</div>
+                <div class="option-item" data-value="rock">락/메탈</div>
+                <div class="option-item" data-value="etc">기타</div>
+              </div>
+              <input type="hidden" id="lib-genre-filter" value="all">
             </div>
 
-            <div class="ai-model-card">
-              <div class="ai-info-left" style="flex: 1;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                  <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
-                  <div id="ai-engine-provider" style="font-size: 0.8rem; opacity: 0.7; font-weight: 500;"></div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
-                  <h2 class="ai-title-large" style="margin: 0;">AI 분리 모델</h2>
-                  <div class="custom-select" id="ai-model-select-dropdown" style="min-width: 220px;">
-                    <div class="select-trigger">
-                      <span class="selected-text" id="selected-model-text">Kim Vocal 2 (기본/고속)</span>
-                      <span class="select-arrow"></span>
+            <div class="custom-select" id="lib-sort-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">최근 추가순</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item selected" data-value="dateNew">최근 추가순</div>
+                <div class="option-item" data-value="dateOld">오래된순</div>
+                <div class="option-item" data-value="title">제목순 (A-Z)</div>
+                <div class="option-item" data-value="plays">재생 횟수순</div>
+              </div>
+              <input type="hidden" id="lib-sort-select" value="dateNew">
+            </div>
+          </div>
+        </section>
+
+        <!-- 2순위: 유튜브 주소 입력란 -->
+        <section class="search-section" id="youtube-search">
+          <div class="yt-search-container">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input type="text" class="search-input" placeholder="YouTube URL을 입력하세요..." id="yt-url-input"
+                autocomplete="off" spellcheck="false" />
+            </div>
+            <button class="primary-btn" id="yt-fetch-btn">정보 가져오기</button>
+          </div>
+        </section>
+
+        <!-- 3순위: 파일 드롭존 -->
+        <section class="local-drop-section" id="local-drop-section" style="display: none; padding: 0; margin: 0; height: 0; overflow: hidden;">
+          <!-- 서브타이틀이 상단으로 이동했으므로 본문은 깔끔하게 유지 -->
+        </section>
+      </div>
+
+      <div class="scroll-area">
+        <!-- 곡 목록 그리드 -->
+        <div id="song-grid" class="song-grid"></div>
+
+        <!-- Overlay Preview Tab -->
+        <section id="overlay-tab" class="tab-content" style="display: none;">
+          <div class="overlay-tab-container">
+            <div class="overlay-preview-wrapper">
+              <iframe id="overlay-iframe" src="overlay.html"
+                style="width: 100%; height: 100%; border: none; background: transparent;"></iframe>
+            </div>
+
+            <div class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
+                  </path>
+                </svg>
+                <h3>오버레이 설정</h3>
+              </div>
+
+
+
+              <div class="ai-model-card" style="margin-top: 16px;">
+                <div class="ai-info-left" style="width: 100%;">
+                  <div class="ai-title-large">오버레이 디자인 커스텀</div>
+                  <div class="ai-model-desc">아래 설정을 변경하면 실시간으로 미리보기에 반영되며, 복사할 URL이 자동으로 업데이트됩니다.</div>
+                  
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+                    <!-- 좌측: 크기 및 투명도, 둥글기 -->
+                    <div style="display: flex; flex-direction: column; gap: 24px;">
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">전체 크기 배율</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <input type="range" id="overlay-scale" min="0.5" max="2.0" step="0.1" value="1.0" class="range-slider" style="flex: 1;">
+                          <span id="overlay-scale-val" style="font-size: 0.85rem; font-weight: 800; min-width: 35px; text-align: right;">1.0x</span>
+                        </div>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">둥글기 (Rounding)</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <input type="range" id="overlay-rounding" min="0" max="50" step="1" value="20" class="range-slider" style="flex: 1;">
+                          <span id="overlay-rounding-val" style="font-size: 0.85rem; font-weight: 800; min-width: 35px; text-align: right;">20px</span>
+                        </div>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">배경 투명도</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <input type="range" id="overlay-bg-opacity" min="0.0" max="1.0" step="0.1" value="0.6" class="range-slider" style="flex: 1;">
+                          <span id="overlay-bg-opacity-val" style="font-size: 0.85rem; font-weight: 800; min-width: 35px; text-align: right;">60%</span>
+                        </div>
+                      </div>
                     </div>
-                    <div class="select-options">
-                      <div class="option-item selected" data-value="kim">Kim Vocal 2 (기본/고속)</div>
-                      <div class="option-item" data-value="inst_hq_3">Inst HQ 3 (고품질 반주/MR)</div>
+
+                    <!-- 우측: 폰트 및 컬러 팔레트 -->
+                    <div style="display: flex; flex-direction: column; gap: 24px;">
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">글씨체 (Font)</label>
+                        <div class="custom-select" id="overlay-font-dropdown" style="width: 100%;">
+                          <div class="select-trigger">
+                            <span class="selected-text">Inter (기본 영문)</span>
+                            <span class="select-arrow"></span>
+                          </div>
+                          <div class="select-options">
+                            <div class="option-item selected" data-value="Inter">Inter (기본 영문)</div>
+                            <div class="option-item" data-value="SUITE">SUITE (기본 한글)</div>
+                            <div class="option-item" data-value="Noto Sans KR">Noto Sans KR (고딕)</div>
+                            <div class="option-item" data-value="Pretendard">Pretendard (가독성 폰트)</div>
+                          </div>
+                          <input type="hidden" id="overlay-font" value="Inter">
+                        </div>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">테마 색상</label>
+                        <div class="color-palette-wrapper" style="flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                          <div class="color-palette-container" id="theme-palette">
+                            <div class="color-swatch selected" data-color="#3b82f6" style="background: #3b82f6;"></div>
+                            <div class="color-swatch" data-color="#10b981" style="background: #10b981;"></div>
+                            <div class="color-swatch" data-color="#f59e0b" style="background: #f59e0b;"></div>
+                            <div class="color-swatch" data-color="#ef4444" style="background: #ef4444;"></div>
+                            <div class="color-swatch" data-color="#8b5cf6" style="background: #8b5cf6;"></div>
+                            <div class="color-swatch" data-color="#ec4899" style="background: #ec4899;"></div>
+                            <div class="color-swatch" data-color="#ffffff" style="background: #ffffff;"></div>
+                          </div>
+                          <div style="display: flex; gap: 8px; align-items: center;">
+                            <div class="hex-input-wrapper" style="width: 90px;">
+                              <span class="hex-hash">#</span>
+                              <input type="text" id="overlay-color-hex" value="3b82f6" maxlength="6" class="hex-text-input">
+                            </div>
+                            <button class="btn-custom-color-picker" onclick="document.getElementById('overlay-color').click()" title="시스템 색상 선택기">
+                              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l9 2-2-9-9-9-9 9 2 9 9-2zM9 12l2 2m4-8l2 2"></path></svg>
+                            </button>
+                            <input type="color" id="overlay-color" value="#3b82f6" style="display: none;">
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">배경 색상</label>
+                        <div class="color-palette-wrapper" style="flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                          <div class="color-palette-container" id="bg-palette">
+                            <div class="color-swatch selected" data-color="#0f0f14" style="background: #0f0f14; border: 1px solid rgba(255,255,255,0.1);"></div>
+                            <div class="color-swatch" data-color="#1a1a24" style="background: #1a1a24;"></div>
+                            <div class="color-swatch" data-color="#2d3436" style="background: #2d3436;"></div>
+                            <div class="color-swatch" data-color="#ffffff" style="background: #ffffff;"></div>
+                            <div class="color-swatch" data-color="#000000" style="background: #000000;"></div>
+                          </div>
+                          <div style="display: flex; gap: 8px; align-items: center;">
+                            <div class="hex-input-wrapper" style="width: 90px;">
+                              <span class="hex-hash">#</span>
+                              <input type="text" id="overlay-bg-color-hex" value="0f0f14" maxlength="6" class="hex-text-input">
+                            </div>
+                            <button class="btn-custom-color-picker" onclick="document.getElementById('overlay-bg-color').click()" title="시스템 색상 선택기">
+                              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l9 2-2-9-9-9-9 9 2 9 9-2zM9 12l2 2m4-8l2 2"></path></svg>
+                            </button>
+                            <input type="color" id="overlay-bg-color" value="#0f0f14" style="display: none;">
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div id="ai-model-desc" class="ai-model-desc">
-                  기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.
+              </div>
+
+              <div class="ai-model-card" style="margin-top: 16px; flex-direction: column; align-items: stretch; gap: 16px;">
+                <!-- Header -->
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div class="ai-title-large">OBS 브라우저 소스</div>
+                  <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 입력하여 바로 송출하세요.</div>
+                </div>
+
+                <!-- URL input & Copy Button -->
+                <div style="display: flex; gap: 12px; align-items: stretch;">
+                  <code id="overlay-url-display"
+                    style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:1420/overlay.html</code>
+                  <button class="btn-ai-action secondary" id="btn-copy-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                </div>
+                
+                <!-- Guide Box -->
+                <div style="padding: 12px 14px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.1);">
+                  <div style="display: flex; align-items: center; gap: 8px; color: var(--accent-primary); font-size: 0.8rem; font-weight: 700; margin-bottom: 6px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    OBS 브라우저 소스 설정 가이드
+                  </div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; padding-left: 22px;">
+                    • 너비(Width): <span style="color: var(--text-main); font-weight: 700;">1200px</span> 이상 (배율 2.0x 기준)<br>
+                    • 높이(Height): <span style="color: var(--text-main); font-weight: 700;">210px</span> 권장
+                  </div>
                 </div>
               </div>
-              <div class="ai-actions-right">
-                <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
-                <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
-                <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
-              </div>
             </div>
-          </section>
-        </div>
-      </div>
+          </div>
+        </section>
 
-      <!-- 액티브 태스크 섹션 -->
-      <div class="tab-content" id="tasks-page" style="display: none;">
-        <div class="tasks-container">
-          <div id="active-tasks-list" class="tasks-list">
+        <!-- 설정 페이지 -->
+        <div class="tab-content" id="settings-page" style="display: none; padding: 0 30px 30px 30px;">
+          <div class="settings-container">
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <h3>곡 정보 관리</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">곡 정보 일괄 수정</h2>
+                  <div class="ai-model-desc">
+                    엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-open-manager" class="btn-ai-action">관리자 열기</button>
+                </div>
+              </div>
 
-            <!-- 태스크 아이템이 동적으로 추가됨 -->
-            <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
+              <div class="ai-model-card" style="margin-top: 15px;">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">데이터 백업 및 복원 (병합)</h2>
+                  <div class="ai-model-desc">
+                    현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
+                  <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
+                  <button id="btn-run-rescue" class="btn-ai-action secondary">목록 자동 복구</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                  <rect x="9" y="9" width="6" height="6"></rect>
+                  <line x1="9" y1="1" x2="9" y2="4"></line>
+                  <line x1="15" y1="1" x2="15" y2="4"></line>
+                  <line x1="9" y1="20" x2="9" y2="23"></line>
+                  <line x1="15" y1="20" x2="15" y2="23"></line>
+                  <line x1="20" y1="9" x2="23" y2="9"></line>
+                  <line x1="20" y1="15" x2="23" y2="15"></line>
+                  <line x1="1" y1="9" x2="4" y2="9"></line>
+                  <line x1="1" y1="15" x2="4" y2="15"></line>
+                </svg>
+                <h3>AI 분리 엔진</h3>
+              </div>
+
+              <!-- 방송 보호 모드 -->
+              <div class="ai-model-card" style="margin-bottom: 20px;">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">방송 제원 보호 모드 (Broadcast Safe)</h2>
+                  <div class="ai-model-desc">
+                    켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
+                    (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
+                  </div>
+                </div>
+                <div class="ai-actions-right" style="align-items: flex-end; justify-content: center;">
+                  <label class="switch" style="transform: scale(1.2); transform-origin: right center;">
+                    <input type="checkbox" id="toggle-broadcast-mode">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- CUDA 설치 권장 알림 (기본 숨김) -->
+              <div id="cuda-recommend-banner" class="ai-recommend-card" style="display: none;">
+                <div class="ai-recommend-icon">⚠️</div>
+                <div class="ai-recommend-content">
+                  <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
+                  <div class="ai-recommend-text">
+                    시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다.
+                    CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
+                  </div>
+                  <div class="ai-recommend-actions">
+                    <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA
+                      다운로드</a>
+                    <a href="https://developer.nvidia.com/cudnn" target="_blank" class="recommend-link">cuDNN 다운로드</a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ai-model-card">
+                <div class="ai-info-left" style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
+                    <div id="ai-engine-provider" style="font-size: 0.8rem; opacity: 0.7; font-weight: 500;"></div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
+                    <h2 class="ai-title-large" style="margin: 0;">AI 분리 모델</h2>
+                    <div class="custom-select" id="ai-model-select-dropdown" style="min-width: 220px;">
+                      <div class="select-trigger">
+                        <span class="selected-text" id="selected-model-text">Kim Vocal 2 (기본/고속)</span>
+                        <span class="select-arrow"></span>
+                      </div>
+                      <div class="select-options">
+                        <div class="option-item selected" data-value="kim">Kim Vocal 2 (기본/고속)</div>
+                        <div class="option-item" data-value="inst_hq_3">Inst HQ 3 (고품질 반주/MR)</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="ai-model-desc" class="ai-model-desc">
+                    기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
+                  <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
+                  <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
+
+        <!-- 액티브 태스크 섹션 -->
+        <div class="tab-content" id="tasks-page" style="display: none;">
+          <div class="tasks-container">
+            <div id="active-tasks-list" class="tasks-list">
+
+              <!-- 태스크 아이템이 동적으로 추가됨 -->
+              <div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lyric Sync 모듈 섹션 -->
+        <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
+          <div id="alignment-viewer-root" style="height: 100%;"></div>
+        </div>
+      </div> <!-- End of view-main -->
+
+      <!-- Lyric Sliding Drawer -->
+      <div id="lyric-drawer" class="lyric-drawer">
+        <div class="drawer-header">
+          <h2>가사</h2>
+          <button class="drawer-close" id="lyric-drawer-close">&times;</button>
+        </div>
+        <div class="drawer-content">
+          <p>정렬된 가사가<br>여기에 표시됩니다.</p>
+          <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 20px;">
+            가사 데이터 연동 시<br>이곳에 출력됩니다
+          </p>
+        </div>
       </div>
 
-      <!-- Lyric Sync 모듈 섹션 -->
-      <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
-        <div id="alignment-viewer-root" style="height: 100%;"></div>
-      </div>
-    </div> <!-- End of view-main -->
-
-    <!-- Lyric Sliding Drawer -->
-    <div id="lyric-drawer" class="lyric-drawer">
-      <div class="drawer-header">
-        <h2>LYRICS</h2>
-        <button class="drawer-close" id="lyric-drawer-close">&times;</button>
-      </div>
-      <div class="drawer-content">
-        <p>정렬된 가사가<br>여기에 표시됩니다.</p>
-        <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 20px;">
-          가사 데이터 연동 시<br>이곳에 출력됩니다
-        </p>
-      </div>
-    </div>
-
-    <!-- Floating Toggle Handle -->
-    <button id="lyric-drawer-trigger" class="lyric-drawer-trigger" title="가사 보기">
-      <span>LYRICS</span>
-    </button>
+      <!-- Floating Toggle Handle -->
+      <button id="lyric-drawer-trigger" class="lyric-drawer-trigger" title="가사 보기">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" style="margin-bottom: 6px; opacity: 0.8;">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="15" y2="18"></line>
+        </svg>
+        <span>LYRICS</span>
+      </button>
   </main>
 
   <!-- 퍼포머 컨트롤 도크 (하단 고정) -->
@@ -401,12 +643,12 @@
       <div class="playing-details">
         <div class="playing-top-row">
           <div class="player-controls">
-            <button class="control-btn" id="btn-prev" title="Previous Track">
+            <button class="control-btn" id="btn-prev" title="이전 곡">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
               </svg>
             </button>
-            <button class="control-btn play-main-btn" id="btn-toggle-play" title="Play/Pause">
+            <button class="control-btn play-main-btn" id="btn-toggle-play" title="재생/일시정지">
               <svg class="play-icon" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -414,7 +656,7 @@
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
               </svg>
             </button>
-            <button class="control-btn" id="btn-next" title="Next Track">
+            <button class="control-btn" id="btn-next" title="다음 곡">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6zm9-12h2v12h-2z" />
               </svg>
@@ -441,29 +683,29 @@
 
       <!-- AI 처리 섹션 -->
       <div class="ai-processing">
-        <div class="ai-item vocal-item" title="Vocal/Inst Balance Control">
-          <span class="ai-label clickable" id="label-vocal-balance">VOCAL</span>
+        <div class="ai-item vocal-item" title="보컬/반주 밸런스 조절">
+          <span class="ai-label clickable" id="label-vocal-balance">보컬</span>
           <label class="switch">
             <input type="checkbox" id="toggle-vocal" checked>
             <span class="slider round"></span>
           </label>
-          
+
           <!-- Mini Popover for Balance -->
           <div class="balance-popover" id="popover-vocal-balance">
             <div class="popover-arrow"></div>
             <div class="popover-header">
-              <span>VOCAL BALANCE</span>
+              <span>보컬 밸런스</span>
               <span id="vocal-balance-val">50%</span>
             </div>
             <div class="popover-body">
-              <span class="side-label">MR</span>
+              <span class="side-label">반주</span>
               <input type="range" id="vocal-balance" min="0" max="100" value="50" class="mini-range-slider">
-              <span class="side-label">VOC</span>
+              <span class="side-label">보컬</span>
             </div>
           </div>
         </div>
-        <div class="ai-item" title="WhisperX Lyrics Sync">
-          <span class="ai-label">LYRIC</span>
+        <div class="ai-item" title="AI 가사 싱크 활성">
+          <span class="ai-label">가사</span>
           <label class="switch">
             <input type="checkbox" id="toggle-lyric">
             <span class="slider round"></span>
@@ -477,14 +719,14 @@
           <div class="control-row">
             <div class="control-group">
               <div class="control-header">
-                <span>PITCH</span>
+                <span>피치</span>
                 <span class="val-display" id="pitch-val">0</span>
               </div>
               <input type="range" min="-12" max="12" step="1" value="0" class="range-slider" id="pitch-slider">
             </div>
             <div class="control-group">
               <div class="control-header">
-                <span>TEMPO</span>
+                <span>템포</span>
                 <span class="val-display" id="tempo-val">1.0x</span>
               </div>
               <input type="range" min="0.5" max="2.0" step="0.05" value="1.0" class="range-slider" id="tempo-slider">
@@ -501,8 +743,9 @@
 
           <!-- 하단: 마스터 볼륨 (일렬 정렬) -->
           <div class="volume-inline-row">
-            <span class="inline-label">VOLUME</span>
-            <input type="range" min="0" max="120" value="100" class="range-slider volume-slider" id="master-volume-slider">
+            <span class="inline-label">볼륨</span>
+            <input type="range" min="0" max="120" value="100" class="range-slider volume-slider"
+              id="master-volume-slider">
             <span class="val-display master-val-box" id="master-volume-val">100</span>
           </div>
         </div>
@@ -606,7 +849,9 @@
         </div>
       </div>
       <footer class="modal-footer" style="justify-content: space-between;">
-        <button class="secondary-btn" id="btn-metadata-search" style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">곡 정보 검색</button>
+        <button class="secondary-btn" id="btn-metadata-search"
+          style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">곡 정보
+          검색</button>
         <div style="display: flex; gap: 10px;">
           <button class="secondary-btn" id="modal-cancel">취소</button>
           <button class="primary-btn" id="modal-save">저장</button>
@@ -666,23 +911,41 @@
         <button class="manager-tab-btn active" data-tab="list">곡 정보 목록</button>
         <button class="manager-tab-btn" data-tab="curation">번역 사전 관리</button>
       </div>
-      
+
       <!-- Tab 1: Song List -->
       <div class="modal-body manager-body active" id="manager-tab-list">
         <div class="table-container">
           <table id="manager-table">
             <colgroup id="manager-table-colgroup">
-              <col style="width: 45px;"><col><col><col><col><col><col style="width: 80px;"><col style="width: 80px;">
+              <col style="width: 45px;">
+              <col>
+              <col>
+              <col>
+              <col>
+              <col>
+              <col style="width: 80px;">
+              <col style="width: 80px;">
             </colgroup>
             <thead>
               <tr>
                 <th class="text-center"><input type="checkbox" id="manager-select-all"></th>
-                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span><div class="resizer"></div></th>
-                <th class="text-center">태그 <div class="resizer"></div></th>
-                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span><div class="resizer"></div></th>
+                <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="artist">아티스트 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="category">카테고리 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="genre">장르 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
+                <th class="text-center">태그 <div class="resizer"></div>
+                </th>
+                <th class="sortable text-center" data-sort="duration">길이 <span class="sort-indicator"></span>
+                  <div class="resizer"></div>
+                </th>
                 <th class="text-center">작업</th>
               </tr>
             </thead>
@@ -703,8 +966,8 @@
               <div style="padding: 20px; text-align: center; color: #888;">데이터를 불러오는 중...</div>
             </div>
             <div class="flex-row gap-sm mt-sm">
-               <button class="secondary-btn btn-sm flex-1" id="btn-refresh-unmapped">새로고침</button>
-               <button class="secondary-btn btn-sm flex-1" id="btn-copy-unmapped">목록 복사 (AI용)</button>
+              <button class="secondary-btn btn-sm flex-1" id="btn-refresh-unmapped">새로고침</button>
+              <button class="secondary-btn btn-sm flex-1" id="btn-copy-unmapped">목록 복사 (AI용)</button>
             </div>
           </div>
           <div class="curation-right">
@@ -712,12 +975,14 @@
             <div class="curation-form">
               <div class="input-group">
                 <label>원본 태그 (English)</label>
-                <input type="text" id="curation-original" readonly placeholder="왼쪽에서 선택하세요" style="background: rgba(255,255,255,0.05);">
+                <input type="text" id="curation-original" readonly placeholder="왼쪽에서 선택하세요"
+                  style="background: rgba(255,255,255,0.05);">
               </div>
               <div class="input-group">
                 <label>분류</label>
                 <div class="custom-select-wrapper" style="width: 100%;">
-                  <select id="curation-category" class="custom-select-native" style="width: 100%; padding: 10px; border-radius: 8px; background: #1a1a1a; color: white; border: 1px solid rgba(255,255,255,0.1);">
+                  <select id="curation-category" class="custom-select-native"
+                    style="width: 100%; padding: 10px; border-radius: 8px; background: #1a1a1a; color: white; border: 1px solid rgba(255,255,255,0.1);">
                     <option value="genre">장르 (Genre)</option>
                     <option value="tag">태그 (Tag)</option>
                   </select>
@@ -729,14 +994,15 @@
               </div>
               <button class="primary-btn btn-md w-full mt-xs" id="btn-save-mapping">사전에 등록</button>
             </div>
-            
+
           </div>
         </div>
       </div>
       <footer class="modal-footer manager-footer">
         <div class="footer-left-group">
           <div id="manager-stat" class="manager-stat">Total 0 Songs</div>
-          <button class="secondary-btn btn-sm danger-text" id="btn-manager-del-selected" style="margin-left: 15px; border-color: rgba(239, 68, 68, 0.3);">선택 삭제</button>
+          <button class="secondary-btn btn-sm danger-text" id="btn-manager-del-selected"
+            style="margin-left: 15px; border-color: rgba(239, 68, 68, 0.3);">선택 삭제</button>
         </div>
         <div class="footer-actions">
           <button class="primary-btn btn-md" id="manager-modal-save">저장</button>
@@ -754,11 +1020,13 @@
         <button class="close-btn" id="search-results-close">&times;</button>
       </header>
       <div class="modal-body">
-        <div id="search-results-list" class="search-results-list" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+        <div id="search-results-list" class="search-results-list"
+          style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
           <!-- Dynamically populated -->
         </div>
         <div style="margin-top: 15px; text-align: right; font-size: 0.8rem; color: #888;">
-          Powered by <a href="https://www.last.fm" target="_blank" style="color: #bbb; text-decoration: none; font-weight: bold;">Last.fm</a>
+          Powered by <a href="https://www.last.fm" target="_blank"
+            style="color: #bbb; text-decoration: none; font-weight: bold;">Last.fm</a>
         </div>
       </div>
     </div>

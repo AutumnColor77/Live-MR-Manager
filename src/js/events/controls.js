@@ -520,6 +520,200 @@ export function initControlListeners() {
   if (updateViewMode) {
     updateViewMode(state.viewMode || "grid");
   }
+
+  // Overlay Customization Controls
+  const overlayScale = document.getElementById('overlay-scale');
+  const overlayScaleVal = document.getElementById('overlay-scale-val');
+  const overlayFont = document.getElementById('overlay-font');
+  const overlayColor = document.getElementById('overlay-color');
+  const overlayBgOpacity = document.getElementById('overlay-bg-opacity');
+  const overlayBgOpacityVal = document.getElementById('overlay-bg-opacity-val');
+  const overlayRounding = document.getElementById('overlay-rounding');
+  const overlayRoundingVal = document.getElementById('overlay-rounding-val');
+  const overlayBgColor = document.getElementById('overlay-bg-color');
+  const overlayColorHex = document.getElementById('overlay-color-hex');
+  const overlayBgColorHex = document.getElementById('overlay-bg-color-hex');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  const overlayIframe = document.getElementById('overlay-iframe');
+
+  const setupPalette = (paletteId, colorInput, hexInput) => {
+    const palette = document.getElementById(paletteId);
+    if (!palette || !colorInput || !hexInput) return;
+
+    const swatches = palette.querySelectorAll('.color-swatch');
+    
+    const updateSelection = (color) => {
+      swatches.forEach(s => {
+        if (s.dataset.color.toLowerCase() === color.toLowerCase()) {
+          s.classList.add('selected');
+        } else {
+          s.classList.remove('selected');
+        }
+      });
+      hexInput.value = color.replace('#', '').toLowerCase();
+    };
+
+    swatches.forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        const color = swatch.dataset.color;
+        colorInput.value = color;
+        updateSelection(color);
+        updateOverlaySettings();
+      });
+    });
+
+    colorInput.addEventListener('input', () => {
+      updateSelection(colorInput.value);
+      updateOverlaySettings();
+    });
+
+    hexInput.addEventListener('input', (e) => {
+      let val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+      if (val.length === 6) {
+        const color = `#${val}`;
+        colorInput.value = color;
+        updateSelection(color);
+        updateOverlaySettings();
+      }
+    });
+
+    return updateSelection;
+  };
+
+  const updateThemePalette = setupPalette('theme-palette', overlayColor, overlayColorHex);
+  const updateBgPalette = setupPalette('bg-palette', overlayBgColor, overlayBgColorHex);
+
+  const updateOverlaySettings = async (skipSave = false) => {
+    if (!overlayScale || !overlayFont || !overlayColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor) return;
+    
+    const scale = parseFloat(overlayScale.value).toFixed(1);
+    if (overlayScaleVal) overlayScaleVal.textContent = `${scale}x`;
+    
+    const font = overlayFont.value;
+    const color = overlayColor.value.replace('#', '');
+    
+    const bgOpacity = parseFloat(overlayBgOpacity.value);
+    if (overlayBgOpacityVal) overlayBgOpacityVal.textContent = `${Math.round(bgOpacity * 100)}%`;
+    
+    const rounding = parseFloat(overlayRounding.value);
+    if (overlayRoundingVal) overlayRoundingVal.textContent = `${rounding}px`;
+    
+    const bgColor = overlayBgColor.value.replace('#', '');
+    
+    // Save to localStorage
+    if (!skipSave) {
+      localStorage.setItem('overlay-settings', JSON.stringify({
+        scale, font, color, bgOpacity, rounding, bgColor
+      }));
+    }
+
+    // URL is always clean now
+    const baseUrl = 'http://localhost:1420/overlay.html';
+    overlayUrlDisplay.textContent = baseUrl;
+    
+    // Ensure iframe is loaded on preview mode without reloading
+    if (!overlayIframe.src.includes('preview=true')) {
+        overlayIframe.src = `overlay.html?preview=true`;
+    }
+    
+    // Push the styling strictly through WebSocket (via Rust backend)
+    try {
+      await invoke('update_overlay_style', { 
+        scale: parseFloat(scale), 
+        font: font, 
+        color: color,
+        bgColor: bgColor,
+        bgOpacity: bgOpacity,
+        rounding: rounding
+      });
+    } catch (err) {
+      console.error("Failed to update overlay style:", err);
+    }
+  };
+
+  const loadOverlaySettings = () => {
+    const saved = localStorage.getItem('overlay-settings');
+    if (!saved) return;
+
+    try {
+      const settings = JSON.parse(saved);
+      if (settings.scale) overlayScale.value = settings.scale;
+      if (settings.color) {
+        overlayColor.value = `#${settings.color}`;
+        if (updateThemePalette) updateThemePalette(`#${settings.color}`);
+      }
+      if (settings.bgOpacity !== undefined) overlayBgOpacity.value = settings.bgOpacity;
+      if (settings.rounding !== undefined) overlayRounding.value = settings.rounding;
+      if (settings.bgColor) {
+        overlayBgColor.value = `#${settings.bgColor}`;
+        if (updateBgPalette) updateBgPalette(`#${settings.bgColor}`);
+      }
+      
+      if (settings.font) {
+        overlayFont.value = settings.font;
+        // Update custom-select UI
+        const dropdown = document.getElementById('overlay-font-dropdown');
+        if (dropdown) {
+          const selectedText = dropdown.querySelector('.selected-text');
+          const options = dropdown.querySelectorAll('.option-item');
+          options.forEach(opt => {
+            if (opt.dataset.value === settings.font) {
+              opt.classList.add('selected');
+              if (selectedText) selectedText.textContent = opt.textContent;
+            } else {
+              opt.classList.remove('selected');
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load overlay settings:", e);
+    }
+  };
+
+  if (overlayScale) {
+    overlayScale.addEventListener('input', () => updateOverlaySettings());
+    // Add wheel support for scale slider
+    overlayScale.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseFloat(overlayScale.value);
+      if (e.deltaY < 0) val += 0.1; else val -= 0.1;
+      val = Math.max(parseFloat(overlayScale.min), Math.min(parseFloat(overlayScale.max), val));
+      overlayScale.value = val.toFixed(1);
+      overlayScale.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+  if (overlayFont) {
+    overlayFont.addEventListener('change', () => updateOverlaySettings());
+  }
+  if (overlayColor) overlayColor.addEventListener('input', () => updateOverlaySettings());
+  if (overlayBgOpacity) {
+    overlayBgOpacity.addEventListener('input', () => updateOverlaySettings());
+    overlayBgOpacity.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseFloat(overlayBgOpacity.value);
+      if (e.deltaY < 0) val += 0.1; else val -= 0.1;
+      val = Math.max(parseFloat(overlayBgOpacity.min), Math.min(parseFloat(overlayBgOpacity.max), val));
+      overlayBgOpacity.value = val.toFixed(1);
+      overlayBgOpacity.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+  if (overlayRounding) {
+    overlayRounding.addEventListener('input', () => updateOverlaySettings());
+    overlayRounding.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseFloat(overlayRounding.value);
+      if (e.deltaY < 0) val += 1; else val -= 1;
+      val = Math.max(parseFloat(overlayRounding.min), Math.min(parseFloat(overlayRounding.max), val));
+      overlayRounding.value = val.toFixed(0);
+      overlayRounding.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+  if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
+
+  // Initialize immediately
+  loadOverlaySettings();
+  updateOverlaySettings(true); // Skip saving on initial load
 }
 
 function setupDirectInput(displayEl, sliderEl) {

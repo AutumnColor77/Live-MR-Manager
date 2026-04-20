@@ -381,3 +381,39 @@
   transform: translateY(-2px);
   filter: brightness(1.1);
 }
+
+/* --- Overlay Page Styles --- */
+.overlay-tab-container {
+  padding: 0 30px 30px 30px !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: block;
+  animation: fadeIn 0.4s ease;
+}
+
+.overlay-preview-wrapper {
+  background: #000;
+  border-radius: 20px;
+  padding: 60px 40px;
+  margin-bottom: 30px;
+  position: relative;
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.overlay-preview-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.1;
+  background-image: radial-gradient(#fff 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}

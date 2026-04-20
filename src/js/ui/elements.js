@@ -87,6 +87,7 @@ export const elements = {
   // Settings & Tasks
   settingsPage: null,
   tasksPage: null,
+  overlayPage: null,
   activeTasksList: null,
   taskBadge: null,
   btnExportBackup: null,
@@ -181,6 +182,7 @@ export function initDomReferences() {
   // Settings & Tasks
   elements.settingsPage = document.getElementById("settings-page");
   elements.tasksPage = document.getElementById("tasks-page");
+  elements.overlayPage = document.getElementById("overlay-tab");
   elements.activeTasksList = document.getElementById("active-tasks-list");
   elements.taskBadge = document.getElementById("task-badge");
   elements.btnExportBackup = document.getElementById("btn-export-backup");
