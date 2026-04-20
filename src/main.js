@@ -9,13 +9,16 @@ import {
   updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
 } from './js/ui/index.js';
 import { initAllEvents, switchTab } from './js/events/index.js';
-import { loadLibrary, checkAiModelStatus } from './js/audio.js';
+import { loadLibrary, checkAiModelStatus, cancelSeparation } from './js/audio.js';
 import { showNotification } from './js/utils.js';
 
 import { invoke, appWindow } from './js/tauri-bridge.js';
 
 async function initApp() {
   console.log("[App] Initializing...");
+
+  // Expose task cancellation to global window for UI components
+  window.cancelTask = cancelSeparation;
 
   // Register permanent error listeners to bridge JS errors to terminal
   window.addEventListener('error', (event) => {

@@ -60,6 +60,14 @@
   animation: processing-pulse 1.5s infinite;
 }
 
+.status-badge.pending {
+  background: rgba(45, 45, 50, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+}
+
 /* Unified Library Layout System */
 :root {
   --library-max-width: 1048px; /* Target usable content width */

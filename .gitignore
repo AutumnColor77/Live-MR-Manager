@@ -1,6 +1,7 @@
 # Tauri artifacts
 src-tauri/target
 src-tauri/gen
+src-tauri/scratch
 src-tauri/*.log
 src-tauri/*.txt
 src-tauri/*.m4a
