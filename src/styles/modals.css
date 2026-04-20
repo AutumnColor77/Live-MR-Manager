@@ -179,16 +179,19 @@
   flex: 1;
 }
 
-.mr-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.input-group .mr-checkbox-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
   cursor: pointer;
-  padding: 14px 18px;
-  border-radius: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: max-content !important;
+  white-space: nowrap !important;
 }
 
 .mr-checkbox-label:hover {
@@ -211,6 +214,69 @@
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-muted);
+  user-select: none;
+}
+
+/* Custom Checkbox Styling */
+.custom-checkbox-wrapper {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-checkbox-wrapper input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkbox-checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 20px;
+  width: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mr-checkbox-label:hover .checkbox-checkmark {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.custom-checkbox-wrapper input:checked ~ .checkbox-checkmark {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
+}
+
+.checkbox-checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 6.5px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+.custom-checkbox-wrapper input:checked ~ .checkbox-checkmark:after {
+  display: block;
+}
+
+.mr-checkbox-label:active {
+  transform: scale(0.98);
 }
 
 /* Volume Control in Modal */

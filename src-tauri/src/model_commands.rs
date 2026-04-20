@@ -107,7 +107,7 @@ pub async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<
         return Err("ALREADY_PROCESSING".into()); 
     }
     
-    let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&path).to_string());
+    let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
     let task = crate::separation::task::SeparationTask::new(window, path, cache);
     tauri::async_runtime::spawn(async move { task.run().await; });
     Ok(())

@@ -20,9 +20,8 @@ body .song-grid.grid-mode .song-card {
 }
 
 body .song-grid.grid-mode .song-card:hover {
-  transform: translateY(-8px) !important;
-  border-color: var(--accent-primary) !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+  /* Inherits premium hover from library-common.css (border, shadow) */
+  transform: translateY(-8px) !important; /* Slightly more lift for large cards */
 }
 
 /* Thumbnail with Overlay Badge */

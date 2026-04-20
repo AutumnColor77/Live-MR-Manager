@@ -34,12 +34,14 @@ export function updateAiModelStatus(statusInput) {
   }
 
   if (elements.aiEngineProvider) {
+    const isGPU = status.provider && (status.provider.includes("GPU") || status.provider.includes("CUDA") || status.provider.includes("DirectML"));
     elements.aiEngineProvider.textContent = status.provider || "CPU";
-    elements.aiEngineProvider.className = "engine-provider " + (status.provider === "CUDA" ? "cuda" : "cpu");
+    elements.aiEngineProvider.className = "engine-provider " + (isGPU ? "cuda" : "cpu");
   }
 
   if (elements.cudaRecommendBanner) {
-    elements.cudaRecommendBanner.style.display = (status.cuda_available && status.provider !== "CUDA") ? "flex" : "none";
+    const isGPU = status.provider && (status.provider.includes("GPU") || status.provider.includes("CUDA") || status.provider.includes("DirectML"));
+    elements.cudaRecommendBanner.style.display = (status.cuda_available && !isGPU) ? "flex" : "none";
   }
 }
 
@@ -71,7 +73,9 @@ export function updateTaskUI() {
   elements.activeTasksList.innerHTML = tasks.map(task => {
     const percent = Math.floor(task.percentage || 0);
     const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
-    const providerLabel = task.provider === "CUDA" ? "GPU" : "CPU";
+    const pStr = (task.provider || "").toUpperCase();
+    const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
+    const providerLabel = isGPU ? "GPU" : "CPU";
     
     // Status Translation
     const statusMap = {
@@ -99,7 +103,7 @@ export function updateTaskUI() {
             </div>
           </div>
           <div class="task-actions">
-            <div class="task-provider-badge ${task.provider === 'CUDA' ? 'provider-gpu' : ''}">${providerLabel}</div>
+            <div class="task-provider-badge ${isGPU ? 'provider-gpu' : ''}">${providerLabel}</div>
             <button class="btn-task-cancel" onclick="window.cancelTask(this.closest('.task-card').dataset.path)">취소</button>
           </div>
         </div>
@@ -407,7 +411,9 @@ export function updateThumbnailOverlay() {
 
 export function updateGpuStatus(provider) {
   if (elements.aiEngineProvider) {
+    const pStr = (provider || "").toUpperCase();
+    const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
     elements.aiEngineProvider.textContent = provider || "CPU";
-    elements.aiEngineProvider.className = "engine-provider " + (provider === "CUDA" ? "cuda" : "cpu");
+    elements.aiEngineProvider.className = "engine-provider " + (isGPU ? "cuda" : "cpu");
   }
 }

@@ -22,7 +22,9 @@ export function initModalListeners() {
         genre: document.getElementById("edit-genre-custom").value.trim() || document.getElementById("edit-genre-select").value,
         category: document.getElementById("edit-category").value,
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
-        volume: parseFloat(elements.editVolume.value), // Keep in 0-120 range
+        volume: parseFloat(elements.editVolume.value),
+        isMr: document.getElementById("edit-is-mr").checked,
+        isSeparated: document.getElementById("edit-is-mr").checked,
       };
 
       try {

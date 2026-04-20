@@ -50,10 +50,10 @@ export function openEditModal(song, index) {
   document.getElementById("edit-category").value = song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "") || "기본";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
 
-  // Volume slider initialization
-  if (elements.editVolume) {
-    elements.editVolume.value = song.volume !== undefined ? song.volume : 100;
-    if (elements.editVolumeVal) elements.editVolumeVal.textContent = elements.editVolume.value + "%";
+  // MR Checkbox initialization
+  const mrCheckbox = document.getElementById("edit-is-mr");
+  if (mrCheckbox) {
+    mrCheckbox.checked = !!(song.is_mr || song.isMr || song.is_separated || song.isSeparated);
   }
 
   elements.metadataModal.classList.add("active");
