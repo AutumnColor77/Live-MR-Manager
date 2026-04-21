@@ -84,19 +84,18 @@ export class ForcedAlignmentViewer {
                                     @keyframes waveform-spin { 100% { transform: rotate(360deg); } }
                                 </style>
                             </div>
-                             
                              <!-- Floating Zoom Controls -->
                              <div class="waveform-zoom-controls">
                                  <button id="zoom-out-btn" class="zoom-btn" title="축소 (Ctrl + Wheel Down)">-</button>
                                  <button id="zoom-in-btn" class="zoom-btn" title="확대 (Ctrl + Wheel Up)">+</button>
                              </div>
-                        </div>
 
-                        <!-- Waveform Scrollbar -->
-                        <div class="waveform-scrollbar-wrapper">
-                            <div id="waveform-scrollbar-track" class="waveform-scrollbar-track">
-                                <div id="waveform-scrollbar-thumb" class="waveform-scrollbar-thumb"></div>
-                            </div>
+                             <!-- Waveform Scrollbar (Bottom edge) -->
+                             <div class="waveform-scrollbar-wrapper">
+                                 <div id="waveform-scrollbar-track" class="waveform-scrollbar-track">
+                                     <div id="waveform-scrollbar-thumb" class="waveform-scrollbar-thumb"></div>
+                                 </div>
+                             </div>
                         </div>
 
                         <div class="seek-bar-container" style="padding: 0; margin-top: 4px; margin-bottom: 4px;">
@@ -108,7 +107,7 @@ export class ForcedAlignmentViewer {
                                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
                                 <button id="sync-tap-btn" class="sync-ctrl-btn tap-btn">
-                                    <span class="tap-label">TAP (Space)</span>
+                                    <span class="tap-label">싱크 맞추기 (Space)</span>
                                 </button>
                                 <div class="time-container">
                                     <span id="time-display" style="font-family:monospace; color:#94a3b8; font-size:0.85rem;">00:00 / 00:00</span>

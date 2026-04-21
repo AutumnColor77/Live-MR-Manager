@@ -22,6 +22,7 @@ pub struct OverlayState {
     pub bg_color: String,
     pub bg_opacity: f32,
     pub rounding: f32,
+    pub is_force_visible: bool,
 }
 
 impl Default for OverlayState {
@@ -37,6 +38,7 @@ impl Default for OverlayState {
             bg_color: "0f0f14".to_string(),
             bg_opacity: 0.6,
             rounding: 20.0,
+            is_force_visible: false,
         }
     }
 }
@@ -125,7 +127,7 @@ pub async fn update_overlay_state(title: String, artist: String, thumbnail: Stri
 }
 
 #[tauri::command]
-pub async fn update_overlay_style(scale: f32, font: String, color: String, bg_color: String, bg_opacity: f32, rounding: f32) {
+pub async fn update_overlay_style(scale: f32, font: String, color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.scale = scale;
     state.font = font;
@@ -133,5 +135,6 @@ pub async fn update_overlay_style(scale: f32, font: String, color: String, bg_co
     state.bg_color = bg_color;
     state.bg_opacity = bg_opacity;
     state.rounding = rounding;
+    state.is_force_visible = is_force_visible;
     broadcast_overlay_state(state).await;
 }

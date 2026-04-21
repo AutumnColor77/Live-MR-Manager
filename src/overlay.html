@@ -230,7 +230,7 @@
     function updateOverlay(data) {
       if (!data) return;
 
-      if (!data.is_playing && !isPreview) {
+      if (!data.is_playing && !isPreview && !data.is_force_visible) {
         hideOverlay();
         return;
       }
@@ -295,9 +295,6 @@
     if (window.__TAURI__) {
       window.__TAURI__.event.listen('track-change', (event) => {
         updateOverlay({...event.payload, is_playing: true});
-      });
-      window.__TAURI__.event.listen('playback-stop', () => {
-        hideOverlay();
       });
     }
   </script>

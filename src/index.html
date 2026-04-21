@@ -309,14 +309,23 @@
             </div>
 
             <div class="settings-group">
-              <div class="group-header">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
-                  </path>
-                </svg>
-                <h3>오버레이 설정</h3>
+              <div class="group-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                    <path
+                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
+                    </path>
+                  </svg>
+                  <h3>오버레이 설정</h3>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; background: rgba(59, 130, 246, 0.05); padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.1);">
+                  <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-primary); letter-spacing: -0.02em;">상시 표시 (미리보기)</span>
+                  <label class="switch" style="transform: scale(0.85); transform-origin: right center;">
+                    <input type="checkbox" id="toggle-overlay-force-visible">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
               </div>
 
 
@@ -851,9 +860,7 @@
         </div>
       </div>
       <footer class="modal-footer" style="justify-content: space-between;">
-        <button class="secondary-btn" id="btn-metadata-search"
-          style="padding: 0 16px; min-height: 48px; font-size: 0.85rem; white-space: nowrap; border-radius: 10px;">곡 정보
-          검색</button>
+        <button class="secondary-btn" id="btn-metadata-search">곡 정보 검색</button>
         <div style="display: flex; gap: 10px;">
           <button class="secondary-btn" id="modal-cancel">취소</button>
           <button class="primary-btn" id="modal-save">저장</button>
@@ -898,13 +905,12 @@
       <header class="modal-header">
         <div class="header-main-info">
           <h3>곡 정보 관리자</h3>
-          <div class="manager-search-box">
+          <div class="mgr-search-wrap" id="mgr-search-wrap">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off"
-              spellcheck="false">
+            <input type="text" id="manager-search-input" placeholder="곡 제목, 아티스트로 일괄 검색..." autocomplete="off" spellcheck="false">
           </div>
         </div>
         <button class="close-btn" id="manager-modal-close">&times;</button>
@@ -930,7 +936,7 @@
             </colgroup>
             <thead>
               <tr>
-                <th class="text-center"><input type="checkbox" id="manager-select-all"></th>
+                <th class="text-center" style="position: relative; z-index: 1000;"><input type="checkbox" id="mgr-check-all" class="manager-check"></th>
                 <th class="sortable text-center" data-sort="title">제목 <span class="sort-indicator"></span>
                   <div class="resizer"></div>
                 </th>
@@ -1002,13 +1008,13 @@
       </div>
       <footer class="modal-footer manager-footer">
         <div class="footer-left-group">
-          <div id="manager-stat" class="manager-stat">Total 0 Songs</div>
           <button class="secondary-btn btn-sm danger-text" id="btn-manager-del-selected"
-            style="margin-left: 15px; border-color: rgba(239, 68, 68, 0.3);">선택 삭제</button>
+            style="border-color: rgba(239, 68, 68, 0.3) !important;">선택 삭제</button>
+          <div id="manager-stat" class="manager-stat" style="margin-left: 15px !important;">Total 0 Songs</div>
         </div>
         <div class="footer-actions">
-          <button class="primary-btn btn-md" id="manager-modal-save">저장</button>
           <button class="secondary-btn btn-md" id="manager-modal-cancel">닫기</button>
+          <button class="primary-btn btn-md" id="manager-modal-save">저장</button>
         </div>
       </footer>
     </div>

@@ -71,11 +71,11 @@
   --dock-height: 100px;
   --titlebar-height: 38px;
 
-  /* Button Sizing System */
-  --btn-h-sm: 28px;
-  --btn-h-md: 38px;
-  --btn-h-lg: 52px;
-  --btn-h-xl: 68px;
+  /* Button Sizing System (Adjusted to be more compact) */
+  --btn-h-sm: 24px;
+  --btn-h-md: 34px;
+  --btn-h-lg: 46px;
+  --btn-h-xl: 60px;
 }
 
 /* Premium Custom Scrollbars */
@@ -89,14 +89,14 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.35);
   border: 2px solid transparent;
   background-clip: content-box;
 }

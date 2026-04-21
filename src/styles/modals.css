@@ -134,10 +134,14 @@
 
 .modal-footer {
   padding: 0;
-  display: flex !important;
-  flex-direction: row !important;
-  justify-content: space-between !important;
-  align-items: center !important;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end; /* Default for simple modals */
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .footer-left-group,
@@ -155,11 +159,11 @@
 }
 
 .modal-footer button {
-  padding: 0 24px;
-  font-size: 0.95rem;
-  height: 42px;
+  padding: 0 18px;
+  font-size: 0.85rem;
+  height: var(--btn-h-md);
   font-weight: 700;
-  border-radius: 10px;
+  border-radius: 9px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
@@ -168,8 +172,8 @@
 }
 
 .modal-footer button:hover {
-  transform: translateY(-2px);
   filter: brightness(1.1);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
 }
 
 .modal-footer button:active {
@@ -241,7 +245,6 @@
 .mr-checkbox-label:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 193, 7, 0.4);
-  transform: translateY(-1px);
 }
 
 .mr-checkbox-label.disabled {
@@ -350,10 +353,11 @@
 #library-manager-modal .manager-modal {
   width: 95vw !important;
   max-width: 1400px !important;
-  height: 85vh;
+  height: auto;
+  max-height: calc(100vh - 240px); /* Adjust to fit between titlebar and dock */
   display: flex !important;
   flex-direction: column !important;
-  padding: 30px !important;
+  padding: 24px !important; /* Slightly more compact */
   overflow: hidden !important;
 }
 
@@ -362,54 +366,22 @@
   align-items: center;
   gap: 32px;
   flex: 1;
+  border: none !important; /* Remove any accidental borders */
+  background: transparent !important;
 }
 
-.manager-search-box {
-  display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 0 16px;
-  gap: 12px;
-  width: 420px;
-  height: 42px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* Search Box styles moved to the end for priority */
 
-.manager-search-box:focus-within {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
-}
-
-.manager-search-box svg {
-  color: var(--text-dim);
-  width: 18px;
-  height: 18px;
-  transition: color 0.3s, transform 0.3s;
-}
-
-.manager-search-box:focus-within svg {
-  color: var(--accent-primary);
-  transform: scale(1.1);
-}
-
-.manager-search-box input {
-  flex: 1;
+.mgr-search-wrap input:focus {
   background: transparent !important;
   border: none !important;
-  color: #fff !important;
-  font-size: 0.95rem;
-  font-weight: 500;
+  box-shadow: none !important;
   outline: none !important;
-  padding: 0;
-  height: 100%;
 }
 
-.manager-search-box input::placeholder {
-  color: var(--text-muted);
-  font-weight: 400;
+.mgr-search-wrap input::placeholder {
+  color: var(--text-muted) !important;
+  font-weight: 400 !important;
 }
 
 .manager-body {
@@ -417,16 +389,31 @@
   flex: 1;
   overflow: hidden;
   padding: 0 !important;
+  min-height: 0; /* CRITICAL: Allows flex item to shrink below content size */
 }
 
 .manager-body.active {
   display: flex !important;
 }
 
+.manager-footer {
+  padding-top: 20px !important;
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  justify-content: space-between !important; /* Manager needs space-between for left-right groups */
+}
+
+.manager-footer .footer-left-group {
+  gap: 16px;
+  margin-left: -8px !important; /* Pull slightly more to the left to align with visual edge */
+}
+
 .table-container {
   height: 100%;
   overflow: auto;
   background: #0d0d0f;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 #manager-table {
@@ -438,16 +425,59 @@
 #manager-table th {
   position: sticky;
   top: 0;
-  background: #16161a;
-  color: var(--text-dim);
-  padding: 14px 16px;
+  background: #1a1a20 !important; /* Solid dark background for header */
+  color: var(--text-muted);
+  padding: 12px 16px;
+  font-size: 0.85rem;
   font-weight: 700;
-  border-bottom: 1px solid var(--glass-border);
-  z-index: 20;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1000 !important; /* Very high */
+  text-align: center !important;
 }
 
-#manager-table tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+/* Unified Checkbox Styling for both Header and Rows */
+#manager-table input[type="checkbox"].manager-check {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 20px !important;
+  height: 20px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 2px solid rgba(255, 255, 255, 0.4) !important; /* Visible gray-white border */
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  position: relative !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  z-index: 1001 !important;
+  transition: all 0.2s ease !important;
+  margin: 0 !important;
+}
+
+#manager-table input[type="checkbox"].manager-check:checked {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E") !important;
+  background-size: 14px !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+
+#manager-table input[type="checkbox"].manager-check:hover {
+  border-color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.4) !important;
+}
+
+#manager-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: #fff;
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+
+#manager-table tr:last-child td {
+  border-bottom: none;
 }
 
 .btn-row-del {
@@ -483,8 +513,8 @@
 
 .search-result-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
 }
 
 .search-result-info {
@@ -531,19 +561,112 @@
   display: inline-block;
 }
 
-border: 1px solid rgba(255, 255, 255, 0.1);
-border-radius: 4px;
-color: #ccc;
-white-space: nowrap;
+/* End of Modal Styles */
+
+/* Metadata Modal 2-Column Grid Layout (Migrated from main.js) */
+#metadata-modal .modal-content {
+  max-width: 650px !important;
 }
 
-.track-genre-preview {
-  font-size: 0.75rem;
-  color: #fbbf24;
-  font-weight: 600;
-  margin-top: 4px;
-  background: rgba(251, 191, 36, 0.1);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-block;
+#metadata-modal .modal-body, 
+#metadata-modal form {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  column-gap: 24px !important;
+  row-gap: 16px !important;
+}
+
+#metadata-modal .modal-body > div:has(> #edit-title),
+#metadata-modal .modal-body > div:has(> #edit-artist),
+#metadata-modal .modal-body > div:has(> #edit-tags) {
+  grid-column: 1 / -1 !important;
+}
+
+.modal-content label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #4a9eff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Premium Input Styles (Restored from main.js) */
+.modal-content input[type="text"],
+.modal-content input[type="number"],
+.modal-content select,
+.modal-content textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  color: #fff !important;
+  font-family: 'SUITE', sans-serif !important;
+  font-size: 0.9rem !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-sizing: border-box !important;
+}
+
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+  border-color: #4a9eff !important;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2) !important;
+  outline: none !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Table Input Special Tuning */
+#manager-table input {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 6px 10px !important;
+}
+
+#manager-table input:focus {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(74, 158, 255, 0.5) !important;
+}
+
+/* --- Final Priority Fix for Manager Search Box --- */
+.mgr-search-wrap {
+  display: flex !important;
+  align-items: center !important;
+  width: 320px !important;
+  height: 36px !important;
+  background: transparent !important;
+  border: none !important;
+  gap: 10px !important;
+  padding: 0 !important;
+}
+
+.mgr-search-wrap svg {
+  color: var(--text-dim) !important;
+  width: 18px !important;
+  height: 18px !important;
+  flex-shrink: 0 !important;
+}
+
+#mgr-search-wrap input {
+  flex: 1 !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 10px !important;
+  padding: 0 12px !important;
+  height: 100% !important;
+  color: #fff !important;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+  outline: none !important;
+  transition: all 0.3s ease !important;
+  box-shadow: none !important;
+}
+
+#mgr-search-wrap input:focus {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15) !important;
+  outline: none !important;
 }

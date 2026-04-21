@@ -31,9 +31,9 @@
 }
 
 .task-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  transform: translateY(-5px);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 0 15px rgba(59, 130, 246, 0.1) !important;
 }
 
 @keyframes slideInUp {
@@ -273,7 +273,7 @@
 .recommend-link:hover {
   background: #f59e0b;
   color: #000;
-  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
 }
 
 .ai-model-card {
@@ -290,10 +290,9 @@
 }
 
 .ai-model-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(59, 130, 246, 0.3);
-  transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(59, 130, 246, 0.15) !important;
 }
 
 .ai-info-left {

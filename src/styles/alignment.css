@@ -5,9 +5,9 @@
  */
 
 :root {
-    --card-bg: rgba(26, 26, 29, 0.85); /* Slightly stabilized for transparency depth */
-    --accent-blue: #4a9eff;
-    --accent-red: #ff4a4a;
+    --card-bg: rgba(255, 255, 255, 0.03); /* Unified semi-transparent background */
+    --accent-blue: #3b82f6;
+    --accent-red: #ef4444;
     --border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -25,7 +25,7 @@
     background: transparent;
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     align-items: stretch;
-    overflow: hidden;
+    overflow: visible; /* Show shadows of internal cards */
 }
 
 @keyframes fadeIn {
@@ -45,31 +45,33 @@
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 16px;
-    padding: 12px; /* Reduced from 16px */
-    backdrop-filter: blur(25px) saturate(180%);
-    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    padding: 12px;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); /* Refined shadow to reduce bleeding artifacts */
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     height: 100%;
-    transition: transform 0.3s ease, border-color 0.3s ease;
-    
-    /* Hardware layer isolation as core spec: No more wavy artifacts */
-    transform: translateZ(0);
-    will-change: transform, backdrop-filter;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
-    overflow: hidden;
+    overflow: visible; /* Changed from hidden to show box-shadow glow */
+}
+
+.alignment-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(59, 130, 246, 0.15) !important;
 }
 
 /* 3. Column Wrappers */
 .lyric-input-column, .alignment-main, .lyric-sidebar {
-    height: 100%; /* 부모 높이에 맞춤 */
+    height: 100%;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    overflow: hidden; /* 개별 카드 내부 스크롤 사용 */
-    min-width: 0; /* 그리드 내부에서 유연하게 축소되도록 보장 */
+    overflow: visible; /* Allow card shadows to spread */
+    min-width: 0;
 }
 
 /* 4. Left Column: Tuning & Input */
@@ -116,8 +118,7 @@
 .track-select-btn:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: var(--accent-blue);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
 }
 
 .track-select-btn:active {
@@ -207,13 +208,12 @@ canvas#waveform-canvas {
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     cursor: pointer;
     position: relative;
-    overflow: hidden;
 }
 
 .lyric-line-item:hover {
     background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.1);
-    transform: translateX(4px);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.1);
 }
 
 .lyric-line-item.active {
@@ -366,8 +366,7 @@ canvas#waveform-canvas {
 .sync-ctrl-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     border-color: var(--accent-blue);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
 }
 
 .sync-ctrl-btn:active {
@@ -375,16 +374,16 @@ canvas#waveform-canvas {
 }
 
 .sync-ctrl-btn.circle-btn {
-    width: 42px;
-    height: 42px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
 .sync-ctrl-btn.tap-btn {
-    padding: 0 24px;
-    height: 42px;
-    border-radius: 12px;
+    padding: 0 18px;
+    height: 36px;
+    border-radius: 10px;
     flex-direction: row;
     flex: 1;
     background: var(--accent-blue);
@@ -398,7 +397,7 @@ canvas#waveform-canvas {
 }
 
 .tap-label {
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     font-weight: 800;
     letter-spacing: 0.05em;
 }
@@ -435,8 +434,7 @@ canvas#waveform-canvas {
 
 .sync-save-btn:hover {
     background: #059669;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
 }
 
 .sync-save-btn:active {
@@ -476,7 +474,8 @@ canvas#waveform-canvas {
 
 .v2-theme .circle-btn:hover {
     background: rgba(255, 255, 255, 0.15) !important;
-    transform: scale(1.05);
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
 }
 
 .v2-theme .tap-btn {
@@ -551,9 +550,9 @@ canvas#waveform-canvas {
 }
 
 .track-item:hover {
-    background: rgba(74, 158, 255, 0.1);
-    border-color: rgba(74, 158, 255, 0.3);
-    transform: translateX(4px);
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
 }
 
 .track-thumb {
@@ -705,7 +704,7 @@ canvas#waveform-canvas {
 .zoom-btn:hover {
     background: var(--accent-blue);
     border-color: rgba(255, 255, 255, 0.2);
-    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
 }
 
 .zoom-btn:active {
@@ -713,14 +712,18 @@ canvas#waveform-canvas {
 }
 
 .waveform-scrollbar-wrapper {
-    margin: 8px 0;
-    padding: 0 4px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0;
+    z-index: 10;
+    pointer-events: auto;
 }
 
 .waveform-scrollbar-track {
-    height: 6px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 3px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
     position: relative;
     overflow: hidden;
 }
@@ -730,13 +733,12 @@ canvas#waveform-canvas {
     top: 0;
     left: 0;
     height: 100%;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
+    background: rgba(59, 130, 246, 0.4);
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .waveform-scrollbar-thumb:hover {
-    background: rgba(74, 158, 255, 0.4);
+    background: rgba(59, 130, 246, 0.7);
 }
 

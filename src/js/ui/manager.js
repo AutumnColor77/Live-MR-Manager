@@ -85,7 +85,7 @@ export function initManagerEvents() {
   }
 
   // 4. Select All Logic
-  const selectAllBtn = document.getElementById("manager-select-all");
+  const selectAllBtn = document.getElementById("mgr-check-all");
   if (selectAllBtn) {
     selectAllBtn.onchange = (e) => {
       const isChecked = e.target.checked;
@@ -154,11 +154,11 @@ export function initManagerEvents() {
           const field = input.dataset.field;
           let val = input.value.trim();
           
-          if (field === "tags") {
-            const newTags = val.split(',').map(t => t.trim()).filter(t => t);
-            const oldTags = song.tags || [];
-            if (JSON.stringify(newTags) !== JSON.stringify(oldTags)) {
-              song.tags = newTags;
+          if (field === "tags" || field === "categories") {
+            const newValues = val.split(',').map(t => t.trim()).filter(t => t);
+            const oldValues = song[field] || [];
+            if (JSON.stringify(newValues) !== JSON.stringify(oldValues)) {
+              song[field] = newValues;
               changed = true;
             }
           } else {
@@ -225,10 +225,22 @@ export function initManagerEvents() {
       const { invoke } = await import('../tauri-bridge.js');
       try {
         await invoke("update_custom_dictionary", { original, category, translated });
-        import('../utils.js').then(m => m.showNotification("사전에 등록되었습니다.", "success"));
+        
+        // REFRESH FROM BACKEND: Get updated metadata after mapping
+        const { loadLibrary } = await import('../audio.js');
+        const { renderLibrary } = await import('./library.js');
+        const { showNotification } = await import('../utils.js');
+        
+        const freshSongs = await loadLibrary();
+        state.songLibrary = freshSongs;
+        
+        showNotification("사전에 등록되었으며 곡 정보에 반영되었습니다.", "success");
         if (elements.curationOriginal) elements.curationOriginal.value = "";
         if (elements.curationTranslated) elements.curationTranslated.value = "";
+        
         updateUnmappedTags();
+        renderManagerTable();
+        renderLibrary();
       } catch (err) {
         import('../utils.js').then(m => m.showNotification("등록 실패: " + err, "error"));
       }
@@ -287,9 +299,9 @@ export function renderManagerTable() {
   elements.managerTableBody.innerHTML = filtered.map((song) => {
     const originalIndex = songs.indexOf(song);
     const tagsStr = (song.tags || []).join(', ');
+    const catsStr = (song.categories || []).join(', ');
     const genreStr = song.genre || '-';
-    const durationMs = song.duration_ms || 0;
-    const durationStr = durationMs > 0 ? formatDuration(durationMs) : '-';
+    const durationStr = song.duration || '-';
 
     return `
     <tr data-index="${originalIndex}">
@@ -303,7 +315,7 @@ export function renderManagerTable() {
         <input type="text" data-field="artist" value="${escapeHtml(song.artist || '')}" data-index="${originalIndex}">
       </td>
       <td>
-        <input type="text" data-field="category" value="${escapeHtml(song.category || '')}" data-index="${originalIndex}">
+        <input type="text" data-field="categories" value="${escapeHtml(catsStr)}" data-index="${originalIndex}">
       </td>
       <td>
         <input type="text" data-field="genre" value="${escapeHtml(genreStr)}" data-index="${originalIndex}">
@@ -324,7 +336,7 @@ export function renderManagerTable() {
   }
 
   // Reset Select All checkbox
-  const selectAllBtn = document.getElementById("manager-select-all");
+  const selectAllBtn = document.getElementById("mgr-check-all");
   if (selectAllBtn) selectAllBtn.checked = false;
 }
 
@@ -376,8 +388,8 @@ export function saveManagerChanges() {
       tr.querySelectorAll("input[data-field]").forEach(input => {
         const field = input.dataset.field;
         const value = input.value.trim();
-        if (field === "tags") {
-          song.tags = value.split(",").map(t => t.trim()).filter(t => t);
+        if (field === "tags" || field === "categories") {
+          song[field] = value.split(",").map(t => t.trim()).filter(t => t);
         } else if (field === "genre") {
           song.genre = value;
         } else if (field === "category") {

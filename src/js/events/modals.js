@@ -20,7 +20,7 @@ export function initModalListeners() {
         title: document.getElementById("edit-title").value,
         artist: document.getElementById("edit-artist").value,
         genre: document.getElementById("edit-genre-custom").value.trim() || document.getElementById("edit-genre-select").value,
-        category: document.getElementById("edit-category").value,
+        categories: [document.getElementById("edit-category").value.trim()].filter(c => c),
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
         volume: parseFloat(elements.editVolume.value),
         isMr: document.getElementById("edit-is-mr").checked,

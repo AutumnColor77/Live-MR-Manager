@@ -544,6 +544,7 @@ export function initControlListeners() {
   const overlayBgColorHex = document.getElementById('overlay-bg-color-hex');
   const overlayUrlDisplay = document.getElementById('overlay-url-display');
   const overlayIframe = document.getElementById('overlay-iframe');
+  const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
 
   const setupPalette = (paletteId, colorInput, hexInput) => {
     const palette = document.getElementById(paletteId);
@@ -593,7 +594,7 @@ export function initControlListeners() {
   const updateBgPalette = setupPalette('bg-palette', overlayBgColor, overlayBgColorHex);
 
   const updateOverlaySettings = async (skipSave = false) => {
-    if (!overlayScale || !overlayFont || !overlayColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor) return;
+    if (!overlayScale || !overlayFont || !overlayColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor || !toggleOverlayForceVisible) return;
     
     const scale = parseFloat(overlayScale.value).toFixed(1);
     if (overlayScaleVal) overlayScaleVal.textContent = `${scale}x`;
@@ -608,11 +609,12 @@ export function initControlListeners() {
     if (overlayRoundingVal) overlayRoundingVal.textContent = `${rounding}px`;
     
     const bgColor = overlayBgColor.value.replace('#', '');
+    const isForceVisible = toggleOverlayForceVisible.checked;
     
     // Save to localStorage
     if (!skipSave) {
       localStorage.setItem('overlay-settings', JSON.stringify({
-        scale, font, color, bgOpacity, rounding, bgColor
+        scale, font, color, bgOpacity, rounding, bgColor, isForceVisible
       }));
     }
 
@@ -633,7 +635,8 @@ export function initControlListeners() {
         color: color,
         bgColor: bgColor,
         bgOpacity: bgOpacity,
-        rounding: rounding
+        rounding: rounding,
+        isForceVisible: isForceVisible
       });
     } catch (err) {
       console.error("Failed to update overlay style:", err);
@@ -657,6 +660,7 @@ export function initControlListeners() {
         overlayBgColor.value = `#${settings.bgColor}`;
         if (updateBgPalette) updateBgPalette(`#${settings.bgColor}`);
       }
+      if (settings.isForceVisible !== undefined) toggleOverlayForceVisible.checked = settings.isForceVisible;
       
       if (settings.font) {
         overlayFont.value = settings.font;
@@ -719,6 +723,7 @@ export function initControlListeners() {
     }, { passive: false });
   }
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
+  if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
 
   // Initialize immediately
   loadOverlaySettings();

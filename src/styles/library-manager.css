@@ -3,7 +3,7 @@
   display: flex;
   gap: 10px;
   padding: 0;
-  background: #1a1a20;
+  background: transparent;
   border-bottom: 1px solid var(--glass-border);
 }
 
@@ -45,28 +45,33 @@
 .curation-container {
   display: flex;
   height: 100%;
-  gap: 24px;
-  padding: 10px;
+  width: 100%;
+  gap: 20px;
+  padding: 5px 0;
+  min-height: 0; /* Important for scroll propagation */
 }
 
 .curation-left {
   flex: 1;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 14px;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
+  min-height: 0; /* Enable shrinking for inner scroll */
 }
 
 .curation-right {
   width: 360px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 14px;
-  padding: 24px;
+  padding: 16px;
   border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
+  overflow-y: auto; /* Enable scroll if form gets too long */
+  min-height: 0;
 }
 
 .unclassified-list {
