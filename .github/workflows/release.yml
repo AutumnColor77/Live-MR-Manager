@@ -34,9 +34,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: "Live MR Manager v__VERSION__"
-          releaseBody: "Automated release from GitHub Actions."
+          tagName: ${{ github.ref_name }}
+          releaseName: "Live MR Manager (Beta) ${{ github.ref_name }} - AI Vocal Remover & Live Backing Track Manager with Lyrics Sync."
+          releaseBody: |
+            🎙️ Live MR Manager(Beta) ${{ github.ref_name }} 릴리즈
+
+            AI 기반 오디오 분리 및 정밀 제어를 지원하는 Live MR Manager(Beta)의 최신 릴리즈입니다.
+
+            주요 업데이트 사항:
+            - (선택) 업데이트 항목 1
+            - (선택) 업데이트 항목 2
+            - (선택) 업데이트 항목 3
+
+            ※ 항목이 없으면 해당 줄을 제거하거나 `- 별도 업데이트 없음`으로 대체하세요.
           releaseDraft: true
           prerelease: false
           args: "--verbose"

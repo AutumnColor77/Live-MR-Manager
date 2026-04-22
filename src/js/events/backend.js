@@ -15,7 +15,7 @@ export async function setupBackendListeners() {
       // Rust struct may serialize to CamelCase or snake_case depending on serde config.
       const positionMs = event.payload.positionMs ?? event.payload.position_ms ?? 0;
       const durationMs = event.payload.durationMs ?? event.payload.duration_ms ?? 0;
-      
+
       state.targetProgressMs = positionMs;
       // Ensure duration is always updated if available
       if (durationMs > 0 || !state.trackDurationMs) {
@@ -28,7 +28,7 @@ export async function setupBackendListeners() {
   await listen('playback-status', async (event) => {
     const { status, message } = event.payload;
     const s = (status || "").toLowerCase();
-    
+
     // 1. Loading state
     if (["loading", "downloading", "decoding", "pending"].includes(s)) {
       state.isLoading = true;
@@ -44,19 +44,17 @@ export async function setupBackendListeners() {
         state.lastRafTime = performance.now();
         state.rafId = requestAnimationFrame(updateProgressBar);
       }
-    } else if (s === "finished" || s === "error" || s === "paused") {
+    } else if (["finished", "error", "paused", "stopped"].includes(s)) {
       // Ignore finished/paused during seek to prevent snapback
       if (state.isSeeking && (s === "finished" || s === "paused")) return;
-      
+
       state.isPlaying = false;
       state.rafId = null;
 
       if (s === "finished") {
-        state.isPlaying = false;
         state.currentProgressMs = 0;
         state.targetProgressMs = 0;
-        state.rafId = null;
-        
+
         // Reload track in paused state at 0:00 so it can be replayed
         const { playTrack } = await import('../audio.js');
         await playTrack(state.currentTrack.path, state.trackDurationMs, false);
@@ -72,14 +70,14 @@ export async function setupBackendListeners() {
         updatePlayButton();
       }
 
-      // Sync overlay state on stop/finish
+      // Sync overlay state on stop/finish/error
       const { invoke } = await import('../tauri-bridge.js');
       invoke('update_overlay_state', {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
         isPlaying: false
-      });
+      }).catch(err => console.error("Overlay sync failed:", err));
     }
 
     // 3. Status Message in Dock (Removed text as per user request)
@@ -87,7 +85,7 @@ export async function setupBackendListeners() {
     if (elements.statusMsg) {
       elements.statusMsg.textContent = "";
     }
-    
+
     const { updateThumbnailOverlay, updatePlayButton } = await import('../ui/components.js');
     updateThumbnailOverlay();
     updatePlayButton();
@@ -100,7 +98,7 @@ export async function setupBackendListeners() {
 
     if (s === "finished" || s === "cancelled" || s === "error") {
       delete state.activeTasks[path];
-      
+
       if (s === "finished") {
         showNotification("MR 분리가 완료되었습니다.", "success");
         // Update local state flag
@@ -114,22 +112,22 @@ export async function setupBackendListeners() {
       } else if (s === "error") {
         showNotification(`분리 실패: ${status}`, "error");
       }
-      
+
       // Refresh library badges for all termination states (finished, cancelled, error)
       renderLibrary();
     } else {
       // Update or Add Task
-      state.activeTasks[path] = { 
+      state.activeTasks[path] = {
         ...state.activeTasks[path],
-        percentage, 
-        status, 
-        provider, 
-        model 
+        percentage,
+        status,
+        provider,
+        model
       };
     }
-    
+
     updateTaskUI();
-    
+
     // Also update the badge on the library card if it's visible
     updateCardStatusBadge(path);
   });
@@ -162,7 +160,7 @@ export async function setupBackendListeners() {
     if (paths && paths.length > 0) {
       const { getAudioMetadata, saveLibrary } = await import('../audio.js');
       const { renderLibrary } = await import('../ui/library.js');
-      
+
       let addedCount = 0;
       for (const path of paths) {
         const ext = path.split('.').pop().toLowerCase();
@@ -177,7 +175,7 @@ export async function setupBackendListeners() {
           }
         }
       }
-      
+
       if (addedCount > 0) {
         await saveLibrary(state.songLibrary);
         showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");

@@ -1,8 +1,11 @@
 /**
  * src/js/lyric-drawer.js - Sliding Drawer UI Logic
  */
-import { listen } from './tauri-bridge.js';
+import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
+
+let lastOverlayCurrent = null;
+let lastOverlayNext = null;
 
 export function initLyricDrawer() {
     const trigger = document.getElementById('lyric-drawer-trigger');
@@ -158,6 +161,8 @@ export function updateLyrics(segments) {
     if (!container) return;
 
     if (!segments || segments.length === 0) {
+        lastOverlayCurrent = null;
+        lastOverlayNext = null;
         container.innerHTML = `
             <div class="drawer-empty-msg" style="padding: 40px 20px; text-align: center;">
                 <div style="font-size: 2.5rem; margin-bottom: 20px; opacity: 0.5;">🎵</div>
@@ -173,6 +178,10 @@ export function updateLyrics(segments) {
         return;
     }
 
+    // Reset overlay payload cache when track lyrics are replaced.
+    lastOverlayCurrent = null;
+    lastOverlayNext = null;
+
     container.innerHTML = segments.map((s, i) => `
         <div class="lyric-line-item drawer-lyric-item" data-index="${i}">
             <span class="lyric-text">${s.text}</span>
@@ -186,7 +195,11 @@ export function updateLyrics(segments) {
  */
 function syncLyricsWithTime(currentTime) {
     const lyrics = state.currentLyrics;
-    if (!lyrics || lyrics.length === 0) return;
+    if (!lyrics || lyrics.length === 0) {
+        // [추가] 가사가 없는 곡이라면 오버레이의 가사 영역을 확실히 비움
+        invoke('update_overlay_lyrics', { current: "", next: "" }).catch(err => console.error(err));
+        return;
+    }
 
     let playingIndex = -1;
     for (let i = 0; i < lyrics.length; i++) {
@@ -194,6 +207,20 @@ function syncLyricsWithTime(currentTime) {
         if (s.start > 0 && currentTime >= s.start && (s.end === 0 || currentTime < s.end)) {
             playingIndex = i;
         }
+    }
+
+    const current = (playingIndex !== -1) ? lyrics[playingIndex].text : "";
+    const next = (playingIndex !== -1)
+        ? ((playingIndex + 1 < lyrics.length) ? lyrics[playingIndex + 1].text : "")
+        : ((lyrics.length > 0) ? lyrics[0].text : "");
+
+    // IMPORTANT: Don't skip overlay update only because index didn't change.
+    // At song start, index can stay -1 for a while but first line still needs to appear in "next".
+    const overlayPayloadChanged = current !== lastOverlayCurrent || next !== lastOverlayNext;
+    if (overlayPayloadChanged) {
+        invoke('update_overlay_lyrics', { current, next }).catch(err => console.error(err));
+        lastOverlayCurrent = current;
+        lastOverlayNext = next;
     }
 
     if (playingIndex === state.currentLyricIndex) return;

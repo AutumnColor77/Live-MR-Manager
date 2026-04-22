@@ -7,7 +7,7 @@ export class ForcedAlignmentViewer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         this.invoke = invoke;
-        
+
         this.state = {
             duration: 0,
             currentTime: 0,
@@ -121,7 +121,10 @@ export class ForcedAlignmentViewer {
                     <div class="alignment-card">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                             <h3>Lyric Sync 결과</h3>
-                            <button id="save-lrc-btn" class="sync-save-btn">저장</button>
+                            <div style="display:flex; gap:8px;">
+                                <button id="reset-sync-btn" class="sync-reset-btn">초기화</button>
+                                <button id="save-lrc-btn" class="sync-save-btn">저장</button>
+                            </div>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
                             <div style="color:#475569; text-align:center; padding-top:40px;">정렬을 시작하세요.</div>
@@ -146,6 +149,19 @@ export class ForcedAlignmentViewer {
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
         get('save-lrc-btn').onclick = () => this.saveLrc();
+        get('reset-sync-btn').onclick = () => {
+            if (confirm('모든 싱크 데이터를 초기화하시겠습니까?')) {
+                this.state.segments.forEach(s => {
+                    s.start = 0;
+                    s.end = 0;
+                });
+                this.state.currentSyncIndex = 0;
+                this.state.selectedTarget = null;
+                this.renderLyricList();
+                this.drawWaveform();
+                showNotification('싱크 데이터가 초기화되었습니다.', 'info');
+            }
+        };
 
         const lyricsInput = get('lyrics-input');
         if (lyricsInput) {
@@ -172,7 +188,7 @@ export class ForcedAlignmentViewer {
                     this.state.isResizing = true;
                     this.state.resizeTarget = this.state.hoveringTarget;
                     this.state.selectedTarget = this.state.hoveringTarget;
-                    
+
                     const seg = this.state.segments[this.state.selectedTarget.index];
                     const targetTime = this.state.selectedTarget.type === 'start' ? seg.start : seg.end;
                     this.seekTo(targetTime);
@@ -217,16 +233,30 @@ export class ForcedAlignmentViewer {
                 const rect = this.canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const newTime = Math.max(0, Math.min(this.state.duration, this.xToTime(x)));
+
+                const idx = this.state.resizeTarget.index;
+                const seg = this.state.segments[idx];
                 
-                const seg = this.state.segments[this.state.resizeTarget.index];
                 if (this.state.resizeTarget.type === 'start') {
-                    seg.start = Math.min(newTime, seg.end - 0.05);
+                    const finalTime = Math.min(newTime, seg.end - 0.05);
+                    seg.start = finalTime;
+                    
+                    // 앞 가사의 종료 지점도 함께 이동
+                    if (idx > 0) {
+                        this.state.segments[idx - 1].end = finalTime;
+                    }
                 } else {
-                    seg.end = Math.max(newTime, seg.start + 0.05);
+                    const finalTime = Math.max(newTime, seg.start + 0.05);
+                    seg.end = finalTime;
+                    
+                    // 다음 가사의 시작 지점도 함께 이동
+                    if (idx < this.state.segments.length - 1) {
+                        this.state.segments[idx + 1].start = finalTime;
+                    }
                 }
-                
+
                 this.drawWaveform();
-                this.renderLyricList(); 
+                this.renderLyricList();
             }
 
             if (this.state.isPanning) {
@@ -309,7 +339,7 @@ export class ForcedAlignmentViewer {
                     const rect = track.getBoundingClientRect();
                     const deltaX = e.clientX - rect.left;
                     const percent = Math.max(0, Math.min(1, deltaX / rect.width));
-                    
+
                     const visibleDuration = this.state.duration / this.state.zoomLevel;
                     this.state.scrollTime = Math.max(0, Math.min(this.state.duration - visibleDuration, percent * this.state.duration));
                     this.drawWaveform();
@@ -319,7 +349,7 @@ export class ForcedAlignmentViewer {
 
 
         const bar = get('seek-bar');
-        
+
         // 드래그 중 실시간 업데이트 (파형 및 시간)
         bar.addEventListener('input', (e) => {
             this.state.isSeeking = true;
@@ -339,8 +369,8 @@ export class ForcedAlignmentViewer {
             } catch (err) {
                 console.error("Seek failed:", err);
             } finally {
-                setTimeout(() => { 
-                    this.state.isSeeking = false; 
+                setTimeout(() => {
+                    this.state.isSeeking = false;
                 }, 100);
             }
         });
@@ -375,7 +405,7 @@ export class ForcedAlignmentViewer {
                 this.state.duration = durationMs / 1000;
             }
             this.state.currentTime = positionMs / 1000;
-            
+
             this.updateTimeDisplay();
             this.drawWaveform();
             this.syncSidebar();
@@ -393,7 +423,7 @@ export class ForcedAlignmentViewer {
             const { percentage } = event.payload;
             const loaderText = document.getElementById('loader-text');
             const loaderProgress = document.getElementById('loader-progress');
-            
+
             if (loaderText) loaderText.innerText = '유튜브 음원 다운로드 중...';
             if (loaderProgress) {
                 loaderProgress.style.display = 'block';
@@ -414,7 +444,7 @@ export class ForcedAlignmentViewer {
         const loader = document.getElementById('waveform-loader');
         const loaderText = document.getElementById('loader-text');
         const loaderProgress = document.getElementById('loader-progress');
-        
+
         if (loader) loader.style.display = 'flex';
 
         if (loaderProgress) loaderProgress.style.display = 'none';
@@ -440,14 +470,14 @@ export class ForcedAlignmentViewer {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
                 if (lrcContent && lrcContent.trim()) {
                     this.state.segments = parseLrc(lrcContent, this.state.duration);
-                    
+
                     const rawLyrics = this.state.segments.map(s => s.text);
                     if (inputElement) inputElement.value = rawLyrics.join('\n');
-                    
+
                     let nextIdx = this.state.segments.findIndex(s => s.start === 0);
                     if (nextIdx === -1) nextIdx = this.state.segments.length;
                     this.state.currentSyncIndex = nextIdx;
-                    
+
                     this.state.isSyncMode = true;
                     this.renderLyricList();
                 }
@@ -459,7 +489,7 @@ export class ForcedAlignmentViewer {
 
             // Background waveform (파형 후순위 비동기 로드)
 
-            
+
             const waveformPath = path;
             this.invoke('get_waveform_summary', { audioPath: waveformPath }).then(summary => {
                 console.log("[Alignment] Waveform load success:", summary ? summary.points.length : 0);
@@ -475,10 +505,10 @@ export class ForcedAlignmentViewer {
                 console.error("[Alignment] Waveform load failed:", e);
                 showNotification('파형 로드 실패: ' + e, 'warning');
             })
-            .finally(() => {
-                this.state.isProcessing = false;
-                if (loader) loader.style.display = 'none';
-            });
+                .finally(() => {
+                    this.state.isProcessing = false;
+                    if (loader) loader.style.display = 'none';
+                });
 
         } catch (e) {
             console.error("[Alignment] loadAudio general failure:", e);
@@ -502,18 +532,23 @@ export class ForcedAlignmentViewer {
 
     async seekTo(time) {
         if (!this.state.currentPath || this.state.duration <= 0) return;
-        
+
         this.state.currentTime = Math.max(0, Math.min(this.state.duration, time));
         this.updateTimeDisplay();
-        
+
         try {
-            await this.invoke('play_track', { 
-                path: this.state.currentPath, 
-                durationMs: Math.floor(this.state.currentTime * 1000), 
-                playNow: this.state.isPlaying 
+            // Seek 중 백엔드의 이전 재생 위치 이벤트에 의해 UI가 튕기는 것을 방지
+            this.state.isSeeking = true;
+            if (this._seekTimeout) clearTimeout(this._seekTimeout);
+
+            await this.invoke('seek_to', {
+                positionMs: Math.floor(this.state.currentTime * 1000)
             });
         } catch (err) {
             console.error("[Alignment] seekTo error:", err);
+        } finally {
+            // 연속 클릭 시 타이머 초기화 및 백엔드 지연 고려하여 400ms로 설정
+            this._seekTimeout = setTimeout(() => { this.state.isSeeking = false; }, 400);
         }
     }
 
@@ -543,7 +578,7 @@ export class ForcedAlignmentViewer {
     updatePlayButton() {
         const btn = document.getElementById('play-btn');
         if (!btn) return;
-        btn.innerHTML = this.state.isPlaying 
+        btn.innerHTML = this.state.isPlaying
             ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
             : '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     }
@@ -566,11 +601,11 @@ export class ForcedAlignmentViewer {
             if (seg.end < startTime || seg.start > endTime) return;
             const x1 = this.timeToX(seg.start);
             const x2 = this.timeToX(seg.end);
-            
+
             // Fill background
             this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.1)';
             this.ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
-            
+
             // Default subtle boundary lines
             this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.3)';
             this.ctx.lineWidth = 1;
@@ -605,7 +640,7 @@ export class ForcedAlignmentViewer {
                 this.ctx.moveTo(bx, 0);
                 this.ctx.lineTo(bx, height);
                 this.ctx.stroke();
-                
+
                 // Show timestamp tooltip-like text
                 this.ctx.fillStyle = '#fbbf24';
                 this.ctx.font = 'bold 12px Inter';
@@ -658,7 +693,7 @@ export class ForcedAlignmentViewer {
         this.state.zoomLevel = newZoom;
         const newVisibleDuration = this.state.duration / newZoom;
         let newScrollTime = focusTime - (focusX / this.canvas.width) * newVisibleDuration;
-        
+
         this.state.scrollTime = Math.max(0, Math.min(this.state.duration - newVisibleDuration, newScrollTime));
         this.drawWaveform();
     }
@@ -669,7 +704,7 @@ export class ForcedAlignmentViewer {
         try {
             // 이제 분리된 오디오 목록 대신 라이브러리의 전체 원본 음원을 불러옵니다.
             this.tracks = state.songLibrary || [];
-            
+
             // If currently selected track is in the list, update its display
             if (this.state.currentPath) {
                 const track = this.tracks.find(t => t.path === this.state.currentPath);
@@ -716,7 +751,7 @@ export class ForcedAlignmentViewer {
             const artist = t.artist || 'Unknown Artist';
             const thumbnail = t.thumbnail || '';
             const path = t.path; // 원본 파일 경로
-            
+
             const thumbUrl = getThumbnailUrl(thumbnail, t);
 
             return `
@@ -774,7 +809,7 @@ export class ForcedAlignmentViewer {
 
         const oldSegments = this.state.segments || [];
         const newLines = lyrics.split('\n').filter(l => l.trim());
-        
+
         const newSegments = newLines.map(text => {
             // 1순위: 텍스트가 완전히 동일한 기존 라인을 찾아 시간 복사
             const exactMatch = oldSegments.find(s => s.text === text && !s._used);
@@ -799,7 +834,7 @@ export class ForcedAlignmentViewer {
 
         this.state.segments = newSegments;
         this.state.isSyncMode = true;
-        
+
         // 싱크 인덱스가 초기값이면 0으로 설정
         if (this.state.currentSyncIndex < 0) {
             this.state.currentSyncIndex = 0;
@@ -817,7 +852,7 @@ export class ForcedAlignmentViewer {
         if (this.state.duration <= 0) return;
         const idx = this.state.currentSyncIndex;
         if (idx < 0 || idx >= this.state.segments.length) return;
-        
+
         this.state.segments[idx].start = this.state.currentTime;
         if (idx > 0 && this.state.segments[idx - 1].start > 0) {
             // If the previous segment has a valid start time, set its end time
@@ -843,7 +878,7 @@ export class ForcedAlignmentViewer {
             item.onclick = async (e) => {
                 const idx = parseInt(item.getAttribute('data-index'));
                 const targetTime = this.state.segments[idx].start;
-                
+
                 // 가사나 시간을 클릭하면 해당 위치로 이동 (시간이 0보다 클 때)
                 if (targetTime > 0) {
                     this.state.currentTime = targetTime;
@@ -855,7 +890,7 @@ export class ForcedAlignmentViewer {
                         console.error("Seek failed:", err);
                     }
                 }
-                
+
                 if (targetTime > 0) {
                     // 시간이 찍혀 있는(이동 가능한) 가사를 클릭했다면, 자연스럽게 다음 가사부터 스탬프를 찍도록 대기
                     this.state.currentSyncIndex = Math.min(idx + 1, this.state.segments.length);
@@ -863,7 +898,7 @@ export class ForcedAlignmentViewer {
                     // 아직 시간이 없는 가사를 클릭하면 그 가사부터 스탬프를 찍도록 지정
                     this.state.currentSyncIndex = idx;
                 }
-                
+
                 this.syncSidebar(true);
             };
         });
@@ -874,7 +909,7 @@ export class ForcedAlignmentViewer {
 
     syncSidebar(forceScroll = false) {
         if (!this.state.segments || this.state.segments.length === 0) return;
-        
+
         let playingIndex = -1;
         // 1. Find the currently playing segment
         for (let i = 0; i < this.state.segments.length; i++) {
@@ -888,7 +923,7 @@ export class ForcedAlignmentViewer {
 
         const container = document.getElementById('lyric-lines-container');
         if (!container) return;
-        
+
         const items = container.querySelectorAll('.lyric-line-item');
         let shouldScroll = forceScroll;
 

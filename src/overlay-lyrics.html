@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live MR Lyrics Overlay</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+KR:wght@400;700;900&family=SUITE:wght@400;700;800&display=swap');
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+    :root {
+      --accent-color: #3b82f6;
+      --overlay-scale: 1;
+      --overlay-font: 'Inter', 'Noto Sans KR', sans-serif;
+      --overlay-rounding: 20px;
+      --glass-bg: rgba(15, 15, 20, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --text-main: #ffffff;
+      --enter-gap-x: 120px;
+      --enter-gap-y: 80px;
+      --lyric-current-height: 30px;
+      --lyric-next-height: 22px;
+      --lyric-lines-gap: 2px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: transparent;
+      color: var(--text-main);
+      font-family: var(--overlay-font);
+      overflow: hidden;
+      width: 1200px;
+      height: 300px;
+      position: relative;
+    }
+
+    .overlay-container {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      padding: 18px 28px;
+      border-radius: var(--overlay-rounding);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      
+      min-width: 400px;
+      max-width: 90vw;
+      min-height: 96px;
+      text-align: center;
+
+      transition: opacity 0.35s ease, border-radius 0.3s ease, background 0.3s ease;
+      will-change: transform, opacity;
+      opacity: 0;
+    }
+
+    /* RIGHT ALIGNED (comes from right) */
+    .overlay-container.dir-right { transform: translate(calc(100% + var(--enter-gap-x)), -50%) scale(0.97); }
+    .overlay-container.dir-right.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+      animation: lyrics-pop-right var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    }
+
+    /* LEFT ALIGNED (comes from left) */
+    .overlay-container.dir-left { transform: translate(calc(-100% - var(--enter-gap-x)), -50%) scale(0.97); }
+    .overlay-container.dir-left.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+      animation: lyrics-pop-left var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    }
+
+    /* TOP ALIGNED (comes from top) */
+    .overlay-container.dir-top { transform: translate(-50%, calc(-100% - var(--enter-gap-y))) scale(0.97); }
+    .overlay-container.dir-top.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+      animation: lyrics-pop-top var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    }
+
+    /* BOTTOM ALIGNED (comes from bottom) */
+    .overlay-container.dir-bottom { transform: translate(-50%, calc(100% + var(--enter-gap-y))) scale(0.97); }
+    .overlay-container.dir-bottom.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+      animation: lyrics-pop-bottom var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    }
+
+    .lyrics-container {
+      display: none;
+      flex-direction: column;
+      gap: var(--lyric-lines-gap);
+      width: 100%;
+      animation: fadeIn 0.5s ease-out forwards;
+      align-items: center;
+      min-height: calc(var(--lyric-current-height) + var(--lyric-next-height) + var(--lyric-lines-gap));
+      height: calc(var(--lyric-current-height) + var(--lyric-next-height) + var(--lyric-lines-gap));
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .lyrics-container.active { display: flex; }
+
+    .lyric-line {
+      font-weight: 500;
+      white-space: normal;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: none;
+    }
+
+    .lyric-line.current {
+      color: #ffffff;
+      font-size: 22px;
+      line-height: 1.3;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      height: var(--lyric-current-height);
+      min-height: var(--lyric-current-height);
+      max-height: var(--lyric-current-height);
+      overflow: hidden;
+    }
+
+    .lyric-line.next {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 16px;
+      margin-top: 4px;
+      height: var(--lyric-next-height);
+      min-height: var(--lyric-next-height);
+      max-height: var(--lyric-next-height);
+      overflow: hidden;
+    }
+
+    .lyrics-container.line-promoting #lyric-current {
+      transform: translateY(-14px);
+      opacity: 0.72;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 16px;
+      font-weight: 500;
+      transition-delay: 0ms;
+    }
+    .lyrics-container.line-promoting #lyric-next {
+      transform: translateY(calc(-1 * (var(--lyric-next-height) + var(--lyric-lines-gap))));
+      opacity: 1;
+      color: #ffffff;
+      font-size: 22px;
+      font-weight: 700;
+      transition-delay: 0ms;
+    }
+
+    .lyrics-container.promote-setup #lyric-current {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .lyrics-container.promote-setup #lyric-next {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    @keyframes lyrics-pop-right {
+      0% { transform: translate(calc(100% + var(--enter-gap-x)), -50%) scale(0.97); }
+      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
+    }
+    @keyframes lyrics-pop-left {
+      0% { transform: translate(calc(-100% - var(--enter-gap-x)), -50%) scale(0.97); }
+      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
+    }
+    @keyframes lyrics-pop-top {
+      0% { transform: translate(-50%, calc(-100% - var(--enter-gap-y))) scale(0.97); }
+      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
+    }
+    @keyframes lyrics-pop-bottom {
+      0% { transform: translate(-50%, calc(100% + var(--enter-gap-y))) scale(0.97); }
+      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="overlay-container" id="overlay">
+    <div class="lyrics-container" id="lyrics-area">
+      <div class="lyric-line current" id="lyric-current">&nbsp;</div>
+      <div class="lyric-line next" id="lyric-next">&nbsp;</div>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPreview = urlParams.get('preview') === 'true';
+
+    function hexToRgb(hex) {
+      if (!hex) return "0,0,0";
+      hex = hex.replace('#', '');
+      if (hex.length === 3) { hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]; }
+      const r = parseInt(hex.substring(0, 2), 16) || 0;
+      const g = parseInt(hex.substring(2, 4), 16) || 0;
+      const b = parseInt(hex.substring(4, 6), 16) || 0;
+      return `${r},${g},${b}`;
+    }
+
+    const overlay = document.getElementById('overlay');
+    const lyricsArea = document.getElementById('lyrics-area');
+    const lyricCurrent = document.getElementById('lyric-current');
+    const lyricNext = document.getElementById('lyric-next');
+    let displayedCurrent = "";
+    let displayedNext = "";
+    let lineAnimTimer = null;
+    let lastTrackSignature = "";
+    let pendingTrackShowTimer = null;
+
+    function setLineTexts(currentText, nextText) {
+      lyricCurrent.innerHTML = currentText && currentText.trim() ? currentText : '&nbsp;';
+      lyricNext.innerHTML = nextText && nextText.trim() ? nextText : '&nbsp;';
+      displayedCurrent = currentText || "";
+      displayedNext = nextText || "";
+    }
+
+    function animateLinePromotion(newCurrent, newNext) {
+      if (lineAnimTimer) {
+        clearTimeout(lineAnimTimer);
+        lineAnimTimer = null;
+      }
+      lyricsArea.classList.remove('line-promoting');
+      lyricsArea.classList.remove('promote-setup');
+      setLineTexts(newCurrent, newNext);
+    }
+
+    function connectWS() {
+      const host = window.location.hostname || 'localhost';
+      const socket = new WebSocket(`ws://${host}:14201`);
+      socket.onmessage = (event) => { try { const data = JSON.parse(event.data); updateOverlay(data); } catch (e) {} };
+      socket.onclose = () => { setTimeout(connectWS, 2000); };
+    }
+
+    function updateOverlay(data) {
+      if (!data) return;
+
+      if (!data.is_playing && !isPreview && !data.is_force_visible) {
+        hideOverlay();
+        return;
+      }
+      
+      const style = data.lyrics_style || {};
+      const scale = style.scale || 1.0;
+      const font = style.font || 'Inter';
+      const color = (style.color || 'ffffff').replace('#', '');
+      const bgColor = (style.bg_color || "0f0f14").replace('#', '');
+      const bgOpacity = style.bg_opacity !== undefined ? style.bg_opacity : 0.6;
+      const rounding = style.rounding !== undefined ? style.rounding : 20;
+      const direction = style.animation_direction || 'right'; // fallback
+
+      document.documentElement.style.setProperty('--overlay-scale', scale);
+      document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
+      document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
+      document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
+      document.documentElement.style.setProperty('--accent-color', `#${color}`);
+      
+      let duration = '0.85s';
+      if (direction === 'right' || direction === 'left') duration = '1.5s';
+      else duration = '0.7s';
+      document.documentElement.style.setProperty('--anim-duration', duration);
+      
+      const hasCurrent = data.current_lyric && data.current_lyric.trim() !== "";
+      const hasNext = data.next_lyric && data.next_lyric.trim() !== "";
+      const nextTitle = (data.title || "").trim();
+      const nextArtist = (data.artist || "").trim();
+      const trackSignature = `${nextTitle}__${nextArtist}__${(data.thumbnail || "").slice(0, 80)}`;
+      const trackChanged = !!nextTitle && trackSignature !== lastTrackSignature;
+
+      const shouldShow = hasCurrent || hasNext || data.is_force_visible || isPreview;
+
+      const applyShow = () => {
+        overlay.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
+        overlay.classList.add(`dir-${direction}`);
+        overlay.dataset.currentDirection = direction;
+        
+        if (shouldShow) {
+          lyricsArea.classList.add('active');
+          const newCurrent = hasCurrent ? data.current_lyric : "";
+          const newNext = hasNext ? data.next_lyric : "";
+          const shouldPromote = displayedNext && newCurrent && displayedNext === newCurrent;
+          if (shouldPromote) {
+            animateLinePromotion(newCurrent, newNext);
+          } else {
+            setLineTexts(newCurrent, newNext);
+          }
+          if (trackChanged && overlay.classList.contains('visible')) {
+            if (pendingTrackShowTimer) {
+              clearTimeout(pendingTrackShowTimer);
+              pendingTrackShowTimer = null;
+            }
+            hideOverlay();
+            pendingTrackShowTimer = setTimeout(() => {
+              showOverlay();
+              pendingTrackShowTimer = null;
+            }, 170);
+          } else {
+            showOverlay();
+          }
+        } else {
+          lyricsArea.classList.remove('active');
+          hideOverlay();
+        }
+      };
+
+      const oldDirection = overlay.dataset.currentDirection;
+      if (oldDirection && oldDirection !== direction && overlay.classList.contains('visible')) {
+        hideOverlay();
+        setTimeout(applyShow, 300);
+      } else {
+        applyShow();
+      }
+      if (nextTitle) {
+        lastTrackSignature = trackSignature;
+      }
+    }
+
+    function showOverlay() { overlay.classList.add('visible'); }
+    function hideOverlay() { overlay.classList.remove('visible'); }
+    
+    connectWS();
+  </script>
+</body>
+</html>

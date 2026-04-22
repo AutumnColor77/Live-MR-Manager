@@ -15,17 +15,19 @@
 .alignment-container {
     flex: 1;
     display: grid;
+    /* 카드가 너무 길어지는 현상 방지: 부모 요소(view-section)를 넘어서지 않도록 제한 */
     height: 100%; 
+    min-height: 0; /* Flexbox 내에서 카드가 넘치는 것을 방지 */
     width: 100%;
     grid-template-columns: minmax(280px, 0.8fr) minmax(400px, 3fr) minmax(280px, 0.8fr);
-    gap: 16px; /* Reduced gap for a tighter feel */
-    padding: 10px 0 30px 0; /* Already optimized in previous turn */
+    gap: 16px;
+    padding: 10px 0 30px 0; /* 끝선 위치를 30px 하단으로 고정 */
     box-sizing: border-box;
     color: #e2e8f0;
     background: transparent;
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     align-items: stretch;
-    overflow: visible; /* Show shadows of internal cards */
+    overflow: visible;
 }
 
 @keyframes fadeIn {
@@ -53,9 +55,10 @@
     gap: 12px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     height: 100%;
+    min-height: 0; /* 중요: 내부 콘텐츠에 의해 카드가 늘어나는 것 방지 */
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
-    overflow: visible; /* Changed from hidden to show box-shadow glow */
+    overflow: hidden; /* 내부 스크롤 활성화를 위해 다시 hidden으로 변경 */
 }
 
 .alignment-card:hover {
@@ -67,10 +70,11 @@
 /* 3. Column Wrappers */
 .lyric-input-column, .alignment-main, .lyric-sidebar {
     height: 100%;
+    min-height: 0; /* 중요: 그리드 아이템이 콘텐츠 크기에 따라 늘어나는 것 방지 */
     display: flex;
     flex-direction: column;
     gap: 16px;
-    overflow: visible; /* Allow card shadows to spread */
+    overflow: visible; /* 그림자 확산을 위해 유지하되 내부 카드가 높이 제한 */
     min-width: 0;
 }
 
@@ -132,6 +136,7 @@
 
 .lyrics-textarea {
     flex: 1;
+    min-height: 0; /* 중요: 텍스트가 많아져도 textarea가 늘어나지 않고 스크롤되도록 제한 */
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 16px;
@@ -420,7 +425,7 @@ canvas#waveform-canvas {
 }
 
 .sync-save-btn {
-    background: #10b981;
+    background: var(--accent-blue);
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -429,16 +434,34 @@ canvas#waveform-canvas {
     font-weight: 800;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .sync-save-btn:hover {
-    background: #059669;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    background: #2563eb;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
 .sync-save-btn:active {
     transform: translateY(0);
+}
+
+.sync-reset-btn {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sync-reset-btn:hover {
+    background: #ef4444;
+    color: #fff;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
 }
 
 /* Cleanup: Removing AI-related styles */

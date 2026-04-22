@@ -395,16 +395,17 @@
 .overlay-preview-wrapper {
   background: #000;
   border-radius: 20px;
-  padding: 60px 40px;
-  margin-bottom: 30px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
   position: relative;
   border: 1px solid var(--glass-border);
   overflow: hidden;
-  height: 400px;
+  height: clamp(300px, 44vh, 420px);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  position: relative;
 }
 
 .overlay-preview-wrapper::before {

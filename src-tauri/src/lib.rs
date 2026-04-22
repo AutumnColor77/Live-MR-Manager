@@ -34,7 +34,9 @@ pub fn run() {
             crate::audio_commands::start_playback_progress_loop(app.handle().clone());
             
             // Start the OBS Overlay WebSocket server
+            crate::overlay_server::init(app.handle().clone());
             tauri::async_runtime::spawn(crate::overlay_server::start_overlay_server());
+
             
             Ok(())
         })
@@ -74,8 +76,11 @@ pub fn run() {
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
             metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db,
             overlay_server::update_overlay_state,
-            overlay_server::update_overlay_style
+            overlay_server::update_overlay_style,
+            overlay_server::update_overlay_lyrics,
+            overlay_server::get_overlay_state
         ])
+
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

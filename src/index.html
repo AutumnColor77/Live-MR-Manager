@@ -40,6 +40,33 @@
       display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;
     }
     .btn-custom-color-picker:hover { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+    /* Overlay Preview Tabs */
+    .preview-tabs-container {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .preview-tab {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .preview-tab:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+    .preview-tab.active {
+      background: var(--accent-primary);
+      color: #fff;
+      border-color: var(--accent-primary);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
   </style>
 </head>
 
@@ -303,8 +330,12 @@
         <!-- Overlay Preview Tab -->
         <section id="overlay-tab" class="tab-content" style="display: none;">
           <div class="overlay-tab-container">
+            <div class="preview-tabs-container">
+              <div class="preview-tab active" data-preview-mode="playing">현재 곡 정보</div>
+              <div class="preview-tab" data-preview-mode="lyrics">가사 미리보기</div>
+            </div>
             <div class="overlay-preview-wrapper">
-              <iframe id="overlay-iframe" src="overlay.html"
+              <iframe id="overlay-iframe" src="overlay-info.html"
                 style="width: 100%; height: 100%; border: none; background: transparent;"></iframe>
             </div>
 
@@ -317,9 +348,9 @@
                       d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
                     </path>
                   </svg>
-                  <h3>오버레이 설정</h3>
+                  <h3 id="overlay-settings-title">곡 정보 오버레이 설정</h3>
                 </div>
-                <div style="display: flex; align-items: center; gap: 12px; background: rgba(59, 130, 246, 0.05); padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.1);">
+                <div style="display: flex; align-items: center; gap: 10px; background: rgba(59, 130, 246, 0.05); padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.1);">
                   <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-primary); letter-spacing: -0.02em;">상시 표시 (미리보기)</span>
                   <label class="switch" style="transform: scale(0.85); transform-origin: right center;">
                     <input type="checkbox" id="toggle-overlay-force-visible">
@@ -359,6 +390,23 @@
                         <div style="display: flex; align-items: center; gap: 10px;">
                           <input type="range" id="overlay-bg-opacity" min="0.0" max="1.0" step="0.1" value="0.6" class="range-slider" style="flex: 1;">
                           <span id="overlay-bg-opacity-val" style="font-size: 0.85rem; font-weight: 800; min-width: 35px; text-align: right;">60%</span>
+                        </div>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">등장 애니메이션 방향</label>
+                        <div class="custom-select" id="overlay-animation-direction-dropdown" style="width: 100%;">
+                          <div class="select-trigger">
+                            <span class="selected-text">왼쪽에서 오른쪽으로</span>
+                            <span class="select-arrow"></span>
+                          </div>
+                          <div class="select-options">
+                            <div class="option-item selected" data-value="left">왼쪽에서 오른쪽으로</div>
+                            <div class="option-item" data-value="right">오른쪽에서 왼쪽으로</div>
+                            <div class="option-item" data-value="top">위에서 아래로</div>
+                            <div class="option-item" data-value="bottom">아래에서 위로</div>
+                          </div>
+                          <input type="hidden" id="overlay-animation-direction" value="left">
                         </div>
                       </div>
                     </div>
@@ -434,18 +482,31 @@
                 </div>
               </div>
 
-              <div class="ai-model-card" style="margin-top: 16px; flex-direction: column; align-items: stretch; gap: 16px;">
+              <div class="ai-model-card" style="margin-top: 16px; flex-direction: column; align-items: stretch; gap: 20px;">
                 <!-- Header -->
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div class="ai-title-large">OBS 브라우저 소스</div>
                   <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 입력하여 바로 송출하세요.</div>
                 </div>
 
-                <!-- URL input & Copy Button -->
-                <div style="display: flex; gap: 12px; align-items: stretch;">
-                  <code id="overlay-url-display"
-                    style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:1420/overlay.html</code>
-                  <button class="btn-ai-action secondary" id="btn-copy-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                <!-- URL 1: Full Info -->
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
+                  <div style="display: flex; gap: 12px; align-items: stretch;">
+                    <code id="overlay-url-display"
+                      style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/</code>
+                    <button class="btn-ai-action secondary" id="btn-copy-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                  </div>
+                </div>
+
+                <!-- URL 2: Lyrics Only -->
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">2. 가사 전용 오버레이 (가사만 2줄 출력)</label>
+                  <div style="display: flex; gap: 12px; align-items: stretch;">
+                    <code id="lyrics-overlay-url-display"
+                      style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/lyrics</code>
+                    <button class="btn-ai-action secondary" id="btn-copy-lyrics-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                  </div>
                 </div>
                 
                 <!-- Guide Box -->
@@ -455,8 +516,9 @@
                     OBS 브라우저 소스 설정 가이드
                   </div>
                   <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; padding-left: 22px;">
-                    • 너비(Width): <span style="color: var(--text-main); font-weight: 700;">1200px</span> 이상 (배율 2.0x 기준)<br>
-                    • 높이(Height): <span style="color: var(--text-main); font-weight: 700;">210px</span> 권장
+                    • 곡정보 오버레이 권장: <span style="color: var(--text-main); font-weight: 700;">1760 x 520</span><br>
+                    • 곡정보 최소(좌/우): <span style="color: var(--text-main); font-weight: 700;">1720 x 300</span> / 최소(상/하): <span style="color: var(--text-main); font-weight: 700;">1200 x 500</span><br>
+                    • 가사 오버레이 권장: <span style="color: var(--text-main); font-weight: 700;">1200 x 300</span> <span style="opacity: 0.85;">(기본 범핑 포함)</span>
                   </div>
                 </div>
               </div>
