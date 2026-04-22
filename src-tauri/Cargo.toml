@@ -32,7 +32,7 @@ parking_lot = "0.12.5"
 cpal = "0.17.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
-ort = { version = "2.0.0-rc.12", features = ["copy-dylibs", "cuda", "directml", "ndarray"] }
+ort = { version = "2.0.0-rc.12", features = ["copy-dylibs", "directml", "ndarray"] }
 ndarray = "0.17"
 rubato = "0.16.0"
 rustfft = "6.2.0"
