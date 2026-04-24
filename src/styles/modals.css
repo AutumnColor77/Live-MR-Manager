@@ -186,6 +186,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-height: 66px;
 }
 
 .input-group label {
@@ -199,6 +200,7 @@
 }
 
 .input-group input[type="text"] {
+  width: 100%;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -212,6 +214,27 @@
 }
 
 .input-group input[type="text"]:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+#metadata-modal .input-group input[type="number"] {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  height: 44px;
+  padding: 0 16px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  outline: none;
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+#metadata-modal .input-group input[type="number"]:focus {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--accent-primary);
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
@@ -233,7 +256,7 @@
   align-items: center !important;
   gap: 12px !important;
   cursor: pointer;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -339,7 +362,7 @@
   align-items: center;
   gap: 15px;
   background: rgba(255, 255, 255, 0.03);
-  padding: 12px 20px;
+  padding: 10px 20px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -347,6 +370,124 @@
 .icon-volume {
   color: var(--accent-primary);
   flex-shrink: 0;
+}
+
+#metadata-modal .control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 66px;
+}
+
+#metadata-modal .label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 8px;
+}
+
+#metadata-modal .label-row label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #4a9eff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+#metadata-modal .meta-inline-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+#metadata-modal .meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#metadata-modal .meta-field label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #4a9eff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding-left: 8px;
+}
+
+#metadata-modal .meta-inline-row input {
+  height: 44px;
+}
+
+#metadata-modal .meta-analyze-btn {
+  width: calc((100% - 10px) / 2);
+  flex: 0 0 calc((100% - 10px) / 2);
+  margin-right: auto;
+  height: var(--btn-h-md);
+  font-size: 0.8rem;
+  font-weight: 700;
+  position: relative;
+  overflow: hidden;
+}
+
+#metadata-modal .metadata-footer-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+#metadata-modal .modal-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 30px;
+  align-items: center;
+}
+
+#metadata-modal #btn-metadata-search {
+  justify-self: start;
+}
+
+#metadata-modal .meta-analyze-btn.is-analyzing {
+  pointer-events: none;
+  color: transparent !important;
+}
+
+#metadata-modal .meta-analyze-btn.is-analyzing::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: modal-btn-spin 0.7s linear infinite;
+}
+
+@keyframes modal-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* BPM number input: hide native spin buttons for consistent UI tone */
+#metadata-modal #edit-bpm {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+#metadata-modal #edit-bpm::-webkit-outer-spin-button,
+#metadata-modal #edit-bpm::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* Library Manager Modal (Table-based) */
@@ -562,61 +703,6 @@
 }
 
 /* End of Modal Styles */
-
-/* Metadata Modal 2-Column Grid Layout (Migrated from main.js) */
-#metadata-modal .modal-content {
-  max-width: 650px !important;
-}
-
-#metadata-modal .modal-body, 
-#metadata-modal form {
-  display: grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  column-gap: 24px !important;
-  row-gap: 16px !important;
-}
-
-#metadata-modal .modal-body > div:has(> #edit-title),
-#metadata-modal .modal-body > div:has(> #edit-artist),
-#metadata-modal .modal-body > div:has(> #edit-tags) {
-  grid-column: 1 / -1 !important;
-}
-
-.modal-content label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #4a9eff;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* Premium Input Styles (Restored from main.js) */
-.modal-content input[type="text"],
-.modal-content input[type="number"],
-.modal-content select,
-.modal-content textarea {
-  width: 100%;
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 10px !important;
-  padding: 8px 12px !important;
-  color: #fff !important;
-  font-family: 'SUITE', sans-serif !important;
-  font-size: 0.9rem !important;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  box-sizing: border-box !important;
-}
-
-.modal-content input:focus,
-.modal-content select:focus,
-.modal-content textarea:focus {
-  border-color: #4a9eff !important;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2) !important;
-  outline: none !important;
-  background: rgba(0, 0, 0, 0.5) !important;
-}
 
 /* Table Input Special Tuning */
 #manager-table input {

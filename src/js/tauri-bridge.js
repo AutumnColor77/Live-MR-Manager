@@ -32,6 +32,8 @@ export async function invoke(command, args = {}) {
     case 'set_master_volume':
     case 'set_volume':
       return;
+    case 'analyze_key_bpm':
+      return { key: 'C', bpm: 120 };
     default:
       return null;
   }

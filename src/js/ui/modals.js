@@ -51,6 +51,8 @@ export function openEditModal(song, index) {
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
   const editVolume = document.getElementById("edit-volume");
   const editVolumeVal = document.getElementById("edit-volume-val");
+  const editKey = document.getElementById("edit-key");
+  const editBpm = document.getElementById("edit-bpm");
   if (editVolume) {
     const min = Number.parseFloat(editVolume.min || "0");
     const max = Number.parseFloat(editVolume.max || "120");
@@ -58,6 +60,12 @@ export function openEditModal(song, index) {
     const safeVolume = Number.isFinite(volume) ? Math.max(min, Math.min(max, volume)) : 100;
     editVolume.value = String(Math.round(safeVolume));
     if (editVolumeVal) editVolumeVal.textContent = String(Math.round(safeVolume));
+  }
+  if (editKey) {
+    editKey.value = song.key || "";
+  }
+  if (editBpm) {
+    editBpm.value = song.bpm ?? "";
   }
 
   // MR Checkbox initialization

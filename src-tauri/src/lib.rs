@@ -13,6 +13,7 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+mod key_bpm;
 mod audio_commands;
 mod model_commands;
 mod system;
@@ -66,6 +67,7 @@ pub fn run() {
             model_commands::get_active_separations,
             audio_commands::get_ai_engine_status, 
             library::update_song_metadata,
+            key_bpm::analyze_key_bpm,
             audio_commands::get_alignment_sync_state,
             alignment::get_separated_audio_list, alignment::run_forced_alignment,
             alignment::cancel_forced_alignment, alignment::read_audio_file,

@@ -7,6 +7,33 @@ import { invoke } from '../tauri-bridge.js';
 import { showNotification } from '../utils.js';
 
 export function initModalListeners() {
+  const btnAnalyzeKeyBpm = document.getElementById('btn-analyze-key-bpm');
+  if (btnAnalyzeKeyBpm) {
+    btnAnalyzeKeyBpm.onclick = async () => {
+      const idx = state.editingSongIndex;
+      if (idx === null || idx < 0) return;
+      const song = state.songLibrary[idx];
+      if (!song?.path) return;
+      btnAnalyzeKeyBpm.classList.add('is-analyzing');
+      btnAnalyzeKeyBpm.disabled = true;
+      try {
+        const res = await invoke('analyze_key_bpm', { path: song.path });
+        const ek = document.getElementById('edit-key');
+        const eb = document.getElementById('edit-bpm');
+        if (ek) ek.value = res.key || '';
+        if (eb && res.bpm != null && Number.isFinite(res.bpm)) {
+          eb.value = String(Math.round(res.bpm));
+        }
+        showNotification('KEY/BPM 분석을 반영했습니다.', 'success');
+      } catch (err) {
+        showNotification('분석 실패: ' + err, 'error');
+      } finally {
+        btnAnalyzeKeyBpm.classList.remove('is-analyzing');
+        btnAnalyzeKeyBpm.disabled = false;
+      }
+    };
+  }
+
   if (elements.editVolume) {
     elements.editVolume.oninput = async (e) => {
       const raw = Number.parseFloat(e.target.value);
@@ -63,6 +90,11 @@ export function initModalListeners() {
         categories: [document.getElementById("edit-category").value.trim()].filter(c => c),
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
         volume: safeVolume,
+        key: (document.getElementById("edit-key")?.value || "").trim(),
+        bpm: (() => {
+          const raw = Number.parseInt(document.getElementById("edit-bpm")?.value || "", 10);
+          return Number.isFinite(raw) ? raw : null;
+        })(),
         isMr: document.getElementById("edit-is-mr").checked,
         isSeparated: document.getElementById("edit-is-mr").checked,
       };
