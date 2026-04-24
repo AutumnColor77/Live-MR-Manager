@@ -163,7 +163,13 @@ pub async fn get_categories() -> Result<Vec<crate::types::Category>, String> {
 #[tauri::command]
 pub async fn get_genres() -> Result<Vec<crate::types::Genre>, String> {
     let db = DB.lock();
-    let mut stmt = db.prepare("SELECT id, name FROM Genres").map_err(to_sqlite_err)?;
+    let mut stmt = db.prepare(
+        "SELECT g.id, g.name
+         FROM Genres g
+         INNER JOIN Tracks t ON t.genre_id = g.id
+         GROUP BY g.id, g.name
+         ORDER BY g.name COLLATE NOCASE"
+    ).map_err(to_sqlite_err)?;
     let iter = stmt.query_map([], |row| Ok(crate::types::Genre { id: row.get(0)?, name: row.get(1)? })).map_err(to_sqlite_err)?;
     let mut res = Vec::new();
     for i in iter { res.push(i.map_err(to_sqlite_err)?); }

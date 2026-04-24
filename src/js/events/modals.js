@@ -7,6 +7,40 @@ import { invoke } from '../tauri-bridge.js';
 import { showNotification } from '../utils.js';
 
 export function initModalListeners() {
+  if (elements.editVolume) {
+    elements.editVolume.oninput = async (e) => {
+      const raw = Number.parseFloat(e.target.value);
+      const min = Number.parseFloat(elements.editVolume.min || "0");
+      const max = Number.parseFloat(elements.editVolume.max || "120");
+      const val = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+      const rounded = Math.round(val);
+      if (elements.editVolumeVal) elements.editVolumeVal.textContent = String(rounded);
+
+      // Live preview: while editing the currently playing track, apply volume immediately.
+      const idx = state.editingSongIndex;
+      const editingSong = (idx !== null && idx >= 0) ? state.songLibrary[idx] : null;
+      if (editingSong && state.currentTrack && state.currentTrack.path === editingSong.path) {
+        await invoke('set_volume', { volume: rounded });
+      }
+    };
+    elements.editVolume.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const min = Number.parseFloat(elements.editVolume.min || "0");
+      const max = Number.parseFloat(elements.editVolume.max || "120");
+      let val = Number.parseFloat(elements.editVolume.value);
+      if (e.deltaY < 0) val += 2; else val -= 2;
+      val = Math.max(min, Math.min(max, val));
+      elements.editVolume.value = String(Math.round(val));
+      elements.editVolume.dispatchEvent(new Event("input"));
+    }, { passive: false });
+    elements.editVolume.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      elements.editVolume.value = "100";
+      elements.editVolume.dispatchEvent(new Event("input"));
+    });
+  }
+
   // Metadata Save
   const btnSave = document.getElementById("modal-save");
   if (btnSave) {
@@ -15,6 +49,12 @@ export function initModalListeners() {
       if (idx === null) return;
       
       const song = state.songLibrary[idx];
+      const volMin = Number.parseFloat(elements.editVolume?.min || "0");
+      const volMax = Number.parseFloat(elements.editVolume?.max || "120");
+      const inputVolume = Number.parseFloat(elements.editVolume?.value);
+      const safeVolume = Number.isFinite(inputVolume)
+        ? Math.max(volMin, Math.min(volMax, inputVolume))
+        : (Number.isFinite(song?.volume) ? song.volume : 100);
       const updated = {
         ...song,
         title: document.getElementById("edit-title").value,
@@ -22,7 +62,7 @@ export function initModalListeners() {
         genre: document.getElementById("edit-genre-custom").value.trim() || document.getElementById("edit-genre-select").value,
         categories: [document.getElementById("edit-category").value.trim()].filter(c => c),
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
-        volume: parseFloat(elements.editVolume.value),
+        volume: safeVolume,
         isMr: document.getElementById("edit-is-mr").checked,
         isSeparated: document.getElementById("edit-is-mr").checked,
       };
@@ -30,6 +70,11 @@ export function initModalListeners() {
       try {
         await invoke('update_song_metadata', { song: updated });
         state.songLibrary[idx] = updated;
+        if (state.currentTrack && state.currentTrack.path === updated.path) {
+          state.currentTrack = updated;
+          // Apply per-track volume immediately for currently playing song.
+          await invoke('set_volume', { volume: safeVolume });
+        }
         const { renderLibrary } = await import('../ui/library.js');
         renderLibrary();
         const { closeEditModal } = await import('../ui/modals.js');

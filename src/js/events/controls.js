@@ -44,12 +44,20 @@ export function initControlListeners() {
 
     elements.pitchSlider.addEventListener("wheel", (e) => {
       e.preventDefault();
-      let val = parseInt(elements.pitchSlider.value);
+      let val = Number.parseFloat(elements.pitchSlider.value);
+      const min = Number.parseFloat(elements.pitchSlider.min || "-12");
+      const max = Number.parseFloat(elements.pitchSlider.max || "12");
       if (e.deltaY < 0) val += 1; else val -= 1;
-      val = Math.max(-12, Math.min(12, val));
-      elements.pitchSlider.value = val;
+      val = Math.max(min, Math.min(max, val));
+      elements.pitchSlider.value = String(Math.round(val));
       elements.pitchSlider.dispatchEvent(new Event("input"));
     }, { passive: false });
+    elements.pitchSlider.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      elements.pitchSlider.value = "0";
+      elements.pitchSlider.dispatchEvent(new Event("input"));
+    });
 
     if (elements.pitchVal) setupDirectInput(elements.pitchVal, elements.pitchSlider);
   }
@@ -64,11 +72,19 @@ export function initControlListeners() {
     elements.tempoSlider.addEventListener("wheel", (e) => {
       e.preventDefault();
       let val = parseFloat(elements.tempoSlider.value);
+      const min = Number.parseFloat(elements.tempoSlider.min || "0.5");
+      const max = Number.parseFloat(elements.tempoSlider.max || "2.0");
       if (e.deltaY < 0) val += 0.05; else val -= 0.05;
-      val = Math.max(0.5, Math.min(2.0, val));
+      val = Math.max(min, Math.min(max, val));
       elements.tempoSlider.value = val.toFixed(2);
       elements.tempoSlider.dispatchEvent(new Event("input"));
     }, { passive: false });
+    elements.tempoSlider.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      elements.tempoSlider.value = "1.00";
+      elements.tempoSlider.dispatchEvent(new Event("input"));
+    });
 
     if (elements.tempoVal) setupDirectInput(elements.tempoVal, elements.tempoSlider);
   }
@@ -84,12 +100,20 @@ export function initControlListeners() {
 
     elements.volSlider.addEventListener("wheel", (e) => {
       e.preventDefault();
-      let val = parseInt(elements.volSlider.value);
+      let val = Number.parseFloat(elements.volSlider.value);
+      const min = Number.parseFloat(elements.volSlider.min || "0");
+      const max = Number.parseFloat(elements.volSlider.max || "120");
       if (e.deltaY < 0) val += 2; else val -= 2;
-      val = Math.max(0, Math.min(100, val));
-      elements.volSlider.value = val;
+      val = Math.max(min, Math.min(max, val));
+      elements.volSlider.value = String(Math.round(val));
       elements.volSlider.dispatchEvent(new Event("input"));
     }, { passive: false });
+    elements.volSlider.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      elements.volSlider.value = "100";
+      elements.volSlider.dispatchEvent(new Event("input"));
+    });
 
     if (elements.volSliderVal) setupDirectInput(elements.volSliderVal, elements.volSlider);
   }

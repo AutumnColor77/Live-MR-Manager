@@ -129,8 +129,12 @@ async function initApp() {
   // 7. Initial volume sync
   try {
     if (elements.volSlider) {
-      elements.volSlider.value = state.masterVolume;
-      if (elements.volSliderVal) elements.volSliderVal.textContent = state.masterVolume;
+      const min = Number.parseFloat(elements.volSlider.min || "0");
+      const max = Number.parseFloat(elements.volSlider.max || "120");
+      const normalized = Math.max(min, Math.min(max, Number(state.masterVolume)));
+      state.masterVolume = normalized;
+      elements.volSlider.value = normalized;
+      if (elements.volSliderVal) elements.volSliderVal.textContent = `${normalized}%`;
     }
     await invoke("set_master_volume", { volume: state.masterVolume });
   } catch (err) {}

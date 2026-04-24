@@ -49,6 +49,16 @@ export function openEditModal(song, index) {
 
   document.getElementById("edit-category").value = song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "") || "기본";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
+  const editVolume = document.getElementById("edit-volume");
+  const editVolumeVal = document.getElementById("edit-volume-val");
+  if (editVolume) {
+    const min = Number.parseFloat(editVolume.min || "0");
+    const max = Number.parseFloat(editVolume.max || "120");
+    const volume = Number.parseFloat(song.volume);
+    const safeVolume = Number.isFinite(volume) ? Math.max(min, Math.min(max, volume)) : 100;
+    editVolume.value = String(Math.round(safeVolume));
+    if (editVolumeVal) editVolumeVal.textContent = String(Math.round(safeVolume));
+  }
 
   // MR Checkbox initialization
   const mrCheckbox = document.getElementById("edit-is-mr");

@@ -972,6 +972,30 @@ export class ForcedAlignmentViewer {
             });
             const content = lrcLines.join('\n');
             const savedPath = await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
+
+            // Reflect lyric availability immediately without requiring track re-selection.
+            const targetPath = this.state.currentPath;
+            const targetSong = state.songLibrary.find(song => song.path === targetPath);
+            if (targetSong) {
+                targetSong.hasLyrics = true;
+                targetSong.has_lyrics = true;
+            }
+            if (state.currentTrack && state.currentTrack.path === targetPath) {
+                state.currentTrack.hasLyrics = true;
+                state.currentTrack.has_lyrics = true;
+            }
+
+            // Refresh currently loaded lyric data for drawer/overlay right away.
+            const parsedLyrics = parseLrc(content, this.state.duration || 0);
+            state.currentLyrics = parsedLyrics;
+            state.currentLyricIndex = -1;
+            import('./lyric-drawer.js').then(m => {
+                if (m.updateLyrics) m.updateLyrics(parsedLyrics);
+            });
+            import('./ui/components.js').then(m => {
+                if (m.updateAiTogglesState) m.updateAiTogglesState();
+            });
+
             showNotification('가사 싱크 저장 완료', 'success');
         } catch (err) {
             console.error(err);
