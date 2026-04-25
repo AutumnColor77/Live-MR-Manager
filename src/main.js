@@ -14,8 +14,49 @@ import { showNotification } from './js/utils.js';
 
 import { invoke, appWindow } from './js/tauri-bridge.js';
 
+const THEME_STORAGE_KEY = 'themeMode';
+const THEME_OPTIONS = new Set(['dark', 'light']);
+
+function normalizeTheme(value) {
+  return THEME_OPTIONS.has(value) ? value : 'dark';
+}
+
+export function applyTheme(theme, { persist = true } = {}) {
+  const nextTheme = normalizeTheme(theme);
+  document.documentElement.setAttribute('data-theme', nextTheme);
+  state.themeMode = nextTheme;
+  if (persist) {
+    localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  }
+  return nextTheme;
+}
+
+function syncThemeDropdown(theme) {
+  const hiddenInput = document.getElementById('theme-mode-select');
+  const dropdown = document.getElementById('theme-mode-dropdown');
+  if (!hiddenInput || !dropdown) return;
+
+  hiddenInput.value = theme;
+  const selectedText = dropdown.querySelector('.selected-text');
+  const options = dropdown.querySelectorAll('.option-item');
+  options.forEach((opt) => {
+    const selected = opt.dataset.value === theme;
+    opt.classList.toggle('selected', selected);
+    if (selected && selectedText) {
+      selectedText.textContent = opt.textContent;
+    }
+  });
+}
+
+function initTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  const appliedTheme = applyTheme(stored || state.themeMode || 'dark', { persist: true });
+  syncThemeDropdown(appliedTheme);
+}
+
 // Expose navigation to global for cross-module usage
 window.switchToTab = switchTab;
+window.applyAppTheme = applyTheme;
 
 // Register permanent error listeners to bridge JS errors to terminal IMMEDIATELY
 window.addEventListener('error', (event) => {
@@ -31,6 +72,7 @@ console.log("[JS] main.js loaded and executing...");
 
 async function initApp() {
   console.log("[App] Initializing...");
+  initTheme();
 
   // 0. Setup custom titlebar immediately (Don't wait for backend)
   setupTitlebar();
@@ -50,7 +92,7 @@ async function initApp() {
       text-align: center !important;
       border: none !important;
       background: transparent !important;
-      color: #fff !important;
+      color: var(--text-main) !important;
       outline: none !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -180,8 +222,19 @@ function setupTitlebar() {
   });
 }
 
+function blockNativeContextMenu() {
+  // Keep app-like UX by suppressing the browser's default right-click menu.
+  // Custom in-app context menus still work because we only prevent default.
+  document.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+}
+
 // Start
-window.addEventListener("DOMContentLoaded", initApp);
+window.addEventListener("DOMContentLoaded", async () => {
+  blockNativeContextMenu();
+  await initApp();
+});
 
 // Export for some legacy inline listeners if any (though we aim for zero)
 window.state = state;

@@ -193,6 +193,21 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuPlay = document.getElementById("menu-play");
   const menuEdit = document.getElementById("menu-edit");
   const menuDelete = document.getElementById("menu-delete");
+  const inputSeparator = document.getElementById("menu-input-separator");
+  const menuUndo = document.getElementById("menu-undo");
+  const menuRedo = document.getElementById("menu-redo");
+  const menuCut = document.getElementById("menu-cut");
+  const menuCopy = document.getElementById("menu-copy");
+  const menuPaste = document.getElementById("menu-paste");
+  const menuSelectAll = document.getElementById("menu-select-all");
+
+  // Song context: show song actions, hide text-input actions.
+  [menuPlay, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
+    if (el) el.style.display = "block";
+  });
+  [inputSeparator, menuUndo, menuRedo, menuCut, menuCopy, menuPaste, menuSelectAll].forEach((el) => {
+    if (el) el.style.display = "none";
+  });
 
   invoke('remote_js_log', { msg: `[Context Menu Init] menuPlay=${!!menuPlay}, menuEdit=${!!menuEdit}, menuDelete=${!!menuDelete}, menuSeparate=${!!menuSeparate}, menuDeleteMr=${!!menuDeleteMr}` }).catch(() => {});
 

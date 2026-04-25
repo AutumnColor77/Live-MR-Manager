@@ -5,10 +5,67 @@
  */
 
 :root {
-    --card-bg: rgba(255, 255, 255, 0.03); /* Unified semi-transparent background */
-    --accent-blue: #3b82f6;
+    --card-bg: var(--surface-1);
+    --accent-blue: var(--accent-primary);
     --accent-red: #ef4444;
-    --border-color: rgba(255, 255, 255, 0.08);
+    --border-color: var(--glass-border);
+    --align-text-soft: var(--text-muted);
+    --align-scroll-thumb: var(--surface-3);
+    --align-shadow-card: color-mix(in srgb, var(--shadow-strong) 70%, transparent);
+    --align-shadow-accent: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    --align-surface-input: var(--surface-2);
+    --align-surface-input-hover: var(--surface-3);
+    --align-surface-editor: color-mix(in srgb, var(--bg-color) 70%, #000 30%);
+    --align-wave-bg: color-mix(in srgb, var(--bg-color) 76%, #000 24%);
+    --align-panel-bg: color-mix(in srgb, var(--bg-color) 68%, #000 32%);
+    --align-wave-border: color-mix(in srgb, var(--glass-border) 65%, transparent);
+    --align-wave-inset: color-mix(in srgb, var(--shadow-strong) 50%, transparent);
+    --align-item-bg: var(--surface-1);
+    --align-item-border: color-mix(in srgb, var(--glass-border) 55%, transparent);
+    --align-item-hover-bg: var(--surface-2);
+    --align-item-hover-border: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+    --align-item-active-bg: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+    --align-item-active-border: color-mix(in srgb, var(--accent-primary) 70%, transparent);
+    --align-item-sync-bg: color-mix(in srgb, var(--accent-secondary) 22%, transparent);
+    --align-item-sync-border: color-mix(in srgb, var(--accent-secondary) 58%, transparent);
+    --align-seek-track: var(--surface-3);
+    --align-seek-track-hover: color-mix(in srgb, var(--surface-3) 75%, var(--text-dim) 25%);
+    --align-thumb-ring: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+    --align-btn-bg: var(--surface-2);
+    --align-btn-hover-bg: var(--surface-3);
+    --align-btn-border: var(--glass-border);
+    --align-btn-hover-border: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+    --align-btn-hover-shadow: color-mix(in srgb, var(--accent-primary) 26%, transparent);
+    --align-danger-bg: rgba(239, 68, 68, 0.1);
+    --align-danger-border: rgba(239, 68, 68, 0.2);
+    --align-danger-text: #ef4444;
+    --align-danger-hover-bg: #ef4444;
+    --align-danger-hover-shadow: rgba(239, 68, 68, 0.3);
+    --align-track-item-bg: var(--surface-1);
+    --align-track-item-border: color-mix(in srgb, var(--glass-border) 55%, transparent);
+    --align-track-item-hover-bg: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    --align-track-item-hover-border: color-mix(in srgb, var(--accent-primary) 38%, transparent);
+    --align-track-item-hover-shadow: color-mix(in srgb, var(--accent-primary) 24%, transparent);
+    --align-track-thumb-bg: color-mix(in srgb, var(--bg-color) 75%, #000 25%);
+    --align-track-thumb-border: var(--glass-border);
+    --align-track-placeholder: color-mix(in srgb, var(--text-dim) 35%, transparent);
+    --align-zoom-bg: color-mix(in srgb, var(--bg-color) 70%, #1e293b 30%);
+    --align-scrollbar-track: var(--surface-2);
+    --align-scrollbar-thumb: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+    --align-scrollbar-thumb-hover: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+    --align-sync-pulse-border-1: color-mix(in srgb, var(--accent-secondary) 70%, transparent);
+    --align-sync-pulse-border-2: color-mix(in srgb, var(--accent-secondary) 40%, #fff 60%);
+    --align-sync-pulse-shadow-1: color-mix(in srgb, var(--accent-secondary) 24%, transparent);
+    --align-sync-pulse-shadow-2: color-mix(in srgb, var(--accent-secondary) 45%, transparent);
+}
+
+html[data-theme="light"] {
+    --align-surface-editor: color-mix(in srgb, var(--bg-color) 90%, var(--surface-2) 10%);
+    --align-wave-bg: color-mix(in srgb, var(--bg-color) 86%, var(--surface-2) 14%);
+    --align-panel-bg: color-mix(in srgb, var(--bg-color) 82%, var(--surface-3) 18%);
+    --align-wave-inset: color-mix(in srgb, var(--shadow-strong) 32%, transparent);
+    --align-track-thumb-bg: color-mix(in srgb, var(--bg-color) 88%, var(--surface-2) 12%);
+    --align-zoom-bg: color-mix(in srgb, var(--bg-color) 80%, var(--surface-3) 20%);
 }
 
 /* 1. Main Layout Container - Global Scrollable Grid */
@@ -23,7 +80,7 @@
     gap: 16px;
     padding: 10px 0 30px 0; /* 끝선 위치를 30px 하단으로 고정 */
     box-sizing: border-box;
-    color: #e2e8f0;
+    color: var(--text-main);
     background: transparent;
     animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     align-items: stretch;
@@ -38,7 +95,7 @@
 /* 9. Analysis Card (Removed AI features) */
 /* Custom scrollbars and pulse effects included in sections above */
 .alignment-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--align-scroll-thumb);
     border-radius: 10px;
 }
 
@@ -53,7 +110,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 30px var(--align-shadow-card);
     height: 100%;
     min-height: 0; /* 중요: 내부 콘텐츠에 의해 카드가 늘어나는 것 방지 */
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -62,9 +119,9 @@
 }
 
 .alignment-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(59, 130, 246, 0.5);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(59, 130, 246, 0.15) !important;
+    background: var(--align-surface-input);
+    border-color: var(--align-btn-hover-border);
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--align-shadow-card) 80%, transparent), 0 0 20px var(--align-shadow-accent) !important;
 }
 
 /* 3. Column Wrappers */
@@ -91,7 +148,7 @@
 
 .alignment-sub-label {
     font-size: 0.82rem;
-    color: #94a3b8;
+    color: var(--align-text-soft);
     margin-bottom: 4px;
 }
 
@@ -107,11 +164,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--align-surface-input);
+    border: 1px solid var(--align-btn-border);
     border-radius: 12px;
     padding: 12px 16px;
-    color: #fff;
+    color: var(--text-main);
     font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
@@ -120,9 +177,9 @@
 }
 
 .track-select-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--align-surface-input-hover);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 15px var(--align-btn-hover-shadow);
 }
 
 .track-select-btn:active {
@@ -137,11 +194,11 @@
 .lyrics-textarea {
     flex: 1;
     min-height: 0; /* 중요: 텍스트가 많아져도 textarea가 늘어나지 않고 스크롤되도록 제한 */
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--align-surface-editor);
+    border: 1px solid var(--align-btn-border);
     border-radius: 16px;
     padding: 14px 16px; /* Reduced from 20px */
-    color: #fff;
+    color: var(--text-main);
     font-family: 'SUITE', sans-serif;
     font-size: 0.95rem;
     line-height: 1.7;
@@ -163,7 +220,7 @@
     margin: 0;
     font-size: 1.15rem;
     font-weight: 800;
-    color: #fff;
+    color: var(--text-main);
     letter-spacing: -0.02em;
 }
 
@@ -194,12 +251,12 @@
 
 .waveform-canvas-container {
     height: 160px; /* 고정 높이로 타이트하게 관리 */
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--align-wave-bg);
     border-radius: 16px;
     position: relative;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--align-wave-border);
+    box-shadow: inset 0 0 40px var(--align-wave-inset);
 }
 
 canvas#waveform-canvas {
@@ -215,9 +272,9 @@ canvas#waveform-canvas {
 }
 
 @keyframes pulse-border {
-    0% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
-    50% { box-shadow: 0 4px 35px rgba(99, 102, 241, 0.7); }
-    100% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
+    0% { box-shadow: 0 4px 20px color-mix(in srgb, var(--accent-secondary) 40%, transparent); }
+    50% { box-shadow: 0 4px 35px color-mix(in srgb, var(--accent-secondary) 70%, transparent); }
+    100% { box-shadow: 0 4px 20px color-mix(in srgb, var(--accent-secondary) 40%, transparent); }
 }
 
 /* 7. Right Sidebar: Results list */
@@ -232,8 +289,8 @@ canvas#waveform-canvas {
 .lyric-line-item {
     padding: 10px 14px; /* Reduced from 14px 18px */
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--align-item-bg);
+    border: 1px solid var(--align-item-border);
     margin-bottom: 12px;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     cursor: pointer;
@@ -241,28 +298,28 @@ canvas#waveform-canvas {
 }
 
 .lyric-line-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(59, 130, 246, 0.4);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.1);
+    background: var(--align-item-hover-bg);
+    border-color: var(--align-item-hover-border);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent-primary) 18%, transparent);
 }
 
 .lyric-line-item.active {
-    background: rgba(74, 158, 255, 0.12);
+    background: var(--align-item-active-bg);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent-primary) 24%, transparent);
 }
 
 .lyric-line-item.syncing {
-    background: rgba(129, 140, 248, 0.2);
-    border-color: #818cf8;
-    box-shadow: 0 0 25px rgba(129, 140, 248, 0.3);
+    background: var(--align-item-sync-bg);
+    border-color: var(--align-item-sync-border);
+    box-shadow: 0 0 25px color-mix(in srgb, var(--accent-secondary) 32%, transparent);
     animation: sync-pulse 1.5s infinite ease-in-out;
 }
 
 @keyframes sync-pulse {
-    0% { border-color: #818cf8; box-shadow: 0 0 15px rgba(129, 140, 248, 0.2); }
-    50% { border-color: #c7d2fe; box-shadow: 0 0 35px rgba(129, 140, 248, 0.5); }
-    100% { border-color: #818cf8; box-shadow: 0 0 15px rgba(129, 140, 248, 0.2); }
+    0% { border-color: var(--align-sync-pulse-border-1); box-shadow: 0 0 15px var(--align-sync-pulse-shadow-1); }
+    50% { border-color: var(--align-sync-pulse-border-2); box-shadow: 0 0 35px var(--align-sync-pulse-shadow-2); }
+    100% { border-color: var(--align-sync-pulse-border-1); box-shadow: 0 0 15px var(--align-sync-pulse-shadow-1); }
 }
 
 .lyric-line-item .time-range {
@@ -278,15 +335,16 @@ canvas#waveform-canvas {
     font-size: 0.95rem;
     font-weight: 500;
     line-height: 1.5;
+    color: var(--text-main);
     outline: none;
     transition: color 0.2s;
 }
 
 .lyric-line-item .lyric-text[contenteditable="true"] {
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--align-surface-editor);
     padding: 4px 8px;
     border-radius: 6px;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+    box-shadow: inset 0 0 10px color-mix(in srgb, var(--shadow-strong) 65%, transparent);
     border: 1px solid var(--accent-blue);
     cursor: text;
 }
@@ -296,7 +354,7 @@ canvas#waveform-canvas {
     position: absolute;
     top: 0;
     height: 100%;
-    background: rgba(74, 158, 255, 0.15);
+    background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
     border-left: 1px solid var(--accent-blue);
     border-right: 1px solid var(--accent-blue);
     pointer-events: none;
@@ -304,7 +362,7 @@ canvas#waveform-canvas {
 }
 
 .segment-overlay.active {
-    background: rgba(74, 158, 255, 0.25);
+    background: color-mix(in srgb, var(--accent-primary) 34%, transparent);
 }
 
 .segment-handle {
@@ -317,21 +375,21 @@ canvas#waveform-canvas {
     border-radius: 3px;
     cursor: ew-resize;
     pointer-events: auto;
-    box-shadow: 0 0 10px rgba(74, 158, 255, 0.5);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent-primary) 45%, transparent);
     z-index: 10;
 }
 
 .waveform-canvas-container {
     /* 기존 속성에 추가 (중복 스타일 병합 권장) */
-    background: rgba(0, 0, 0, 0.5);
-    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.3);
+    background: var(--align-wave-bg);
+    box-shadow: inset 0 0 40px var(--align-wave-inset);
 }
 
 .sync-controls-panel {
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--align-panel-bg);
     padding: 12px 20px; 
     border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--align-item-border);
     margin-top: 4px;
     display: flex;
     flex-direction: column;
@@ -352,7 +410,7 @@ canvas#waveform-canvas {
     -webkit-appearance: none;
     width: 100%;
     height: 6px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--align-seek-track);
     border-radius: 3px;
     outline: none;
     cursor: pointer;
@@ -362,7 +420,7 @@ canvas#waveform-canvas {
 }
 
 .seek-bar:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--align-seek-track-hover);
 }
 
 .seek-bar::-webkit-slider-thumb {
@@ -371,8 +429,8 @@ canvas#waveform-canvas {
     height: 16px;
     background: var(--accent-blue);
     border-radius: 50%;
-    box-shadow: 0 0 15px rgba(74, 158, 255, 0.6);
-    border: 2px solid #fff;
+    box-shadow: 0 0 15px var(--align-thumb-ring);
+    border: 2px solid var(--text-inverse);
     cursor: pointer;
     transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -382,9 +440,9 @@ canvas#waveform-canvas {
 }
 
 .sync-ctrl-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: var(--align-btn-bg);
+    border: 1px solid var(--align-btn-border);
+    color: var(--text-main);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
@@ -394,9 +452,9 @@ canvas#waveform-canvas {
 }
 
 .sync-ctrl-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--align-btn-hover-bg);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 15px var(--align-btn-hover-shadow);
 }
 
 .sync-ctrl-btn:active {
@@ -418,12 +476,12 @@ canvas#waveform-canvas {
     flex: 1;
     background: var(--accent-blue);
     border: none;
-    box-shadow: 0 4px 15px rgba(74, 158, 255, 0.3);
+    box-shadow: 0 4px 15px color-mix(in srgb, var(--accent-primary) 34%, transparent);
 }
 
 .sync-ctrl-btn.tap-btn:hover {
-    background: #5baaff;
-    box-shadow: 0 6px 20px rgba(74, 158, 255, 0.4);
+    background: var(--accent-secondary);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--accent-primary) 44%, transparent);
 }
 
 .tap-label {
@@ -444,14 +502,14 @@ canvas#waveform-canvas {
     height: 16px;
     background: var(--accent-blue);
     border-radius: 50%;
-    box-shadow: 0 0 15px rgba(74, 158, 255, 0.6);
-    border: 2px solid #fff;
+    box-shadow: 0 0 15px var(--align-thumb-ring);
+    border: 2px solid var(--text-inverse);
     cursor: pointer;
 }
 
 .sync-save-btn {
     background: var(--accent-blue);
-    color: #fff;
+    color: var(--text-main);
     border: none;
     border-radius: 8px;
     padding: 6px 14px;
@@ -459,12 +517,12 @@ canvas#waveform-canvas {
     font-weight: 800;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-primary) 30%, transparent);
 }
 
 .sync-save-btn:hover {
-    background: #2563eb;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+    background: var(--accent-secondary);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent-primary) 40%, transparent);
 }
 
 .sync-save-btn:active {
@@ -472,9 +530,9 @@ canvas#waveform-canvas {
 }
 
 .sync-reset-btn {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: var(--align-danger-bg);
+    color: var(--align-danger-text);
+    border: 1px solid var(--align-danger-border);
     border-radius: 8px;
     padding: 6px 14px;
     font-size: 0.85rem;
@@ -486,9 +544,9 @@ canvas#waveform-canvas {
 }
 
 .sync-reset-btn:hover {
-    background: #ef4444;
-    color: #fff;
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+    background: var(--align-danger-hover-bg);
+    color: var(--text-main);
+    box-shadow: 0 0 15px var(--align-danger-hover-shadow);
 }
 
 .sync-save-status {
@@ -513,7 +571,7 @@ canvas#waveform-canvas {
     margin-bottom: 8px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--align-text-soft);
 }
 
 .v2-theme .circle-btn {
@@ -523,25 +581,25 @@ canvas#waveform-canvas {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.05) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: var(--align-btn-bg) !important;
+    border: 1px solid var(--align-btn-border) !important;
 }
 
 .v2-theme .circle-btn:hover {
-    background: rgba(255, 255, 255, 0.15) !important;
+    background: var(--align-btn-hover-bg) !important;
     border-color: var(--accent-blue) !important;
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent-primary) 36%, transparent);
 }
 
 .v2-theme .tap-btn {
-    background: #6366f1 !important;
+    background: var(--accent-primary) !important;
     font-weight: 800;
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 15px color-mix(in srgb, var(--accent-primary) 34%, transparent);
     animation: pulse-border 2s infinite;
 }
 
 .v2-theme .status-badge {
-    background: rgba(74, 158, 255, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
     color: var(--accent-blue);
     padding: 4px 10px;
     border-radius: 20px;
@@ -569,7 +627,7 @@ canvas#waveform-canvas {
 }
 
 .v2-theme .success-btn {
-    background: #10b981 !important;
+    background: color-mix(in srgb, var(--accent-primary) 45%, #10b981 55%) !important;
     font-weight: 800;
     padding: 6px 16px !important;
     font-size: 0.75rem !important;
@@ -598,16 +656,16 @@ canvas#waveform-canvas {
     gap: 16px;
     padding: 10px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--align-track-item-bg);
+    border: 1px solid var(--align-track-item-border);
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .track-item:hover {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.3);
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+    background: var(--align-track-item-hover-bg);
+    border-color: var(--align-track-item-hover-border);
+    box-shadow: 0 0 15px var(--align-track-item-hover-shadow);
 }
 
 .track-thumb {
@@ -615,12 +673,12 @@ canvas#waveform-canvas {
     height: 48px;
     border-radius: 8px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--align-track-thumb-bg);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--align-track-thumb-border);
 }
 
 .track-thumb img {
@@ -631,7 +689,7 @@ canvas#waveform-canvas {
 
 .thumb-placeholder {
     font-size: 1.5rem;
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--align-track-placeholder);
 }
 
 .track-info {
@@ -642,7 +700,7 @@ canvas#waveform-canvas {
 .track-name {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -651,7 +709,7 @@ canvas#waveform-canvas {
 
 .track-artist {
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--align-text-soft);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -667,19 +725,19 @@ canvas#waveform-canvas {
 }
 
 .alignment-track-list::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--align-scroll-thumb);
     border-radius: 10px;
 }
 
 .alignment-track-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--scrollbar-thumb-hover);
 }
 
 /* 11. Alignment Track Selection Modal - Search Bar Overrides */
 #alignment-track-modal .search-bar {
     background: transparent !important;
     border: none !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-bottom: 1px solid var(--align-btn-border) !important;
     border-radius: 0 !important;
     padding: 0 4px !important;
     height: 44px !important;
@@ -723,9 +781,9 @@ canvas#waveform-canvas {
 
 /* 12. Waveform Zoom & Scrollbar Styles */
 .waveform-canvas-container {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--align-wave-bg);
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--align-wave-border);
     overflow: hidden;
 }
 
@@ -742,10 +800,10 @@ canvas#waveform-canvas {
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    background: rgba(30, 41, 59, 0.8);
+    background: var(--align-zoom-bg);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #fff;
+    border: 1px solid var(--align-btn-border);
+    color: var(--text-main);
     font-size: 1.2rem;
     font-weight: 600;
     cursor: pointer;
@@ -758,8 +816,8 @@ canvas#waveform-canvas {
 
 .zoom-btn:hover {
     background: var(--accent-blue);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    border-color: var(--align-btn-hover-border);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent-primary) 44%, transparent);
 }
 
 .zoom-btn:active {
@@ -778,7 +836,7 @@ canvas#waveform-canvas {
 
 .waveform-scrollbar-track {
     height: 4px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--align-scrollbar-track);
     position: relative;
     overflow: hidden;
 }
@@ -788,12 +846,13 @@ canvas#waveform-canvas {
     top: 0;
     left: 0;
     height: 100%;
-    background: rgba(59, 130, 246, 0.4);
+    background: var(--align-scrollbar-thumb);
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .waveform-scrollbar-thumb:hover {
-    background: rgba(59, 130, 246, 0.7);
+    background: var(--align-scrollbar-thumb-hover);
 }
+
 

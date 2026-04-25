@@ -49,7 +49,7 @@ body .song-grid.button-mode .song-card.button-row .col-info {
 body .song-grid.button-mode .song-card.button-row .song-name {
   font-size: 0.85rem !important;
   font-weight: 700 !important;
-  color: #fff !important;
+  color: var(--text-main) !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;

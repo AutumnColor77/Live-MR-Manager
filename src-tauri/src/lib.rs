@@ -17,6 +17,7 @@ mod key_bpm;
 mod audio_commands;
 mod model_commands;
 mod system;
+mod rescue;
 mod overlay_server;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -64,6 +65,8 @@ pub fn run() {
             system::get_app_paths, 
             system::export_backup, 
             system::import_backup, 
+            rescue::run_cache_rescue,
+            rescue::run_local_rescue,
             model_commands::get_active_separations,
             audio_commands::get_ai_engine_status, 
             library::update_song_metadata,

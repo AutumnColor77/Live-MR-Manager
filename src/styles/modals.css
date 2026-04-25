@@ -6,7 +6,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--overlay-bg);
   backdrop-filter: blur(10px);
   z-index: 20000; /* Normal state: behind titlebar(30k) and dock(25k) */
   display: none;
@@ -38,7 +38,7 @@
 
 .modal-content {
   pointer-events: auto;
-  background: rgba(22, 22, 30, 0.9);
+  background: var(--menu-bg);
   backdrop-filter: blur(25px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 24px;
@@ -83,15 +83,15 @@
   margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-main);
 }
 
 .close-btn {
   position: absolute;
   top: 20px;
   right: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-1);
+  border: 1px solid var(--surface-2);
   color: var(--text-dim);
   font-size: 1.1rem;
   width: 28px;
@@ -106,9 +106,9 @@
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--surface-3);
+  color: var(--text-main);
+  border-color: var(--surface-3);
 }
 
 .modal-body {
@@ -173,7 +173,7 @@
 
 .modal-footer button:hover {
   filter: brightness(1.1);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.2);
 }
 
 .modal-footer button:active {
@@ -201,12 +201,12 @@
 
 .input-group input[type="text"] {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--bg-color) 22%);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   height: 44px;
   padding: 0 16px;
-  color: #fff;
+  color: var(--text-main);
   font-size: 0.95rem;
   font-weight: 500;
   outline: none;
@@ -214,19 +214,19 @@
 }
 
 .input-group input[type="text"]:focus {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--surface-3) 72%, var(--bg-color) 28%);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.15);
 }
 
 #metadata-modal .input-group input[type="number"] {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--bg-color) 22%);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   height: 44px;
   padding: 0 16px;
-  color: #fff;
+  color: var(--text-main);
   font-size: 0.95rem;
   font-weight: 500;
   outline: none;
@@ -235,9 +235,9 @@
 }
 
 #metadata-modal .input-group input[type="number"]:focus {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--surface-3) 72%, var(--bg-color) 28%);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.15);
 }
 
 .combo-box {
@@ -389,7 +389,7 @@
 #metadata-modal .label-row label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #4a9eff;
+  color: var(--accent-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -411,7 +411,7 @@
 #metadata-modal .meta-field label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #4a9eff;
+  color: var(--accent-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -467,7 +467,7 @@
   margin-left: -8px;
   margin-top: -8px;
   border: 2px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #ffffff;
+  border-top-color: var(--text-inverse);
   border-radius: 50%;
   animation: modal-btn-spin 0.7s linear infinite;
 }
@@ -540,38 +540,39 @@
 .manager-footer {
   padding-top: 20px !important;
   margin-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--glass-border);
   justify-content: space-between !important; /* Manager needs space-between for left-right groups */
 }
 
 .manager-footer .footer-left-group {
   gap: 16px;
-  margin-left: -8px !important; /* Pull slightly more to the left to align with visual edge */
+  margin-left: 0 !important;
 }
 
 .table-container {
   height: 100%;
   overflow: auto;
-  background: #0d0d0f;
+  background: color-mix(in srgb, var(--bg-color) 82%, var(--surface-2) 18%);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
 }
 
 #manager-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
 }
 
 #manager-table th {
   position: sticky;
   top: 0;
-  background: #1a1a20 !important; /* Solid dark background for header */
+  background: color-mix(in srgb, var(--surface-3) 65%, var(--bg-color) 35%) !important;
   color: var(--text-muted);
   padding: 12px 16px;
   font-size: 0.85rem;
   font-weight: 700;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--glass-border);
   z-index: 1000 !important; /* Very high */
   text-align: center !important;
 }
@@ -582,8 +583,8 @@
   -webkit-appearance: none !important;
   width: 20px !important;
   height: 20px !important;
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 2px solid rgba(255, 255, 255, 0.4) !important; /* Visible gray-white border */
+  background: var(--surface-2) !important;
+  border: 2px solid color-mix(in srgb, var(--text-dim) 35%, transparent) !important;
   border-radius: 4px !important;
   cursor: pointer !important;
   position: relative !important;
@@ -595,8 +596,8 @@
 }
 
 #manager-table input[type="checkbox"].manager-check:checked {
-  background: #3b82f6 !important;
-  border-color: #3b82f6 !important;
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E") !important;
   background-size: 14px !important;
   background-repeat: no-repeat !important;
@@ -604,15 +605,15 @@
 }
 
 #manager-table input[type="checkbox"].manager-check:hover {
-  border-color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.15) !important;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.4) !important;
+  border-color: var(--accent-primary) !important;
+  background: var(--surface-3) !important;
+  box-shadow: 0 0 10px rgb(var(--accent-rgb) / 0.4) !important;
 }
 
 #manager-table td {
   padding: 8px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  color: #fff;
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent);
+  color: var(--text-main);
   font-size: 0.9rem;
   vertical-align: middle;
 }
@@ -630,18 +631,25 @@
   font-size: 0.75rem;
   font-weight: 800;
   cursor: pointer;
+  min-width: 56px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .btn-row-del:hover {
   background: #ef4444;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 /* --- Online Metadata Search Results --- */
 .search-result-item {
   padding: 15px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -653,9 +661,9 @@
 }
 
 .search-result-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
+  background: var(--surface-2);
+  border-color: rgb(var(--accent-rgb) / 0.4);
+  box-shadow: 0 0 10px rgb(var(--accent-rgb) / 0.1);
 }
 
 .search-result-info {
@@ -664,13 +672,13 @@
 
 .search-result-item .track-name {
   font-weight: 600;
-  color: #fff;
+  color: var(--text-main);
   font-size: 0.95rem;
 }
 
 .search-result-item .artist-name {
   font-size: 0.85rem;
-  color: #aaa;
+  color: var(--text-dim);
 }
 
 .track-tags-preview {
@@ -684,10 +692,10 @@
 .tag-badge-mini {
   font-size: 0.65rem;
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
   border-radius: 4px;
-  color: #ccc;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -709,11 +717,12 @@
   background: transparent !important;
   border-color: transparent !important;
   padding: 6px 10px !important;
+  color: var(--text-main) !important;
 }
 
 #manager-table input:focus {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: rgba(74, 158, 255, 0.5) !important;
+  background: var(--surface-2) !important;
+  border-color: rgb(var(--accent-rgb) / 0.5) !important;
 }
 
 /* --- Final Priority Fix for Manager Search Box --- */
@@ -737,12 +746,12 @@
 
 #mgr-search-wrap input {
   flex: 1 !important;
-  background: rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--bg-color) 22%) !important;
+  border: 1px solid var(--glass-border) !important;
   border-radius: 10px !important;
   padding: 0 12px !important;
   height: 100% !important;
-  color: #fff !important;
+  color: var(--text-main) !important;
   font-size: 0.95rem !important;
   font-weight: 500 !important;
   outline: none !important;
@@ -751,8 +760,8 @@
 }
 
 #mgr-search-wrap input:focus {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: color-mix(in srgb, var(--surface-3) 72%, var(--bg-color) 28%) !important;
   border-color: var(--accent-primary) !important;
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.15) !important;
   outline: none !important;
 }

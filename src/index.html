@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles/lyric-drawer.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live MR Manager(Beta) | Performer Dash</title>
+  <title>Live MR Manager(Beta) v0.4.7 | Performer Dash</title>
   <style>
     /* --- Color Palette UI --- */
     .color-palette-wrapper { display: flex; flex-direction: column; }
@@ -19,27 +19,27 @@
       position: relative;
     }
     .color-swatch:hover { transform: scale(1.15); border-color: rgba(255, 255, 255, 0.2); }
-    .color-swatch.selected { border-color: #fff; box-shadow: 0 0 15px rgba(255, 255, 255, 0.3); }
+    .color-swatch.selected { border-color: var(--text-main); box-shadow: 0 0 15px var(--surface-3); }
     .color-swatch.selected::after {
       content: ""; position: absolute; top: -4px; left: -4px; right: -4px; bottom: -4px;
       border-radius: 11px; border: 1px solid var(--accent-primary); opacity: 0.5;
     }
     .hex-input-wrapper {
-      display: flex; align-items: center; background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+      display: flex; align-items: center; background: var(--surface-1);
+      border: 1px solid var(--glass-border); border-radius: 8px;
       padding: 0 8px; height: 32px; width: 100px;
     }
     .hex-hash { color: var(--text-dim); font-size: 0.8rem; margin-right: 2px; }
     .hex-text-input {
-      background: transparent; border: none; color: #fff; font-family: monospace;
+      background: transparent; border: none; color: var(--text-main); font-family: monospace;
       font-size: 0.85rem; width: 100%; outline: none; text-transform: uppercase;
     }
     .btn-custom-color-picker {
-      width: 32px; height: 32px; border-radius: 8px; background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-dim);
+      width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2);
+      border: 1px solid var(--glass-border); color: var(--text-dim);
       display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;
     }
-    .btn-custom-color-picker:hover { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+    .btn-custom-color-picker:hover { background: var(--surface-3); color: var(--text-main); border-color: var(--glass-border); }
     /* Overlay Preview Tabs */
     .preview-tabs-container {
       display: flex;
@@ -52,18 +52,18 @@
       font-size: 0.8rem;
       font-weight: 700;
       color: var(--text-dim);
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--surface-2);
       cursor: pointer;
       transition: all 0.2s;
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
     }
     .preview-tab:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
+      background: var(--surface-3);
+      color: var(--text-main);
     }
     .preview-tab.active {
       background: var(--accent-primary);
-      color: #fff;
+      color: var(--text-inverse);
       border-color: var(--accent-primary);
       box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
     }
@@ -75,7 +75,7 @@
   <div class="titlebar">
     <div class="titlebar-logo" data-tauri-drag-region>
       <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-      MR Manager(Beta)
+      MR Manager(Beta) v0.4.7
     </div>
     <div data-tauri-drag-region class="titlebar-drag-handle" style="flex: 1; height: 100%;"></div>
     <div class="titlebar-actions">
@@ -494,7 +494,7 @@
                   <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
                   <div style="display: flex; gap: 12px; align-items: stretch;">
                     <code id="overlay-url-display"
-                      style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/</code>
+                      style="flex: 1; min-width: 0; background: var(--surface-1); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid var(--glass-border); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/</code>
                     <button class="btn-ai-action secondary" id="btn-copy-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
                   </div>
                 </div>
@@ -504,13 +504,13 @@
                   <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">2. 가사 전용 오버레이 (가사만 2줄 출력)</label>
                   <div style="display: flex; gap: 12px; align-items: stretch;">
                     <code id="lyrics-overlay-url-display"
-                      style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/lyrics</code>
+                      style="flex: 1; min-width: 0; background: var(--surface-1); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid var(--glass-border); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/lyrics</code>
                     <button class="btn-ai-action secondary" id="btn-copy-lyrics-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
                   </div>
                 </div>
                 
                 <!-- Guide Box -->
-                <div style="padding: 12px 14px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.1);">
+                <div style="padding: 12px 14px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--glass-border);">
                   <div style="display: flex; align-items: center; gap: 8px; color: var(--accent-primary); font-size: 0.8rem; font-weight: 700; margin-bottom: 6px;">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                     OBS 브라우저 소스 설정 가이드
@@ -529,6 +529,42 @@
         <!-- 설정 페이지 -->
         <div class="tab-content" id="settings-page" style="display: none; padding: 0 30px 30px 30px;">
           <div class="settings-container">
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"></circle>
+                  <path d="M12 1v2"></path>
+                  <path d="M12 21v2"></path>
+                  <path d="M4.22 4.22l1.42 1.42"></path>
+                  <path d="M18.36 18.36l1.42 1.42"></path>
+                  <path d="M1 12h2"></path>
+                  <path d="M21 12h2"></path>
+                  <path d="M4.22 19.78l1.42-1.42"></path>
+                  <path d="M18.36 5.64l1.42-1.42"></path>
+                </svg>
+                <h3>테마</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">앱 테마</h2>
+                  <div class="ai-model-desc">다크/라이트 모드를 즉시 전환하고, 선택값은 앱 재실행 후에도 유지됩니다.</div>
+                </div>
+                <div class="ai-actions-right">
+                  <div class="custom-select" id="theme-mode-dropdown" style="width: 100%; min-width: 0;">
+                    <div class="select-trigger">
+                      <span class="selected-text">다크 모드</span>
+                      <span class="select-arrow"></span>
+                    </div>
+                    <div class="select-options">
+                      <div class="option-item selected" data-value="dark">다크 모드</div>
+                      <div class="option-item" data-value="light">라이트 모드</div>
+                    </div>
+                    <input type="hidden" id="theme-mode-select" value="dark">
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <section class="settings-group">
               <div class="group-header">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -833,6 +869,13 @@
     <div class="context-menu-item" id="menu-delete-mr">MR 삭제</div>
     <div class="context-menu-item" id="menu-edit">정보 수정</div>
     <div class="context-menu-item" id="menu-delete">삭제</div>
+    <div class="context-menu-separator" id="menu-input-separator"></div>
+    <div class="context-menu-item" id="menu-undo">실행 취소</div>
+    <div class="context-menu-item" id="menu-redo">다시 실행</div>
+    <div class="context-menu-item" id="menu-cut">잘라내기</div>
+    <div class="context-menu-item" id="menu-copy">복사</div>
+    <div class="context-menu-item" id="menu-paste">붙여넣기</div>
+    <div class="context-menu-item" id="menu-select-all">모두 선택</div>
   </div>
 
   <div id="notification-container" class="notification-container"></div>
@@ -1007,8 +1050,8 @@
               <col>
               <col>
               <col>
-              <col style="width: 80px;">
-              <col style="width: 80px;">
+              <col style="width: 88px;">
+              <col style="width: 96px;">
             </colgroup>
             <thead>
               <tr>
@@ -1066,7 +1109,7 @@
                 <label>분류</label>
                 <div class="custom-select-wrapper" style="width: 100%;">
                   <select id="curation-category" class="custom-select-native"
-                    style="width: 100%; padding: 10px; border-radius: 8px; background: #1a1a1a; color: white; border: 1px solid rgba(255,255,255,0.1);">
+                    style="width: 100%; padding: 10px; border-radius: 8px; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--glass-border);">
                     <option value="genre">장르 (Genre)</option>
                     <option value="tag">태그 (Tag)</option>
                   </select>

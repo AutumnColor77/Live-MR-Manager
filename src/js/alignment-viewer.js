@@ -76,15 +76,15 @@ export class ForcedAlignmentViewer {
                         </div>
                         <div class="waveform-canvas-container" style="position: relative;">
                             <canvas id="waveform-canvas"></canvas>
-                            <div id="waveform-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); flex-direction: column; justify-content: center; align-items: center; z-index: 10; border-radius: 8px;">
+                            <div id="waveform-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--overlay-bg); flex-direction: column; justify-content: center; align-items: center; z-index: 10; border-radius: 8px;">
                                 <div class="loader-spinner" style="position: relative; width: 48px; height: 48px; margin-bottom: 12px;">
-                                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#4a9eff" stroke-width="3" style="animation: waveform-spin 1s linear infinite;">
+                                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--accent-primary)" stroke-width="3" style="animation: waveform-spin 1s linear infinite;">
                                         <circle cx="12" cy="12" r="10" stroke-opacity="0.2" />
                                         <path d="M12 2a10 10 0 0 1 10 10" />
                                     </svg>
                                 </div>
-                                <div id="loader-text" style="color: white; font-size: 0.9rem; font-weight: 500;"></div>
-                                <div id="loader-progress" style="margin-top: 8px; color: #4a9eff; font-family: monospace; font-size: 0.8rem; display: none;">0%</div>
+                                <div id="loader-text" style="color: var(--text-main); font-size: 0.9rem; font-weight: 500;"></div>
+                                <div id="loader-progress" style="margin-top: 8px; color: var(--accent-primary); font-family: monospace; font-size: 0.8rem; display: none;">0%</div>
                                 <style>
                                     @keyframes waveform-spin { 100% { transform: rotate(360deg); } }
                                 </style>
@@ -662,6 +662,23 @@ export class ForcedAlignmentViewer {
 
         if (this.state.duration <= 0) return;
 
+        const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const palette = theme === 'light'
+            ? {
+                segmentFillActive: 'rgba(154, 107, 63, 0.24)',
+                segmentFillIdle: 'rgba(154, 107, 63, 0.1)',
+                segmentBorder: 'rgba(154, 107, 63, 0.45)',
+                segmentHover: 'rgba(154, 107, 63, 0.8)',
+                waveformStroke: 'rgba(79, 64, 50, 0.55)',
+            }
+            : {
+                segmentFillActive: 'rgba(74, 158, 255, 0.3)',
+                segmentFillIdle: 'rgba(74, 158, 255, 0.1)',
+                segmentBorder: 'rgba(74, 158, 255, 0.3)',
+                segmentHover: '#4a9eff',
+                waveformStroke: 'rgba(255,255,255,0.2)',
+            };
+
         this.updateScrollbar();
 
         const visibleDuration = this.state.duration / this.state.zoomLevel;
@@ -675,11 +692,11 @@ export class ForcedAlignmentViewer {
             const x2 = this.timeToX(seg.end);
 
             // Fill background
-            this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? 'rgba(74, 158, 255, 0.3)' : 'rgba(74, 158, 255, 0.1)';
+            this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? palette.segmentFillActive : palette.segmentFillIdle;
             this.ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
 
             // Default subtle boundary lines
-            this.ctx.strokeStyle = 'rgba(74, 158, 255, 0.3)';
+            this.ctx.strokeStyle = palette.segmentBorder;
             this.ctx.lineWidth = 1;
             [x1, x2].forEach(bx => {
                 if (bx >= 0 && bx <= width) {
@@ -693,7 +710,7 @@ export class ForcedAlignmentViewer {
             // Boundary Highlighting (on hover)
             const ht = this.state.hoveringTarget;
             if (ht && ht.index === idx) {
-                this.ctx.strokeStyle = '#4a9eff';
+                this.ctx.strokeStyle = palette.segmentHover;
                 this.ctx.lineWidth = 2;
                 const bx = ht.type === 'start' ? x1 : x2;
                 this.ctx.beginPath();
@@ -724,7 +741,7 @@ export class ForcedAlignmentViewer {
         // 2. Waveform
         if (this.state.waveformPoints) {
             this.ctx.beginPath();
-            this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            this.ctx.strokeStyle = palette.waveformStroke;
             const points = this.state.waveformPoints;
             for (let i = 0; i < width; i++) {
                 const targetTime = this.xToTime(i);

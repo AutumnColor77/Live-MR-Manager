@@ -1,6 +1,6 @@
 [package]
 name = "tauri-app"
-version = "0.4.5"
+version = "0.4.7"
 description = "Live MR Manager"
 authors = ["you"]
 edition = "2021"

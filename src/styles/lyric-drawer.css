@@ -19,7 +19,7 @@
     height: 90px;
     background: var(--accent-primary);
     background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
-    color: white;
+    color: var(--text-inverse);
     border: none;
     border-radius: 12px 0 0 12px;
     cursor: pointer;
@@ -86,7 +86,7 @@
 }
 
 .drawer-resizer:hover {
-    background: rgba(59, 130, 246, 0.25);
+    background: rgb(var(--accent-rgb) / 0.25);
 }
 
 .drawer-resizer::after {
@@ -150,7 +150,7 @@ body.drawer-open .song-grid {
 .drawer-header h2 {
     font-size: 1rem;
     font-weight: 800;
-    color: #fff;
+    color: var(--text-main);
     margin: 0;
     letter-spacing: 0.5px;
 }
@@ -187,13 +187,13 @@ body.drawer-open .song-grid {
 }
 
 .drawer-lyric-item.active {
-    background: rgba(74, 158, 255, 0.12);
+    background: rgb(var(--accent-rgb) / 0.12);
     border-color: var(--accent-primary);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.1);
+    box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.1);
 }
 
 .drawer-lyric-item.active .lyric-text {
-    color: #fff;
+    color: var(--text-main);
     font-weight: 700;
 }
 

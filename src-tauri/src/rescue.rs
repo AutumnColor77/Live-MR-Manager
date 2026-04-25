@@ -1,9 +1,17 @@
 use tauri::{AppHandle, Manager};
 use std::path::{Path, PathBuf};
 use crate::audio_player::sys_log;
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RescueStats {
+    pub scanned: usize,
+    pub recovered: usize,
+    pub failed: usize,
+}
 
 #[tauri::command]
-pub async fn run_local_rescue(app: AppHandle) -> Result<usize, String> {
+pub async fn run_local_rescue(app: AppHandle) -> Result<RescueStats, String> {
     let target_dir = "E:\\방송용\\MR";
     let path = PathBuf::from(target_dir);
     if !path.exists() {
@@ -31,22 +39,31 @@ pub async fn run_local_rescue(app: AppHandle) -> Result<usize, String> {
 
     let _ = visit_dirs(&path, &mut files);
 
-    let mut count = 0;
+    let mut scanned = 0usize;
+    let mut recovered = 0usize;
+    let mut failed = 0usize;
     for f_path in files {
+        scanned += 1;
         // We need to call get_audio_metadata from crate::lib or re-implement it.
         // For simplicity and to avoid circular deps, let's just re-implement the call.
         if let Ok(_) = crate::library::get_audio_metadata(f_path).await {
-            count += 1;
+            recovered += 1;
+        } else {
+            failed += 1;
         }
     }
 
     let _ = crate::metadata_fetcher::sync_dictionary_to_db(app).await;
 
-    Ok(count)
+    Ok(RescueStats {
+        scanned,
+        recovered,
+        failed,
+    })
 }
 
 #[tauri::command]
-pub async fn run_cache_rescue(app: AppHandle) -> Result<usize, String> {
+pub async fn run_cache_rescue(app: AppHandle) -> Result<RescueStats, String> {
     let paths = app.state::<crate::state::AppPaths>();
     let separated_dir = &paths.separated;
     
@@ -56,10 +73,13 @@ pub async fn run_cache_rescue(app: AppHandle) -> Result<usize, String> {
         return Err("Cache directory not found.".into());
     }
 
-    let mut count = 0;
+    let mut scanned = 0usize;
+    let mut recovered = 0usize;
+    let mut failed = 0usize;
     if let Ok(entries) = std::fs::read_dir(separated_dir) {
         for entry in entries.flatten() {
             if entry.path().is_dir() {
+                scanned += 1;
                 if let Some(folder_name) = entry.file_name().to_str() {
                     // Decode folder name to get original path/URL
                     if let Ok(decoded_path) = urlencoding::decode(folder_name) {
@@ -69,13 +89,16 @@ pub async fn run_cache_rescue(app: AppHandle) -> Result<usize, String> {
                         // Call library to fetch metadata and register in DB
                         match crate::library::get_audio_metadata(path_str.clone()).await {
                             Ok(_) => {
-                                count += 1;
+                                recovered += 1;
                                 sys_log(&format!("[Rescue] Successfully recovered: {}", path_str));
                             },
                             Err(e) => {
+                                failed += 1;
                                 sys_log(&format!("[Rescue] Failed to recover {}: {}", path_str, e));
                             }
                         }
+                    } else {
+                        failed += 1;
                     }
                 }
             }
@@ -83,6 +106,10 @@ pub async fn run_cache_rescue(app: AppHandle) -> Result<usize, String> {
     }
     
     let _ = crate::metadata_fetcher::sync_dictionary_to_db(app).await;
-    Ok(count)
+    Ok(RescueStats {
+        scanned,
+        recovered,
+        failed,
+    })
 }
 

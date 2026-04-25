@@ -52,7 +52,7 @@ body .song-grid.grid-mode .song-card .song-info-content {
 body .song-grid.grid-mode .song-card .song-name {
   font-size: 15px !important; /* v0.6.2 정밀 수치 */
   font-weight: 700 !important;
-  color: #fff !important;
+  color: var(--text-main) !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -62,7 +62,7 @@ body .song-grid.grid-mode .song-card .song-name {
 body .song-grid.grid-mode .song-card .song-artist-badge {
   font-size: 13px !important;
   color: var(--accent-primary) !important;
-  background: rgba(59, 130, 246, 0.1) !important;
+  background: rgb(var(--accent-rgb) / 0.1) !important;
   padding: 2px 10px !important;
   border-radius: 4px !important;
   width: fit-content !important;

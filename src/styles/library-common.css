@@ -14,9 +14,9 @@
 }
 
 .category-badge {
-  background: rgba(59, 130, 246, 0.15) !important;
+  background: rgb(var(--accent-rgb) / 0.15) !important;
   color: var(--accent-primary) !important;
-  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  border: 1px solid rgb(var(--accent-rgb) / 0.2) !important;
 }
 
 .genre-badge {
@@ -36,7 +36,7 @@
   position: absolute;
   top: 10px;
   right: 10px;
-  color: #fff;
+  color: var(--text-inverse);
   font-size: 0.65rem;
   font-weight: 900;
   padding: 3px 8px;
@@ -55,8 +55,8 @@
 }
 
 .status-badge.processing {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5);
+  background: var(--accent-gradient);
+  box-shadow: 0 4px 15px rgb(var(--accent-rgb) / 0.5);
   animation: processing-pulse 1.5s infinite;
 }
 
@@ -129,12 +129,12 @@
 
 .song-card.active {
   border-color: var(--accent-primary) !important;
-  background: rgba(59, 130, 246, 0.08) !important;
+  background: rgb(var(--accent-rgb) / 0.08) !important;
 }
 
 .song-card.selected {
   border-color: var(--accent-primary) !important;
-  background: rgba(59, 130, 246, 0.12) !important;
+  background: rgb(var(--accent-rgb) / 0.12) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 20px var(--accent-glow) !important;
   transform: translateY(-8px) scale(1.03) !important;
   z-index: 10 !important;

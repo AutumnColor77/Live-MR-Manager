@@ -7,6 +7,151 @@ import { invoke } from '../tauri-bridge.js';
 
 let audioSettingsSaveTimer = null;
 
+function isTextEditableTarget(target) {
+  if (!target || !(target instanceof Element)) return false;
+  const editable = target.closest("input, textarea, [contenteditable='true']");
+  if (!editable) return false;
+  if (editable instanceof HTMLInputElement) {
+    const unsupportedTypes = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "file", "image", "color"]);
+    return !unsupportedTypes.has((editable.type || "").toLowerCase());
+  }
+  return true;
+}
+
+function setMenuItemState(item, enabled) {
+  if (!item) return;
+  item.classList.toggle("disabled", !enabled);
+}
+
+async function runInputAction(action, editable) {
+  editable?.focus?.();
+  switch (action) {
+    case "undo":
+      document.execCommand("undo");
+      return;
+    case "redo":
+      document.execCommand("redo");
+      return;
+    case "cut":
+      document.execCommand("cut");
+      return;
+    case "copy":
+      document.execCommand("copy");
+      return;
+    case "paste": {
+      const text = await navigator.clipboard.readText();
+      if (editable instanceof HTMLInputElement || editable instanceof HTMLTextAreaElement) {
+        const start = editable.selectionStart ?? editable.value.length;
+        const end = editable.selectionEnd ?? editable.value.length;
+        editable.setRangeText(text, start, end, "end");
+        editable.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (editable?.isContentEditable) {
+        document.execCommand("insertText", false, text);
+      }
+      return;
+    }
+    case "selectAll":
+      if (editable instanceof HTMLInputElement || editable instanceof HTMLTextAreaElement) {
+        editable.select();
+      } else if (editable?.isContentEditable) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(editable);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      return;
+    default:
+      return;
+  }
+}
+
+function showInputContextMenu(event, editable) {
+  if (!elements.contextMenu) return;
+
+  const songMenuIds = ["menu-play", "menu-separate", "menu-delete-mr", "menu-edit", "menu-delete"];
+  const inputMenuIds = [
+    "menu-input-separator",
+    "menu-undo",
+    "menu-redo",
+    "menu-cut",
+    "menu-copy",
+    "menu-paste",
+    "menu-select-all",
+  ];
+
+  songMenuIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+  inputMenuIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = id === "menu-input-separator" ? "block" : "block";
+  });
+
+  const menuUndo = document.getElementById("menu-undo");
+  const menuRedo = document.getElementById("menu-redo");
+  const menuCut = document.getElementById("menu-cut");
+  const menuCopy = document.getElementById("menu-copy");
+  const menuPaste = document.getElementById("menu-paste");
+  const menuSelectAll = document.getElementById("menu-select-all");
+
+  const hasValue = (editable.value?.length ?? editable.textContent?.length ?? 0) > 0;
+  const hasSelection =
+    editable instanceof HTMLInputElement || editable instanceof HTMLTextAreaElement
+      ? (editable.selectionStart ?? 0) !== (editable.selectionEnd ?? 0)
+      : !!window.getSelection()?.toString();
+  const readOnly = !!editable.readOnly || editable.getAttribute?.("contenteditable") === "false";
+
+  setMenuItemState(menuUndo, !readOnly);
+  setMenuItemState(menuRedo, !readOnly);
+  setMenuItemState(menuCut, !readOnly && hasSelection);
+  setMenuItemState(menuCopy, hasSelection);
+  setMenuItemState(menuPaste, !readOnly);
+  setMenuItemState(menuSelectAll, hasValue);
+
+  const bindAction = (el, action) => {
+    if (!el) return;
+    el.onclick = async () => {
+      if (el.classList.contains("disabled")) return;
+      const { showNotification } = await import("../utils.js");
+      try {
+        await runInputAction(action, editable);
+      } catch (err) {
+        if (action === "paste") {
+          showNotification("붙여넣기에 실패했습니다. (클립보드 접근 권한 확인)", "warning");
+        }
+      } finally {
+        elements.contextMenu.classList.remove("active");
+        elements.contextMenu.style.display = "none";
+      }
+    };
+  };
+
+  bindAction(menuUndo, "undo");
+  bindAction(menuRedo, "redo");
+  bindAction(menuCut, "cut");
+  bindAction(menuCopy, "copy");
+  bindAction(menuPaste, "paste");
+  bindAction(menuSelectAll, "selectAll");
+
+  const menuWidth = 200;
+  const menuHeight = 260;
+  let x = event.clientX;
+  let y = event.clientY;
+  const winW = window.innerWidth;
+  const winH = window.innerHeight;
+  if (x + menuWidth > winW) x = winW - menuWidth - 10;
+  if (y + menuHeight > winH) y = winH - menuHeight - 10;
+  if (x < 10) x = 10;
+  if (y < 10) y = 10;
+
+  elements.contextMenu.style.top = `${y}px`;
+  elements.contextMenu.style.left = `${x}px`;
+  elements.contextMenu.style.display = "flex";
+  elements.contextMenu.classList.add("active");
+}
+
 function persistCurrentTrackAudioSettings(partial) {
   const currentPath = state.currentTrack?.path;
   if (!currentPath) return;
@@ -31,6 +176,13 @@ function persistCurrentTrackAudioSettings(partial) {
 }
 
 export function initControlListeners() {
+  document.addEventListener("contextmenu", (e) => {
+    if (!isTextEditableTarget(e.target)) return;
+    e.preventDefault();
+    const editable = e.target.closest("input, textarea, [contenteditable='true']");
+    showInputContextMenu(e, editable);
+  });
+
   // Playback Toggle
   if (elements.togglePlayBtn) {
     elements.togglePlayBtn.onclick = async () => {
@@ -319,17 +471,69 @@ export function initControlListeners() {
 
   // YouTube Fetch
   if (elements.ytFetchBtn && elements.ytUrlInput) {
+    const extractYoutubeVideoId = (raw) => {
+      if (!raw || typeof raw !== "string") return null;
+      try {
+        const parsed = new URL(raw.trim());
+        const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+        if (host === "youtu.be") {
+          return parsed.pathname.split("/").filter(Boolean)[0] || null;
+        }
+        if (host.endsWith("youtube.com")) {
+          if (parsed.pathname === "/watch") {
+            return parsed.searchParams.get("v");
+          }
+          if (parsed.pathname.startsWith("/shorts/") || parsed.pathname.startsWith("/embed/")) {
+            return parsed.pathname.split("/").filter(Boolean)[1] || null;
+          }
+        }
+      } catch (_) {
+        // Non-URL or invalid URL, fallback below
+      }
+      return null;
+    };
+
+    const normalizeYoutubeKey = (raw) => {
+      const videoId = extractYoutubeVideoId(raw);
+      if (videoId) return `yt:${videoId}`;
+      return String(raw || "").trim().toLowerCase();
+    };
+
+    const isDuplicateYoutubeTrack = (requestedUrl, metadata) => {
+      const candidateKeys = new Set([
+        normalizeYoutubeKey(requestedUrl),
+        normalizeYoutubeKey(metadata?.path),
+      ]);
+
+      return (state.songLibrary || []).some((song) => {
+        if (!song) return false;
+        if (metadata?.path && song.path === metadata.path) return true;
+
+        const songKey = normalizeYoutubeKey(song.path);
+        if (candidateKeys.has(songKey)) return true;
+
+        return false;
+      });
+    };
+
     elements.ytFetchBtn.onclick = async () => {
       const url = elements.ytUrlInput.value.trim();
       if (!url) return;
       elements.ytFetchBtn.classList.add("loading-btn");
+      elements.ytFetchBtn.disabled = true;
       try {
         const { getAudioMetadata, saveLibrary } = await import('../audio.js');
         const metadata = await getAudioMetadata(url);
+
+        const { showNotification } = await import('../utils.js');
+        if (isDuplicateYoutubeTrack(url, metadata)) {
+          showNotification("이미 등록된 곡입니다.", "warning");
+          return;
+        }
+
         state.songLibrary.push(metadata);
         await saveLibrary(state.songLibrary);
         elements.ytUrlInput.value = "";
-        const { showNotification } = await import('../utils.js');
         showNotification("추가되었습니다.", "success");
         const { renderLibrary } = await import('../ui/library.js');
         renderLibrary();
@@ -338,6 +542,7 @@ export function initControlListeners() {
         showNotification("정보를 가져오는데 실패했습니다.", "error");
       } finally {
         elements.ytFetchBtn.classList.remove("loading-btn");
+        elements.ytFetchBtn.disabled = false;
       }
     };
     
@@ -454,9 +659,19 @@ export function initControlListeners() {
       
       try {
         // This command may be unavailable on some builds; surface a clear error.
-        const count = await invoke("run_cache_rescue");
+        const result = await invoke("run_cache_rescue");
         const { loadLibrary } = await import('../audio.js');
-        showNotification(`${count}곡의 데이터를 성공적으로 복구했습니다.`, "success");
+        const stats = typeof result === "number"
+          ? { scanned: result, recovered: result, failed: 0 }
+          : {
+              scanned: Number(result?.scanned || 0),
+              recovered: Number(result?.recovered || 0),
+              failed: Number(result?.failed || 0),
+            };
+        showNotification(
+          `복구 완료: 스캔 ${stats.scanned}곡 / 복구 ${stats.recovered}곡 / 실패 ${stats.failed}곡`,
+          stats.failed > 0 ? "warning" : "success"
+        );
         state.songLibrary = await loadLibrary() || [];
         renderLibrary();
       } catch (err) {
@@ -465,6 +680,37 @@ export function initControlListeners() {
         elements.btnRunRescue.classList.remove("loading-btn");
       }
     };
+  }
+
+  if (elements.themeModeSelect) {
+    const syncThemeToUi = (mode) => {
+      const dropdown = document.getElementById("theme-mode-dropdown");
+      if (!dropdown) return;
+      const selectedText = dropdown.querySelector(".selected-text");
+      const options = dropdown.querySelectorAll(".option-item");
+      options.forEach((opt) => {
+        const selected = opt.dataset.value === mode;
+        opt.classList.toggle("selected", selected);
+        if (selected && selectedText) selectedText.textContent = opt.textContent;
+      });
+    };
+
+    const initialMode = state.themeMode || localStorage.getItem("themeMode") || "dark";
+    elements.themeModeSelect.value = initialMode;
+    syncThemeToUi(initialMode);
+
+    elements.themeModeSelect.addEventListener("change", async (e) => {
+      const mode = e.target.value === "light" ? "light" : "dark";
+      const applyTheme = window.applyAppTheme;
+      if (typeof applyTheme === "function") {
+        applyTheme(mode, { persist: true });
+      } else {
+        document.documentElement.setAttribute("data-theme", mode);
+        localStorage.setItem("themeMode", mode);
+      }
+      state.themeMode = mode;
+      syncThemeToUi(mode);
+    });
   }
 
   if (elements.toggleBroadcastMode) {

@@ -40,7 +40,7 @@ body .song-grid.list-mode .song-card.list-row .col-info {
 body .song-grid.list-mode .song-card.list-row .song-name {
   font-size: 1.05rem !important;
   font-weight: 700 !important;
-  color: #fff !important;
+  color: var(--text-main) !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;

@@ -12,6 +12,7 @@ export const state = {
   editingSongIndex: -1,
   selectedTrackIndex: -1, // Currently highlighted but not playing
   viewMode: localStorage.getItem("viewMode") || "grid",
+  themeMode: localStorage.getItem("themeMode") || "dark",
   masterVolume: (() => {
     const raw = parseFloat(localStorage.getItem("masterVolume") || "100");
     if (!Number.isFinite(raw)) return 100;

@@ -1,7 +1,7 @@
 /* --- Button Components (Restored) --- */
 .primary-btn {
   background: var(--accent-gradient);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   padding: 0 24px;
   height: var(--btn-h-md);
@@ -22,9 +22,28 @@
   box-shadow: 0 8px 25px var(--accent-glow);
 }
 
+.primary-btn.loading-btn {
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.primary-btn.loading-btn::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--text-inverse) 35%, transparent);
+  border-top-color: var(--text-inverse);
+  border-radius: 50%;
+  animation: btnSpin 0.7s linear infinite;
+}
+
+@keyframes btnSpin {
+  to { transform: rotate(360deg); }
+}
+
 .secondary-btn {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: var(--surface-2);
+  color: var(--text-main);
   border: 1px solid var(--glass-border);
   padding: 0 24px;
   height: var(--btn-h-md);
@@ -39,7 +58,7 @@
 }
 
 .secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-3);
 }
 
 .btn-sm { height: var(--btn-h-sm); padding: 0 16px; font-size: 0.8rem; border-radius: 8px; }
@@ -68,7 +87,7 @@
   align-items: center;
   background: rgba(30, 64, 175, 0.2);
   color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  border: 1px solid rgb(var(--accent-rgb) / 0.3);
   line-height: 1.2;
   white-space: normal;
   text-align: left;
@@ -109,16 +128,23 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  color: #fff;
+  color: var(--text-main);
   font-size: 0.95rem;
   font-weight: 600;
 }
 
 .select-arrow {
-  width: 10px;
-  height: 6px;
-  background: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center;
-  transition: transform 0.3s;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.3s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.custom-select:hover .select-arrow {
+  border-color: var(--text-main);
 }
 
 .select-options {
@@ -126,7 +152,7 @@
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  background: rgba(18, 18, 24, 0.95);
+  background: var(--menu-bg);
   backdrop-filter: blur(25px);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
@@ -153,15 +179,15 @@
 }
 
 .option-item:hover, .option-item.selected {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: var(--surface-2);
+  color: var(--text-main);
 }
 
 /* --- Context Menu --- */
 .context-menu {
   position: fixed;
   z-index: 10000;
-  background: rgba(18, 18, 24, 0.95);
+  background: var(--menu-bg);
   backdrop-filter: blur(25px) saturate(180%);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
@@ -189,7 +215,19 @@
 
 .context-menu-item:hover {
   background: var(--glass-bg);
-  color: #fff;
+  color: var(--text-main);
+}
+
+.context-menu-item.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--glass-border);
+  display: none;
 }
 
 #menu-delete:hover {
@@ -205,7 +243,7 @@
   width: 100%;
   max-height: 186px;
   overflow-y: auto;
-  background: rgba(10, 10, 15, 0.98);
+  background: var(--menu-bg);
   backdrop-filter: blur(35px) saturate(210%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
@@ -228,7 +266,7 @@
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  color: #eee;
+  color: var(--text-main);
   font-size: 0.9rem;
   transition: all 0.2s;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
@@ -240,8 +278,8 @@
 
 .suggestion-item:hover,
 .suggestion-item.selected {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--surface-3);
+  color: var(--text-main);
 }
 
 .suggestion-text {
@@ -276,8 +314,8 @@
 
 .search-box:focus-within {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
-  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.15);
+  background: var(--surface-2);
 }
 
 .search-box svg {
@@ -295,7 +333,7 @@
   background: transparent;
   border: none;
   padding: 0;
-  color: #fff;
+  color: var(--text-main);
   font-size: 0.9rem;
   font-weight: 500;
   outline: none;
@@ -303,7 +341,7 @@
 }
 
 .search-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-dim);
   font-weight: 500;
 }
 

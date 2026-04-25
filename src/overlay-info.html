@@ -12,9 +12,20 @@
       --overlay-font: 'Inter', 'Noto Sans KR', sans-serif;
       --overlay-rounding: 20px;
       --glass-bg: rgba(15, 15, 20, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.15);
       --text-main: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.6);
+      --thumb-fallback: #222;
       --enter-gap-x: 120px;
       --enter-gap-y: 80px;
+    }
+
+    html[data-theme="light"] {
+      --glass-bg: rgba(255, 255, 255, 0.82);
+      --glass-border: rgba(15, 23, 42, 0.15);
+      --text-main: #0f172a;
+      --text-muted: rgba(15, 23, 42, 0.62);
+      --thumb-fallback: #e2e8f0;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,7 +47,7 @@
       background: var(--glass-bg);
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      border: 1px solid var(--glass-border);
       padding: 16px 24px;
       border-radius: var(--overlay-rounding);
       gap: 20px;
@@ -114,7 +125,7 @@
       height: 100%;
       border-radius: 14px;
       object-fit: cover;
-      background: #222;
+      background: var(--thumb-fallback);
     }
 
     .info {
@@ -153,14 +164,14 @@
     #title {
       font-size: 24px;
       font-weight: 900;
-      color: #fff;
+      color: var(--text-main);
       line-height: 1.2;
     }
 
     #artist {
       font-size: 16px;
       font-weight: 600;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--text-muted);
       line-height: 1.2;
       margin-top: 2px;
     }
@@ -180,6 +191,8 @@
 
   <script>
     const container = document.getElementById('container');
+    const savedTheme = localStorage.getItem('themeMode');
+    document.documentElement.setAttribute('data-theme', savedTheme === 'light' ? 'light' : 'dark');
     const thumbWrap = document.getElementById('thumb-wrap');
     const thumb = document.getElementById('thumb');
     const activeAnimations = {};
@@ -385,6 +398,10 @@
       document.body.style.height = `${PREVIEW_STAGE_HEIGHT}px`;
     }
     connectWS();
+    window.addEventListener('storage', (event) => {
+      if (event.key !== 'themeMode') return;
+      document.documentElement.setAttribute('data-theme', event.newValue === 'light' ? 'light' : 'dark');
+    });
 
     thumb.onerror = () => {
       if (thumb.src !== DEFAULT_THUMB_URL) {
