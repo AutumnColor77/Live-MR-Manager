@@ -36,6 +36,49 @@ fn clean_lyrics(text: &str) -> String {
     cleaned.to_string()
 }
 
+fn normalize_path_key(path: &str) -> String {
+    path.replace("\\", "/").to_lowercase()
+}
+
+fn extract_youtube_video_id(url: &str) -> Option<String> {
+    let u = url.trim();
+    if let Some(idx) = u.find("youtu.be/") {
+        let tail = &u[idx + "youtu.be/".len()..];
+        let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    if let Some(idx) = u.find("watch?v=") {
+        let tail = &u[idx + "watch?v=".len()..];
+        let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+fn youtube_url_variants(url: &str) -> Vec<String> {
+    let mut variants = Vec::new();
+    let trimmed = url.trim().to_string();
+    if trimmed.is_empty() {
+        return variants;
+    }
+    variants.push(trimmed.clone());
+    variants.push(normalize_path_key(&trimmed));
+
+    if let Some(id) = extract_youtube_video_id(&trimmed) {
+        variants.push(format!("https://youtu.be/{}", id));
+        variants.push(format!("https://www.youtube.com/watch?v={}", id));
+        variants.push(format!("https://youtube.com/watch?v={}", id));
+    }
+
+    variants.sort();
+    variants.dedup();
+    variants
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SeparatedTrack {
     pub name: String,
@@ -788,7 +831,21 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
         if !base_dir.exists() {
             fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
         }
-        base_dir.join("lyric.lrc")
+        let primary = base_dir.join("lyric.lrc");
+        fs::write(&primary, &content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+
+        // Mirror save to common URL variants so future loads find legacy/alternate forms too.
+        for variant in youtube_url_variants(&audio_path) {
+            let mirror_key = urlencoding::encode(&variant).to_string();
+            let mirror_dir = paths.separated.join(&mirror_key);
+            if mirror_dir != base_dir {
+                if !mirror_dir.exists() {
+                    let _ = fs::create_dir_all(&mirror_dir);
+                }
+                let _ = fs::write(mirror_dir.join("lyric.lrc"), &content);
+            }
+        }
+        primary
     } else {
         let audio_file = PathBuf::from(&audio_path);
         if !audio_file.exists() {
@@ -800,7 +857,9 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
         audio_file.with_extension("lrc")
     };
 
-    fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+    if !audio_path.starts_with("http") {
+        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+    }
     let saved_path = lrc_path.to_string_lossy().to_string();
     sys_log(&format!("[Alignment] LRC saved to {}", saved_path));
     Ok(saved_path)
@@ -813,10 +872,12 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
 
     // 1. If it's a URL, prioritize the cache folder
     if audio_path.starts_with("http") {
-        let cache_key = urlencoding::encode(&audio_path).to_string();
-        let cache_dir = paths.separated.join(&cache_key);
-        search_paths.push(cache_dir.join("lyric.lrc"));
-        search_paths.push(cache_dir.join("vocal.lrc"));
+        for key_src in youtube_url_variants(&audio_path) {
+            let cache_key = urlencoding::encode(&key_src).to_string();
+            let cache_dir = paths.separated.join(&cache_key);
+            search_paths.push(cache_dir.join("lyric.lrc"));
+            search_paths.push(cache_dir.join("vocal.lrc"));
+        }
     } else {
         // 2. For local files, check next to original file
         let original_file = PathBuf::from(&audio_path);
@@ -827,6 +888,15 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
         let cache_dir = paths.separated.join(&cache_key);
         search_paths.push(cache_dir.join("lyric.lrc"));
         search_paths.push(cache_dir.join("vocal.lrc"));
+
+        // Local path normalization fallback for legacy entries with different slash/case.
+        let normalized = normalize_path_key(&audio_path);
+        if normalized != audio_path {
+            let norm_key = urlencoding::encode(&normalized).to_string();
+            let norm_cache_dir = paths.separated.join(&norm_key);
+            search_paths.push(norm_cache_dir.join("lyric.lrc"));
+            search_paths.push(norm_cache_dir.join("vocal.lrc"));
+        }
 
         // 4. If current path is already inside a separated folder (e.g. vocal.wav)
         if let Some(parent) = original_file.parent() {

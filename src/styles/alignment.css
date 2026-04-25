@@ -167,6 +167,31 @@
     letter-spacing: -0.02em;
 }
 
+.lyric-sidebar .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.lyric-sidebar .card-header h3 {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.02rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lyric-sidebar .card-header > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
 .waveform-canvas-container {
     height: 160px; /* 고정 높이로 타이트하게 관리 */
     background: rgba(0, 0, 0, 0.5);
@@ -456,12 +481,19 @@ canvas#waveform-canvas {
     font-weight: 800;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .sync-reset-btn:hover {
     background: #ef4444;
     color: #fff;
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+}
+
+.sync-save-status {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 /* Cleanup: Removing AI-related styles */

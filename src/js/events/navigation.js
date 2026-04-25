@@ -114,6 +114,11 @@ export function switchTab(tabId) {
       }
     });
   } else {
+    if (alignmentViewer && typeof alignmentViewer.flushAutoSaveIfNeeded === 'function') {
+      alignmentViewer.flushAutoSaveIfNeeded().catch((err) => {
+        console.error('[Alignment] Auto-save flush failed on tab switch:', err);
+      });
+    }
     elements.viewport?.classList.remove("alignment-mode");
     if (alignmentPage) alignmentPage.style.display = "none";
   }
@@ -131,6 +136,24 @@ export function switchTab(tabId) {
   // Reset scroll position when switching tabs
   if (elements.scrollArea) {
     elements.scrollArea.scrollTop = 0;
+  }
+}
+
+export async function openAlignmentForTrack(path, options = {}) {
+  const forceLoad = options.forceLoad === true;
+  switchTab("alignment");
+
+  await initAlignmentViewer();
+  if (!alignmentViewer || !path) return;
+
+  // Manual navigation from lyric drawer should override existing sync-session track.
+  if (forceLoad || alignmentViewer.state.currentPath !== path) {
+    await alignmentViewer.loadAudio(path);
+    const track = (state.songLibrary || []).find(t => t.path === path);
+    const nameEl = document.getElementById('selected-track-name');
+    if (nameEl) {
+      nameEl.innerText = (track && track.title) ? track.title : "Unknown Title";
+    }
   }
 }
 

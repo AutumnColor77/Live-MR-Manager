@@ -129,6 +129,24 @@ export function initLyricDrawer() {
     // Attach to window for external control if needed, or just export
     window.openLyricDrawer = openDrawer;
     window.closeLyricDrawer = closeDrawer;
+    window.goToLyricSyncForCurrentTrack = async () => {
+        const currentPath = state.currentTrack?.path;
+        if (!currentPath) {
+            if (typeof window.switchToTab === 'function') window.switchToTab('alignment');
+            return;
+        }
+        try {
+            const nav = await import('./events/navigation.js');
+            if (typeof nav.openAlignmentForTrack === 'function') {
+                await nav.openAlignmentForTrack(currentPath, { forceLoad: true });
+            } else if (typeof window.switchToTab === 'function') {
+                window.switchToTab('alignment');
+            }
+        } catch (err) {
+            console.error('[LyricDrawer] Failed to open alignment for current track:', err);
+            if (typeof window.switchToTab === 'function') window.switchToTab('alignment');
+        }
+    };
 
     // Optional: Close drawer on Escape key
     window.addEventListener('keydown', (e) => {
@@ -170,7 +188,7 @@ export function updateLyrics(segments) {
                 <p style="font-size: 0.85rem; opacity: 0.6; line-height: 1.6; margin-bottom: 24px;">
                     이 곡에 등록된 가사 싱크가 없습니다.<br>Lyric Sync 모드에서 가사를 정렬해 보세요.
                 </p>
-                <button class="primary-btn btn-md" style="width: 100%;" onclick="if(window.switchToTab) window.switchToTab('alignment')">
+                <button class="primary-btn btn-md" style="width: 100%;" onclick="if(window.goToLyricSyncForCurrentTrack) window.goToLyricSyncForCurrentTrack()">
                     가사 싱크 등록하러 가기
                 </button>
             </div>

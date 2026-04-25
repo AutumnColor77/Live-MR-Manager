@@ -4,6 +4,14 @@
 
 import { invoke } from './tauri-bridge.js';
 
+function normalizeLyricText(text = '') {
+    return text
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width chars
+        .replace(/\u00A0/g, ' ')               // non-breaking space
+        .replace(/[ \t]+/g, ' ')               // repeated horizontal spaces
+        .trim();
+}
+
 /**
  * Parses a raw LRC string into a segment array
  * @param {string} lrcContent 
@@ -13,9 +21,10 @@ import { invoke } from './tauri-bridge.js';
 export function parseLrc(lrcContent, duration = 0) {
     if (!lrcContent) return [];
     
-    const lines = lrcContent.split('\n');
+    const lines = lrcContent.replace(/\r\n/g, '\n').split('\n');
     const segments = [];
     const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
+    const metadataRegex = /^\[[a-zA-Z]{2,8}\s*:[^\]]*\]$/;
     
     lines.forEach(line => {
         const match = timeRegex.exec(line);
@@ -23,11 +32,16 @@ export function parseLrc(lrcContent, duration = 0) {
             const min = parseInt(match[1]);
             const sec = parseFloat(match[2]);
             const timeStr = match[0];
-            const text = line.replace(timeStr, '').trim();
-            segments.push({ text, start: min * 60 + sec, end: 0 });
+            const text = normalizeLyricText(line.replace(timeStr, ''));
+            if (text) {
+                segments.push({ text, start: min * 60 + sec, end: 0 });
+            }
         } else if (line.trim()) {
             // Lines without timestamps (metadata or raw text without sync)
-            segments.push({ text: line.trim(), start: 0, end: 0 });
+            const normalized = normalizeLyricText(line);
+            if (!normalized) return;
+            if (metadataRegex.test(normalized)) return;
+            segments.push({ text: normalized, start: 0, end: 0 });
         }
     });
     

@@ -202,8 +202,11 @@ export async function selectTrack(index) {
     elements.tempoSlider.value = t;
     elements.tempoVal.textContent = `${parseFloat(t).toFixed(2)}x`;
   }
-  const volSliderInput = document.querySelector(".volume-slider");
-  if (volSliderInput) volSliderInput.value = v;
+  // Track volume should only sync with metadata modal slider, not master volume slider.
+  const editVolSlider = document.getElementById("edit-volume");
+  const editVolVal = document.getElementById("edit-volume-val");
+  if (editVolSlider) editVolSlider.value = v;
+  if (editVolVal) editVolVal.textContent = `${Math.round(v)}`;
 
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
 

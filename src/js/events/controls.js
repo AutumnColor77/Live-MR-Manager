@@ -5,6 +5,31 @@ import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { invoke } from '../tauri-bridge.js';
 
+let audioSettingsSaveTimer = null;
+
+function persistCurrentTrackAudioSettings(partial) {
+  const currentPath = state.currentTrack?.path;
+  if (!currentPath) return;
+
+  const song = state.songLibrary.find((s) => s.path === currentPath);
+  if (!song) return;
+
+  Object.assign(song, partial);
+  Object.assign(state.currentTrack, partial);
+
+  if (audioSettingsSaveTimer) {
+    clearTimeout(audioSettingsSaveTimer);
+  }
+  audioSettingsSaveTimer = setTimeout(async () => {
+    try {
+      const { saveLibrary } = await import('../audio.js');
+      await saveLibrary(state.songLibrary);
+    } catch (err) {
+      console.error("Failed to persist per-track audio settings:", err);
+    }
+  }, 300);
+}
+
 export function initControlListeners() {
   // Playback Toggle
   if (elements.togglePlayBtn) {
@@ -37,9 +62,10 @@ export function initControlListeners() {
   // Sliders with Wheel Support
   if (elements.pitchSlider) {
     elements.pitchSlider.oninput = (e) => {
-      const val = e.target.value;
+      const val = Number.parseFloat(e.target.value);
       if (elements.pitchVal) elements.pitchVal.textContent = val > 0 ? `+${val}` : val;
-      invoke('set_pitch', { semitones: parseFloat(val) });
+      invoke('set_pitch', { semitones: val });
+      persistCurrentTrackAudioSettings({ pitch: val });
     };
 
     elements.pitchSlider.addEventListener("wheel", (e) => {
@@ -67,6 +93,7 @@ export function initControlListeners() {
       const val = parseFloat(e.target.value);
       if (elements.tempoVal) elements.tempoVal.textContent = `${val.toFixed(2)}x`;
       invoke('set_tempo', { ratio: val });
+      persistCurrentTrackAudioSettings({ tempo: val });
     };
 
     elements.tempoSlider.addEventListener("wheel", (e) => {
@@ -833,6 +860,45 @@ export function initControlListeners() {
     updateOverlaySettings(true);
   };
 
+  const syncAllOverlayStylesToBackend = async () => {
+    const saved = localStorage.getItem('overlay-settings');
+    let config = {};
+    try { config = JSON.parse(saved) || {}; } catch (e) {}
+
+    const isForceVisible = config.isForceVisible === true;
+    const targets = ['info', 'lyrics'];
+
+    for (const target of targets) {
+      const defaults = {
+        scale: 1.0,
+        color: target === 'lyrics' ? 'ffffff' : '3b82f6',
+        bgOpacity: 0.6,
+        rounding: 20,
+        bgColor: '0f0f14',
+        font: 'Inter',
+        animationDirection: 'left'
+      };
+      const targetSettings = config[target] || {};
+      const final = { ...defaults, ...targetSettings };
+
+      try {
+        await invoke('update_overlay_style', {
+          target,
+          scale: parseFloat(final.scale) || 1.0,
+          font: final.font || 'Inter',
+          color: String(final.color || defaults.color).replace('#', ''),
+          bgColor: String(final.bgColor || defaults.bgColor).replace('#', ''),
+          bgOpacity: Number.isFinite(final.bgOpacity) ? final.bgOpacity : defaults.bgOpacity,
+          rounding: Number.isFinite(final.rounding) ? final.rounding : defaults.rounding,
+          isForceVisible,
+          animationDirection: final.animationDirection || 'left'
+        });
+      } catch (err) {
+        console.error(`Failed to sync ${target} overlay style:`, err);
+      }
+    }
+  };
+
   // Attach Event Listeners
   [overlayScale, overlayBgOpacity, overlayRounding, toggleOverlayForceVisible].forEach(el => {
     if (!el) return;
@@ -887,6 +953,7 @@ export function initControlListeners() {
   // Initialize immediately
   loadOverlaySettings();
   updateOverlaySettings(true); // Skip saving on initial load
+  syncAllOverlayStylesToBackend();
   requestAnimationFrame(resizeOverlayPreview);
   window.addEventListener('resize', resizeOverlayPreview);
 }

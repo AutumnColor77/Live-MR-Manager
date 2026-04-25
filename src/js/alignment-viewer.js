@@ -28,6 +28,11 @@ export class ForcedAlignmentViewer {
             hoveringTarget: null,
             selectedTarget: null
         };
+        this.autoSaveTimer = null;
+        this.autoSaveDelayMs = 1000;
+        this.isDirty = false;
+        this.isAutoSaving = false;
+        this.lastSavedAt = null;
 
         this.initUI();
         this.setupListeners();
@@ -120,10 +125,10 @@ export class ForcedAlignmentViewer {
                 <aside class="lyric-sidebar">
                     <div class="alignment-card">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <h3>Lyric Sync 결과</h3>
+                            <h3>가사 싱크 결과</h3>
                             <div style="display:flex; gap:8px;">
+                                <span id="sync-save-status" class="sync-save-status" style="min-width:52px; text-align:right; font-size:0.78rem; color:#94a3b8;">저장됨</span>
                                 <button id="reset-sync-btn" class="sync-reset-btn">초기화</button>
-                                <button id="save-lrc-btn" class="sync-save-btn">저장</button>
                             </div>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
@@ -148,7 +153,6 @@ export class ForcedAlignmentViewer {
 
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
-        get('save-lrc-btn').onclick = () => this.saveLrc();
         get('reset-sync-btn').onclick = () => {
             if (confirm('모든 싱크 데이터를 초기화하시겠습니까?')) {
                 this.state.segments.forEach(s => {
@@ -160,6 +164,7 @@ export class ForcedAlignmentViewer {
                 this.renderLyricList();
                 this.drawWaveform();
                 showNotification('싱크 데이터가 초기화되었습니다.', 'info');
+                this.markDirtyAndScheduleSave();
             }
         };
 
@@ -257,6 +262,7 @@ export class ForcedAlignmentViewer {
 
                 this.drawWaveform();
                 this.renderLyricList();
+                this.markDirtyAndScheduleSave();
             }
 
             if (this.state.isPanning) {
@@ -273,6 +279,7 @@ export class ForcedAlignmentViewer {
         });
 
         window.addEventListener('mouseup', () => {
+            const wasResizing = this.state.isResizing;
             if (this.state.isPanning) {
                 this.state.isPanning = false;
                 this.canvas.style.cursor = 'default';
@@ -280,6 +287,9 @@ export class ForcedAlignmentViewer {
             this.state.isScrolling = false;
             this.state.isResizing = false;
             this.state.resizeTarget = null;
+            if (wasResizing) {
+                this.markDirtyAndScheduleSave();
+            }
         });
 
         window.addEventListener('keydown', (e) => {
@@ -316,6 +326,9 @@ export class ForcedAlignmentViewer {
                     e.preventDefault();
                     this.drawWaveform();
                     this.renderLyricList();
+                    if (e.key !== 'Escape' && e.key !== 'Enter') {
+                        this.markDirtyAndScheduleSave();
+                    }
                 }
             } else if (e.code === 'Space') {
                 // Global spacebar tap
@@ -434,6 +447,7 @@ export class ForcedAlignmentViewer {
 
     async loadAudio(path) {
         if (!path) return;
+        await this.flushAutoSaveIfNeeded();
         this.state.currentPath = path;
         this.state.isProcessing = true;
         this.state.currentTime = 0;
@@ -450,6 +464,41 @@ export class ForcedAlignmentViewer {
         if (loaderProgress) loaderProgress.style.display = 'none';
 
         try {
+            // Keep bottom shared playback area consistent with library-selected behavior.
+            const matchedIndex = (state.songLibrary || []).findIndex((song) => song.path === path);
+            const matchedSong = matchedIndex >= 0 ? state.songLibrary[matchedIndex] : null;
+            if (matchedSong) {
+                state.currentTrack = matchedSong;
+                state.selectedTrackIndex = matchedIndex;
+                state.isPlaying = false;
+                state.isLoading = true;
+                state.vocalEnabled = true;
+
+                const elemsMod = await import('./ui/elements.js');
+                const elements = elemsMod.elements || {};
+                if (elements.dockTitle) elements.dockTitle.textContent = matchedSong.title || '제목 정보 없음';
+                if (elements.dockArtist) elements.dockArtist.textContent = matchedSong.artist || '가수 정보 없음';
+                if (elements.dockThumbImg) {
+                    elements.dockThumbImg.src = getThumbnailUrl(matchedSong.thumbnail, matchedSong);
+                    elements.dockThumbImg.style.display = 'block';
+                }
+                if (elements.timeCurrent) elements.timeCurrent.textContent = '0:00';
+                if (elements.timeTotal) elements.timeTotal.textContent = matchedSong.duration || '--:--';
+                if (elements.playbackBar) elements.playbackBar.value = 0;
+                if (elements.progressFill) elements.progressFill.style.width = '0%';
+
+                const ui = await import('./ui/components.js');
+                if (ui.updateThumbnailOverlay) ui.updateThumbnailOverlay();
+                if (ui.updateAiTogglesState) ui.updateAiTogglesState(matchedSong);
+                if (ui.updatePlayButton) ui.updatePlayButton();
+
+                // In lyric sync workflow, always monitor with vocals enabled.
+                const audio = await import('./audio.js');
+                if (audio.toggleAiFeature) {
+                    await audio.toggleAiFeature("vocal", true);
+                }
+            }
+
             console.log("[Alignment] Loading audio:", path);
             // Get duration immediately from backend
             const ms = await this.invoke('play_track', { path, durationMs: 0, playNow: false });
@@ -464,12 +513,23 @@ export class ForcedAlignmentViewer {
             const inputElement = document.getElementById('lyrics-input');
             if (inputElement) inputElement.value = '';
             this.renderLyricList();
+            this.isDirty = false;
+            this.updateSaveStatus('저장됨');
 
             // Try to load existing LRC file
             try {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
                 if (lrcContent && lrcContent.trim()) {
-                    this.state.segments = parseLrc(lrcContent, this.state.duration);
+                    const parsedSegments = parseLrc(lrcContent, this.state.duration);
+                    // Clean up imported lyrics: remove meaningless blank lines and trim noisy spacing.
+                    const normalizedSegments = parsedSegments
+                        .map((seg) => ({
+                            ...seg,
+                            text: (seg.text || '').replace(/\s+/g, ' ').trim()
+                        }))
+                        .filter((seg) => seg.text.length > 0);
+
+                    this.state.segments = normalizedSegments;
 
                     const rawLyrics = this.state.segments.map(s => s.text);
                     if (inputElement) inputElement.value = rawLyrics.join('\n');
@@ -480,6 +540,8 @@ export class ForcedAlignmentViewer {
 
                     this.state.isSyncMode = true;
                     this.renderLyricList();
+                    this.isDirty = false;
+                    this.updateSaveStatus('저장됨');
                 }
             } catch (err) {
                 console.log("[Alignment] LRC load failed or not found:", err);
@@ -507,12 +569,22 @@ export class ForcedAlignmentViewer {
             })
                 .finally(() => {
                     this.state.isProcessing = false;
+                    state.isLoading = false;
+                    import('./ui/components.js').then((ui) => {
+                        if (ui.updateThumbnailOverlay) ui.updateThumbnailOverlay();
+                        if (ui.updatePlayButton) ui.updatePlayButton();
+                    });
                     if (loader) loader.style.display = 'none';
                 });
 
         } catch (e) {
             console.error("[Alignment] loadAudio general failure:", e);
             this.state.isProcessing = false;
+            state.isLoading = false;
+            import('./ui/components.js').then((ui) => {
+                if (ui.updateThumbnailOverlay) ui.updateThumbnailOverlay();
+                if (ui.updatePlayButton) ui.updatePlayButton();
+            });
             if (loader) loader.style.display = 'none';
             showNotification('오디오 로드 실패: ' + e, 'error');
         }
@@ -799,18 +871,25 @@ export class ForcedAlignmentViewer {
 
 
     parseLyrics() {
-        const lyrics = document.getElementById('lyrics-input').value.trim();
-        if (!lyrics) {
+        const rawLyrics = (document.getElementById('lyrics-input').value || '').replace(/\r\n/g, '\n');
+        const lines = rawLyrics.split('\n');
+        const hasAnyText = lines.some(l => l.trim().length > 0);
+
+        if (!hasAnyText) {
             this.state.segments = [];
             this.state.currentSyncIndex = 0;
             this.renderLyricList();
+            this.markDirtyAndScheduleSave();
             return;
         }
 
         const oldSegments = this.state.segments || [];
-        const newLines = lyrics.split('\n').filter(l => l.trim());
+        // Ignore meaningless blank lines from pasted/original lyric text.
+        const newLines = lines
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
 
-        const newSegments = newLines.map(text => {
+        const newSegments = newLines.map((text) => {
             // 1순위: 텍스트가 완전히 동일한 기존 라인을 찾아 시간 복사
             const exactMatch = oldSegments.find(s => s.text === text && !s._used);
             if (exactMatch) {
@@ -845,12 +924,17 @@ export class ForcedAlignmentViewer {
         }
 
         this.renderLyricList();
+        this.markDirtyAndScheduleSave();
     }
 
     handleTap() {
         // 일시정지 상태에서도 수동으로 찍을 수 있도록 허용 (단, 음원은 로드되어 있어야 함)
         if (this.state.duration <= 0) return;
-        const idx = this.state.currentSyncIndex;
+        let idx = this.state.currentSyncIndex;
+        while (idx < this.state.segments.length && !(this.state.segments[idx].text || '').trim()) {
+            idx++;
+        }
+        this.state.currentSyncIndex = idx;
         if (idx < 0 || idx >= this.state.segments.length) return;
 
         this.state.segments[idx].start = this.state.currentTime;
@@ -861,6 +945,7 @@ export class ForcedAlignmentViewer {
         this.state.segments[idx].end = this.state.duration;
         this.state.currentSyncIndex++;
         this.renderLyricList();
+        this.markDirtyAndScheduleSave();
     }
 
     renderLyricList() {
@@ -869,7 +954,7 @@ export class ForcedAlignmentViewer {
         container.innerHTML = this.state.segments.map((s, i) => `
             <div class="lyric-line-item" data-index="${i}">
                 <span class="time-range" title="이 시간으로 재생 이동">${this.formatTime(s.start)}</span>
-                <span class="lyric-text" title="이 가사 위치로 탐색 및 타겟 지정">${s.text}</span>
+                <span class="lyric-text" title="이 가사 위치로 탐색 및 타겟 지정">${(s.text && s.text.trim()) ? s.text : '&nbsp;'}</span>
             </div>
         `).join('');
 
@@ -959,19 +1044,53 @@ export class ForcedAlignmentViewer {
         }
     }
 
-    async saveLrc() {
-        if (!this.state.currentPath || !this.state.segments || this.state.segments.length === 0) {
-            showNotification('저장할 가사 데이터가 없습니다.', 'error');
+    updateSaveStatus(text, isError = false) {
+        const el = document.getElementById('sync-save-status');
+        if (!el) return;
+        el.textContent = text;
+        el.style.color = isError ? '#f87171' : '#94a3b8';
+    }
+
+    markDirtyAndScheduleSave() {
+        if (!this.state.currentPath) return;
+        this.isDirty = true;
+        this.updateSaveStatus('저장 대기...');
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+        }
+        this.autoSaveTimer = setTimeout(() => {
+            this.autoSaveTimer = null;
+            this.saveLrc(true);
+        }, this.autoSaveDelayMs);
+    }
+
+    async flushAutoSaveIfNeeded() {
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
+        if (this.isDirty) {
+            await this.saveLrc(true);
+        }
+    }
+
+    async saveLrc(silent = false) {
+        const syncableSegments = (this.state.segments || []).filter(s => (s.text || '').trim().length > 0);
+        if (!this.state.currentPath || syncableSegments.length === 0) {
+            if (!silent) showNotification('저장할 가사 데이터가 없습니다.', 'error');
             return;
         }
+        if (this.isAutoSaving) return;
         try {
-            const lrcLines = this.state.segments.map(s => {
+            this.isAutoSaving = true;
+            this.updateSaveStatus('저장 중...');
+            const lrcLines = syncableSegments.map(s => {
                 const min = Math.floor(s.start / 60).toString().padStart(2, '0');
                 const sec = (s.start % 60).toFixed(2).padStart(5, '0');
                 return `[${min}:${sec}]${s.text}`;
             });
             const content = lrcLines.join('\n');
-            const savedPath = await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
+            await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
 
             // Reflect lyric availability immediately without requiring track re-selection.
             const targetPath = this.state.currentPath;
@@ -996,10 +1115,16 @@ export class ForcedAlignmentViewer {
                 if (m.updateAiTogglesState) m.updateAiTogglesState();
             });
 
-            showNotification('가사 싱크 저장 완료', 'success');
+            this.isDirty = false;
+            this.lastSavedAt = Date.now();
+            this.updateSaveStatus('저장됨');
+            if (!silent) showNotification('가사 싱크 저장 완료', 'success');
         } catch (err) {
             console.error(err);
+            this.updateSaveStatus('저장 실패', true);
             showNotification('LRC 저장 실패: ' + err, 'error');
+        } finally {
+            this.isAutoSaving = false;
         }
     }
 }
