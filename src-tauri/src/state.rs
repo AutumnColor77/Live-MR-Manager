@@ -54,23 +54,25 @@ pub static MAIN_WINDOW: Lazy<Mutex<Option<WebviewWindow>>> = Lazy::new(|| Mutex:
 pub static ROFORMER_ENGINE: Lazy<Arc<Mutex<Option<WaveformRemover>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 pub static DB: Lazy<Arc<Mutex<Connection>>> = Lazy::new(|| {
     // Determine app data directory using AppPaths if available, otherwise fallback
-    let paths_guard = APP_PATHS.lock();
-    let app_dir = if let Some(paths) = paths_guard.as_ref() {
-        paths.root.clone()
-    } else {
-        drop(paths_guard);
-        if let Some(window) = MAIN_WINDOW.lock().as_ref() {
-            window.app_handle().path().app_local_data_dir().expect("Failed to get app data dir")
+    let app_dir = {
+        let paths_guard = APP_PATHS.lock();
+        if let Some(paths) = paths_guard.as_ref() {
+            paths.root.clone()
         } else {
-            let mut path = std::env::var("LOCALAPPDATA") // Use Local instead of Roaming
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| {
-                    std::env::var("APPDATA")
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|_| PathBuf::from("data"))
-                });
-            path.push("com.autumncolor77.live-mr-manager");
-            path
+            drop(paths_guard);
+            if let Some(window) = MAIN_WINDOW.lock().as_ref() {
+                window.app_handle().path().app_local_data_dir().expect("Failed to get app data dir")
+            } else {
+                let mut path = std::env::var("LOCALAPPDATA") // Use Local instead of Roaming
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| {
+                        std::env::var("APPDATA")
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|_| PathBuf::from("data"))
+                    });
+                path.push("com.autumncolor77.live-mr-manager");
+                path
+            }
         }
     };
     

@@ -90,7 +90,16 @@ static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 pub async fn start_overlay_server() {
     // 1. Start WebSocket Data Server (Port 14201)
     let ws_addr = "0.0.0.0:14201".to_string();
-    let ws_listener = TcpListener::bind(&ws_addr).await.expect("Failed to bind WebSocket server");
+    let ws_listener = match TcpListener::bind(&ws_addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            crate::audio_player::sys_log(&format!(
+                "[Overlay] WebSocket bind failed on {}: {}. Overlay server disabled for this run.",
+                ws_addr, e
+            ));
+            return;
+        }
+    };
     println!("[Overlay] WebSocket Data Server listening on: {}", ws_addr);
 
     tokio::spawn(async move {
@@ -101,7 +110,16 @@ pub async fn start_overlay_server() {
 
     // 2. Start HTTP Page Server (Port 14202)
     let http_addr = "0.0.0.0:14202".to_string();
-    let http_listener = TcpListener::bind(&http_addr).await.expect("Failed to bind HTTP server");
+    let http_listener = match TcpListener::bind(&http_addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            crate::audio_player::sys_log(&format!(
+                "[Overlay] HTTP bind failed on {}: {}. Overlay pages disabled for this run.",
+                http_addr, e
+            ));
+            return;
+        }
+    };
     println!("[Overlay] HTTP Page Server listening on: {}", http_addr);
 
     tokio::spawn(async move {

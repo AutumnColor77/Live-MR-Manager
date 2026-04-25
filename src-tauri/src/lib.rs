@@ -31,6 +31,7 @@ pub fn run() {
             let paths = crate::state::AppPaths::from_handle(app.handle());
             *crate::state::APP_PATHS.lock() = Some(paths.clone());
             app.manage(paths);
+            crate::audio_player::sys_log("[App] Startup complete");
             let _ = &*crate::state::DB;
             
             crate::audio_commands::start_playback_progress_loop(app.handle().clone());
