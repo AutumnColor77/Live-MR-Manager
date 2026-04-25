@@ -1,6 +1,6 @@
 use std::collections::{VecDeque, HashSet, HashMap};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -19,8 +19,32 @@ pub static DOWNLOAD_FINISHED_NOTIFIER: Lazy<Mutex<HashMap<PathBuf, Arc<tokio::sy
 pub static CANCEL_REQUESTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 pub static IS_PREPARING_PLAYBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+fn append_sys_log_file(message: &str) {
+    let log_path = {
+        if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
+            paths.root.join("logs").join("app.log")
+        } else {
+            let base = std::env::temp_dir().join("live-mr-manager");
+            base.join("logs").join("app.log")
+        }
+    };
+
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path) {
+        let _ = writeln!(f, "[{}] {}", ts, message);
+    }
+}
+
 pub fn sys_log(message: &str) {
     println!("{}", message);
+    append_sys_log_file(message);
     if let Some(guard) = crate::state::MAIN_WINDOW.try_lock() {
         if let Some(window) = guard.as_ref() {
             let _ = window.emit("sys-log", message.to_string());

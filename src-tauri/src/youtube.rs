@@ -3,7 +3,9 @@ use std::sync::Arc;
 use serde_json::Value;
 use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
+use std::io::Cursor;
 use tokio::process::Command;
+use tokio::io::AsyncWriteExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
 use futures::StreamExt;
 use std::process::Stdio;
@@ -36,9 +38,269 @@ pub struct YoutubeMetadata {
 pub struct YoutubeManager;
 
 impl YoutubeManager {
-    /// Finds the best yt-dlp executable by checking common Python script paths first.
-    fn find_yt_dlp() -> String {
-        // 1. Try to see if it's already in the system PATH (highest priority for user-installed ones)
+    fn managed_bin_name() -> &'static str {
+        #[cfg(target_os = "windows")]
+        {
+            "yt-dlp.exe"
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "yt-dlp_macos"
+        }
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        {
+            "yt-dlp"
+        }
+    }
+
+    fn managed_cache_dir() -> PathBuf {
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(base) = std::env::var("LOCALAPPDATA").or_else(|_| std::env::var("APPDATA")) {
+                return Path::new(&base).join("LiveMRManager").join("tools");
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                return Path::new(&home).join(".cache").join("live-mr-manager").join("tools");
+            }
+        }
+        std::env::temp_dir().join("live-mr-manager-tools")
+    }
+
+    fn managed_candidates() -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+        let file_name = Self::managed_bin_name();
+        candidates.push(Self::managed_cache_dir().join(file_name));
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                candidates.push(exe_dir.join("resources").join("tools").join(file_name));
+                candidates.push(exe_dir.join("tools").join(file_name));
+            }
+        }
+        candidates
+    }
+
+    fn ffmpeg_candidate_names() -> &'static [&'static str] {
+        #[cfg(target_os = "windows")]
+        {
+            &["ffmpeg.exe"]
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            &["ffmpeg"]
+        }
+    }
+
+    fn managed_ffmpeg_path() -> PathBuf {
+        let name = if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" };
+        Self::managed_cache_dir().join(name)
+    }
+
+    async fn ensure_managed_ffmpeg() -> Option<PathBuf> {
+        let target = Self::managed_ffmpeg_path();
+        if target.exists() {
+            return Some(target);
+        }
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let zip_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+            let response = reqwest::get(zip_url).await.ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let bytes = response.bytes().await.ok()?;
+            let cursor = Cursor::new(bytes);
+            let mut archive = zip::ZipArchive::new(cursor).ok()?;
+
+            for i in 0..archive.len() {
+                let mut entry = match archive.by_index(i) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if !entry.is_file() {
+                    continue;
+                }
+                let name = entry.name().replace('\\', "/").to_lowercase();
+                if name.ends_with("/ffmpeg.exe") {
+                    let mut content = Vec::new();
+                    if std::io::Read::read_to_end(&mut entry, &mut content).is_err() {
+                        continue;
+                    }
+                    if std::fs::write(&target, &content).is_err() {
+                        continue;
+                    }
+                    if target.exists() {
+                        return Some(target);
+                    }
+                }
+            }
+            None
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let bin_url = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg";
+            let response = reqwest::get(bin_url).await.ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let bytes = response.bytes().await.ok()?;
+            let mut out = tokio::fs::File::create(&target).await.ok()?;
+            if out.write_all(&bytes).await.is_err() {
+                return None;
+            }
+            let _ = out.flush().await;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = std::fs::metadata(&target) {
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o755);
+                    let _ = std::fs::set_permissions(&target, perms);
+                }
+            }
+            if target.exists() {
+                Some(target)
+            } else {
+                None
+            }
+        }
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        {
+            None
+        }
+    }
+
+    fn find_managed_ffmpeg_dir() -> Option<PathBuf> {
+        for dir in [Self::managed_cache_dir(), std::env::current_exe().ok()?.parent()?.join("resources").join("tools")] {
+            for name in Self::ffmpeg_candidate_names() {
+                let p = dir.join(name);
+                if p.exists() {
+                    return Some(dir);
+                }
+            }
+        }
+        None
+    }
+
+    fn find_system_ffmpeg() -> Option<PathBuf> {
+        #[cfg(windows)]
+        {
+            let output = {
+                use std::os::windows::process::CommandExt;
+                std::process::Command::new("where.exe")
+                    .arg("ffmpeg")
+                    .creation_flags(0x08000000)
+                    .output()
+                    .ok()?
+            };
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return Some(PathBuf::from(p.lines().next().unwrap_or(&p)));
+                }
+            }
+            None
+        }
+        #[cfg(not(windows))]
+        {
+            let output = std::process::Command::new("which").arg("ffmpeg").output().ok()?;
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return Some(PathBuf::from(p.lines().next().unwrap_or(&p)));
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                for p in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"] {
+                    let path = PathBuf::from(p);
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+            }
+            None
+        }
+    }
+
+    async fn resolve_ffmpeg_location() -> Option<PathBuf> {
+        if let Some(p) = Self::ensure_managed_ffmpeg().await {
+            return p.parent().map(|d| d.to_path_buf());
+        }
+        if let Some(dir) = Self::find_managed_ffmpeg_dir() {
+            return Some(dir);
+        }
+        Self::find_system_ffmpeg().and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    }
+
+    async fn ensure_managed_yt_dlp() -> Option<PathBuf> {
+        for p in Self::managed_candidates() {
+            if p.exists() {
+                return Some(p);
+            }
+        }
+
+        let url = {
+            #[cfg(target_os = "windows")]
+            {
+                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+            }
+            #[cfg(target_os = "macos")]
+            {
+                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+            }
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+            {
+                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+            }
+        };
+
+        let target = Self::managed_cache_dir().join(Self::managed_bin_name());
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let response = reqwest::get(url).await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        let mut file = tokio::fs::File::create(&target).await.ok()?;
+        if file.write_all(&bytes).await.is_err() {
+            return None;
+        }
+        let _ = file.flush().await;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(&target) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = std::fs::set_permissions(&target, perms);
+            }
+        }
+
+        if target.exists() {
+            Some(target)
+        } else {
+            None
+        }
+    }
+
+    /// Finds the best yt-dlp executable by checking managed and system paths.
+    async fn find_yt_dlp() -> String {
+        // 1. Use managed binary first for stability.
+        if let Some(p) = Self::ensure_managed_yt_dlp().await {
+            return p.to_string_lossy().to_string();
+        }
+
+        // 2. Try to see if it's already in the system PATH.
         #[cfg(windows)]
         let output = {
             use std::os::windows::process::CommandExt;
@@ -61,7 +323,7 @@ impl YoutubeManager {
             }
         }
 
-        // 2. Check common Python Script paths as backup
+        // 3. Check common Python Script paths as backup
         let appdata_paths = vec![
             std::env::var("APPDATA").ok(),
             std::env::var("LOCALAPPDATA").ok(),
@@ -84,11 +346,21 @@ impl YoutubeManager {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            for p in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"] {
+                let path = Path::new(p);
+                if path.exists() {
+                    return path.to_string_lossy().to_string();
+                }
+            }
+        }
+
         "yt-dlp".to_string()
     }
 
     pub async fn get_video_metadata(url: &str) -> Result<YoutubeMetadata, String> {
-        let exe = Self::find_yt_dlp();
+        let exe = Self::find_yt_dlp().await;
         let _ = crate::audio_player::sys_log(&format!("[Youtube] Using yt-dlp at: {} for metadata from: {}", exe, url));
         
         let mut cmd = Command::new(&exe);
@@ -162,7 +434,16 @@ impl YoutubeManager {
         destination: PathBuf,
         wait_for_full: bool,
     ) -> Result<PathBuf, String> {
-        let exe = Self::find_yt_dlp();
+        let exe = Self::find_yt_dlp().await;
+        let ffmpeg_location = Self::resolve_ffmpeg_location().await;
+        if let Some(ffmpeg_dir) = &ffmpeg_location {
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Youtube] Using ffmpeg location: {}",
+                ffmpeg_dir.to_string_lossy()
+            ));
+        } else {
+            let _ = crate::audio_player::sys_log("[Youtube] ffmpeg not found in managed/system locations");
+        }
         
         // 1. Check if already downloading (Synchronization)
         let notifier = {
@@ -193,33 +474,42 @@ impl YoutubeManager {
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
-            let mut args = vec![
-                "--newline",
-                "--progress-template", "%(progress)j",
-                "--no-check-certificates",
-                "--no-part",
-                "--no-warnings",
-                "--buffer-size", "16K"
+            let mut args: Vec<String> = vec![
+                "--newline".into(),
+                "--progress-template".into(),
+                "%(progress)j".into(),
+                "--no-check-certificates".into(),
+                "--no-part".into(),
+                "--no-warnings".into(),
+                "--buffer-size".into(),
+                "16K".into(),
             ];
 
             if wait_for_full {
                 // High quality post-processing for separation
                 args.extend_from_slice(&[
-                    "-f", "ba",
-                    "-x",
-                    "--audio-format", "m4a",
+                    "-f".into(),
+                    "ba".into(),
+                    "-x".into(),
+                    "--audio-format".into(),
+                    "m4a".into(),
                 ]);
             } else {
                 // Streaming friendly: no post-processing
-                args.extend_from_slice(&[
-                    "-f", "ba[ext=m4a]/ba",
-                ]);
+                args.extend_from_slice(&["-f".into(), "ba[ext=m4a]/ba".into()]);
             }
 
             args.extend_from_slice(&[
-                "-o", destination.to_str().ok_or("Invalid path")?,
-                url
+                "-o".into(),
+                destination.to_str().ok_or("Invalid path")?.to_string(),
+                url.to_string(),
             ]);
+            if let Some(ffmpeg_dir) = &ffmpeg_location {
+                args.extend_from_slice(&[
+                    "--ffmpeg-location".into(),
+                    ffmpeg_dir.to_string_lossy().to_string(),
+                ]);
+            }
 
             let mut child = cmd
                 .args(&args)

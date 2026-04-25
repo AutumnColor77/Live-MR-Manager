@@ -12,8 +12,13 @@ pub struct RescueStats {
 
 #[tauri::command]
 pub async fn run_local_rescue(app: AppHandle) -> Result<RescueStats, String> {
-    let target_dir = "E:\\방송용\\MR";
-    let path = PathBuf::from(target_dir);
+    let configured_music = app.path().audio_dir().ok().map(|p| p.join("MR"));
+    let fallback_local = app
+        .path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("rescue");
+    let path = configured_music.unwrap_or(fallback_local);
     if !path.exists() {
         return Err("Target directory not found.".into());
     }

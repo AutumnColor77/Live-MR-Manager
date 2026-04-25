@@ -32,7 +32,7 @@ parking_lot = "0.12.5"
 cpal = "0.17.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
-ort = { version = "2.0.0-rc.12", features = ["copy-dylibs", "directml", "ndarray"] }
+ort = { version = "2.0.0-rc.12", features = ["copy-dylibs", "ndarray"] }
 ndarray = "0.17"
 rubato = "0.16.0"
 rustfft = "6.2.0"
@@ -54,6 +54,7 @@ tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
 tokio-tungstenite = "0.21"
 base64 = "0.22"
 futures-util = "0.3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 
 # Enable optimizations in dev mode for AI/DSP performance
@@ -73,3 +74,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.symphonia]
 opt-level = 3
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "2.0.0-rc.12", features = ["directml"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "2.0.0-rc.12", features = ["coreml"] }

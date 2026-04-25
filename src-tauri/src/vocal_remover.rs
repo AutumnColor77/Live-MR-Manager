@@ -7,7 +7,11 @@ use ndarray::{self, Array4};
 use std::sync::Arc;
 use parking_lot::Mutex;
 use crate::audio_player::sys_log;
-use ort::execution_providers::{CUDAExecutionProvider, DirectMLExecutionProvider, CPUExecutionProvider};
+use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
+#[cfg(target_os = "windows")]
+use ort::execution_providers::DirectMLExecutionProvider;
+#[cfg(target_os = "macos")]
+use ort::execution_providers::CoreMLExecutionProvider;
 use rustfft::{FftPlanner, num_complex::Complex};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
@@ -230,14 +234,22 @@ impl WaveformRemover {
         let threads = (num_cpus::get() / 2).max(1).min(4);
         sys_log(&format!("[AI-ENGINE] Initializing with {} intra-op threads", threads));
 
-        // Prioritize DirectML for better standard Windows support and stability
-        let providers_to_try = [
-            ("GPU (DirectML)", DirectMLExecutionProvider::default().build()),
-            ("GPU (CUDA)", CUDAExecutionProvider::default()
-                .with_device_id(0)
-                .build()),
-            ("CPU", CPUExecutionProvider::default().build()),
-        ];
+        let mut providers_to_try = Vec::new();
+        #[cfg(target_os = "windows")]
+        {
+            // Windows default GPU path.
+            providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // macOS acceleration path.
+            providers_to_try.push(("GPU (CoreML)", CoreMLExecutionProvider::default().build()));
+        }
+        providers_to_try.push((
+            "GPU (CUDA)",
+            CUDAExecutionProvider::default().with_device_id(0).build(),
+        ));
+        providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
 
         let mut session_opt = None;
         let mut active_provider = "Unknown".to_string();

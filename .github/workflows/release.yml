@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest]
+        include:
+          - platform: windows-latest
+            bundleArgs: --bundles nsis
+          - platform: macos-latest
+            bundleArgs: --bundles dmg,app
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -48,4 +52,4 @@ jobs:
             - 안정성과 사용성을 개선했습니다. (목록 자동 복구 통계 표시, 기본 우클릭 메뉴 차단, 입력창 전용 편집 메뉴 제공)
           releaseDraft: true
           prerelease: false
-          args: "--verbose"
+          args: "--verbose ${{ matrix.bundleArgs }}"

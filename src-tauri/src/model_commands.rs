@@ -1,6 +1,10 @@
 use tauri::{Emitter, AppHandle, Manager, WebviewWindow};
 use std::sync::atomic::Ordering;
-use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider, DirectMLExecutionProvider};
+use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
+#[cfg(target_os = "windows")]
+use ort::execution_providers::DirectMLExecutionProvider;
+#[cfg(target_os = "macos")]
+use ort::execution_providers::CoreMLExecutionProvider;
 use crate::model_manager::ModelManager;
 use crate::types::{Status, PlaybackStatus, SongMetadata};
 use crate::audio_player::sys_log;
@@ -11,10 +15,31 @@ use ort::ep::ExecutionProvider;
 #[serde(rename_all = "camelCase")]
 pub struct GpuStatus { pub has_nvidia: bool, pub is_cuda_available: bool, pub is_directml_available: bool, pub recommend_cuda: bool }
 
+#[cfg(target_os = "windows")]
+fn dml_or_coreml_available() -> bool {
+    DirectMLExecutionProvider::default().is_available().unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn dml_or_coreml_available() -> bool {
+    CoreMLExecutionProvider::default().is_available().unwrap_or(false)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn dml_or_coreml_available() -> bool {
+    false
+}
+
 #[tauri::command]
 pub async fn check_ai_runtime() -> Result<Vec<String>, String> {
     let mut providers = Vec::new();
     if CUDAExecutionProvider::default().is_available().unwrap_or(false) { providers.push("CUDA".to_string()); }
+    if dml_or_coreml_available() {
+        #[cfg(target_os = "windows")]
+        providers.push("DirectML".to_string());
+        #[cfg(target_os = "macos")]
+        providers.push("CoreML".to_string());
+    }
     if CPUExecutionProvider::default().is_available().unwrap_or(false) { providers.push("CPU".to_string()); }
     Ok(providers)
 }
@@ -32,7 +57,7 @@ pub async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
         }
     }
     let cuda = CUDAExecutionProvider::default().is_available().unwrap_or(false);
-    let dml = DirectMLExecutionProvider::default().is_available().unwrap_or(false);
+    let dml = dml_or_coreml_available();
     Ok(GpuStatus { has_nvidia, is_cuda_available: cuda, is_directml_available: dml, recommend_cuda: has_nvidia && !cuda && !dml })
 }
 
