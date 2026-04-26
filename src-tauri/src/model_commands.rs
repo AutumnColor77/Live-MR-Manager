@@ -46,7 +46,10 @@ pub async fn check_ai_runtime() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
+    #[cfg(target_os = "windows")]
     let mut has_nvidia = false;
+    #[cfg(not(target_os = "windows"))]
+    let has_nvidia = false;
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;

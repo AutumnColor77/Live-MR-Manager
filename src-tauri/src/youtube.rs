@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
+#[cfg(target_os = "windows")]
 use std::io::Cursor;
 use tokio::process::Command;
 use tokio::io::AsyncWriteExt;
