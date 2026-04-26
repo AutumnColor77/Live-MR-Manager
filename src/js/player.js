@@ -146,6 +146,7 @@ export async function selectTrack(index) {
     // Trigger drawer update if it's initialized
     import('./lyric-drawer.js').then(m => {
       if (m.updateLyrics) m.updateLyrics(lyrics);
+      if (m.syncLyricDrawerHeader) m.syncLyricDrawerHeader();
     });
   });
 

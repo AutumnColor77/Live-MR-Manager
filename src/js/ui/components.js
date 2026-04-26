@@ -168,7 +168,7 @@ export function showSongContextMenu(e, song, originalIndex) {
   state.editingSongIndex = originalIndex;
 
   const menuWidth = 160;
-  const menuHeight = 200;
+  const menuHeight = 240;
   let x = e.clientX;
   let y = e.clientY;
   const winW = window.innerWidth;
@@ -191,6 +191,7 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSeparate = document.getElementById("menu-separate");
   const menuDeleteMr = document.getElementById("menu-delete-mr");
   const menuPlay = document.getElementById("menu-play");
+  const menuLyricsView = document.getElementById("menu-lyrics-view");
   const menuEdit = document.getElementById("menu-edit");
   const menuDelete = document.getElementById("menu-delete");
   const inputSeparator = document.getElementById("menu-input-separator");
@@ -202,14 +203,14 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSelectAll = document.getElementById("menu-select-all");
 
   // Song context: show song actions, hide text-input actions.
-  [menuPlay, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
+  [menuPlay, menuLyricsView, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
     if (el) el.style.display = "block";
   });
   [inputSeparator, menuUndo, menuRedo, menuCut, menuCopy, menuPaste, menuSelectAll].forEach((el) => {
     if (el) el.style.display = "none";
   });
 
-  invoke('remote_js_log', { msg: `[Context Menu Init] menuPlay=${!!menuPlay}, menuEdit=${!!menuEdit}, menuDelete=${!!menuDelete}, menuSeparate=${!!menuSeparate}, menuDeleteMr=${!!menuDeleteMr}` }).catch(() => {});
+  invoke('remote_js_log', { msg: `[Context Menu Init] menuPlay=${!!menuPlay}, menuLyricsView=${!!menuLyricsView}, menuEdit=${!!menuEdit}, menuDelete=${!!menuDelete}, menuSeparate=${!!menuSeparate}, menuDeleteMr=${!!menuDeleteMr}` }).catch(() => {});
 
   if (menuDeleteMr) menuDeleteMr.style.display = "none";
   if (menuSeparate) menuSeparate.style.display = "none";
@@ -316,6 +317,21 @@ export function showSongContextMenu(e, song, originalIndex) {
     };
   } else {
     invoke('remote_js_log', { msg: `[Menu Play Init] menuPlay is null!` }).catch(() => {});
+  }
+
+  if (menuLyricsView) {
+    menuLyricsView.onclick = () => {
+      invoke('remote_js_log', { msg: `[Menu LyricsView] Clicked for index ${originalIndex}` }).catch(() => {});
+      elements.contextMenu.classList.remove("active");
+      elements.contextMenu.style.display = 'none';
+      if (typeof window.openLyricDrawer === "function") {
+        window.openLyricDrawer();
+      } else {
+        document.body.classList.add("drawer-open");
+      }
+    };
+  } else {
+    invoke('remote_js_log', { msg: `[Menu LyricsView Init] menuLyricsView is null!` }).catch(() => {});
   }
 
   if (menuEdit) {

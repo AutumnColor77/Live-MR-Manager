@@ -15,7 +15,7 @@ import { showNotification } from './js/utils.js';
 import { invoke, appWindow } from './js/tauri-bridge.js';
 
 const THEME_STORAGE_KEY = 'themeMode';
-const THEME_OPTIONS = new Set(['dark', 'light']);
+const THEME_OPTIONS = new Set(['dark', 'light', 'pink', 'sky']);
 
 function normalizeTheme(value) {
   return THEME_OPTIONS.has(value) ? value : 'dark';

@@ -59,7 +59,9 @@
     --align-sync-pulse-shadow-2: color-mix(in srgb, var(--accent-secondary) 45%, transparent);
 }
 
-html[data-theme="light"] {
+html[data-theme="light"],
+html[data-theme="pink"],
+html[data-theme="sky"] {
     --align-surface-editor: color-mix(in srgb, var(--bg-color) 90%, var(--surface-2) 10%);
     --align-wave-bg: color-mix(in srgb, var(--bg-color) 86%, var(--surface-2) 14%);
     --align-panel-bg: color-mix(in srgb, var(--bg-color) 82%, var(--surface-3) 18%);

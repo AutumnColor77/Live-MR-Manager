@@ -824,10 +824,21 @@ impl Aligner {
 
 #[command]
 pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<String, String> {
+    sys_log(&format!(
+        "[Alignment] save_lrc_file requested. is_url={}, path={}, content_len={}",
+        audio_path.starts_with("http"),
+        audio_path,
+        content.len()
+    ));
     let lrc_path = if audio_path.starts_with("http") {
         let paths = crate::state::AppPaths::from_handle(&handle);
         let cache_key = urlencoding::encode(&audio_path).to_string();
         let base_dir = paths.separated.join(&cache_key);
+        sys_log(&format!(
+            "[Alignment] Saving URL LRC to cache. key={}, dir={}",
+            cache_key,
+            base_dir.to_string_lossy()
+        ));
         if !base_dir.exists() {
             fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
         }
@@ -840,9 +851,29 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
             let mirror_dir = paths.separated.join(&mirror_key);
             if mirror_dir != base_dir {
                 if !mirror_dir.exists() {
-                    let _ = fs::create_dir_all(&mirror_dir);
+                    if let Err(e) = fs::create_dir_all(&mirror_dir) {
+                        sys_log(&format!(
+                            "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
+                            mirror_key,
+                            mirror_dir.to_string_lossy(),
+                            e
+                        ));
+                    }
                 }
-                let _ = fs::write(mirror_dir.join("lyric.lrc"), &content);
+                if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), &content) {
+                    sys_log(&format!(
+                        "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
+                        mirror_key,
+                        mirror_dir.to_string_lossy(),
+                        e
+                    ));
+                } else {
+                    sys_log(&format!(
+                        "[Alignment] Mirror LRC write ok. key={}, dir={}",
+                        mirror_key,
+                        mirror_dir.to_string_lossy()
+                    ));
+                }
             }
         }
         primary
@@ -869,6 +900,11 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
 pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
     let paths = crate::state::AppPaths::from_handle(&handle);
     let mut search_paths = Vec::new();
+    sys_log(&format!(
+        "[Alignment] load_lrc_file requested. is_url={}, path={}",
+        audio_path.starts_with("http"),
+        audio_path
+    ));
 
     // 1. If it's a URL, prioritize the cache folder
     if audio_path.starts_with("http") {
@@ -911,6 +947,23 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
             return fs::read_to_string(&p).map_err(|e| format!("LRC 읽기 실패: {}", e));
         }
     }
-    
+
+    let tried = if audio_path.starts_with("http") {
+        youtube_url_variants(&audio_path)
+            .into_iter()
+            .map(|v| {
+                let k = urlencoding::encode(&v).to_string();
+                format!("{} => {}", v, k)
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    } else {
+        "(local path)".to_string()
+    };
+    sys_log(&format!(
+        "[Alignment] LRC file not found. tried_keys={}, cache_root={}",
+        tried,
+        paths.separated.to_string_lossy()
+    ));
     Err("LRC file not found".to_string())
 }

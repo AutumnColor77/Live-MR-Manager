@@ -141,10 +141,17 @@ body.drawer-open .song-grid {
 /* 5. Drawer Content */
 .drawer-header {
     padding: 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--glass-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+}
+
+.drawer-header-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .drawer-header h2 {
@@ -153,6 +160,16 @@ body.drawer-open .song-grid {
     color: var(--text-main);
     margin: 0;
     letter-spacing: 0.5px;
+}
+
+.drawer-track-title {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .drawer-close {
@@ -179,8 +196,8 @@ body.drawer-open .song-grid {
 .drawer-lyric-item {
     padding: 6px 12px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    background: var(--surface-1);
+    border: 1px solid var(--glass-border);
     margin-bottom: 6px;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     cursor: default; /* No click-to-seek in drawer */
@@ -219,7 +236,7 @@ body.drawer-open .song-grid {
 }
 
 .drawer-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
 }
 /* Re-applying Premium Glow */

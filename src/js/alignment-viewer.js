@@ -663,7 +663,8 @@ export class ForcedAlignmentViewer {
         if (this.state.duration <= 0) return;
 
         const theme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const palette = theme === 'light'
+        const isLightLikeTheme = theme === 'light' || theme === 'pink' || theme === 'sky';
+        const palette = isLightLikeTheme
             ? {
                 segmentFillActive: 'rgba(154, 107, 63, 0.24)',
                 segmentFillIdle: 'rgba(154, 107, 63, 0.1)',

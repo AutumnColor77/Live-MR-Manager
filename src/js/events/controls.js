@@ -69,7 +69,7 @@ async function runInputAction(action, editable) {
 function showInputContextMenu(event, editable) {
   if (!elements.contextMenu) return;
 
-  const songMenuIds = ["menu-play", "menu-separate", "menu-delete-mr", "menu-edit", "menu-delete"];
+  const songMenuIds = ["menu-play", "menu-lyrics-view", "menu-separate", "menu-delete-mr", "menu-edit", "menu-delete"];
   const inputMenuIds = [
     "menu-input-separator",
     "menu-undo",
@@ -700,7 +700,8 @@ export function initControlListeners() {
     syncThemeToUi(initialMode);
 
     elements.themeModeSelect.addEventListener("change", async (e) => {
-      const mode = e.target.value === "light" ? "light" : "dark";
+      const allowedThemes = new Set(["dark", "light", "pink", "sky"]);
+      const mode = allowedThemes.has(e.target.value) ? e.target.value : "dark";
       const applyTheme = window.applyAppTheme;
       if (typeof applyTheme === "function") {
         applyTheme(mode, { persist: true });

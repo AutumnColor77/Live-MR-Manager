@@ -7,6 +7,16 @@ import { state } from './state.js';
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
 
+function updateDrawerTrackTitle() {
+    const titleEl = document.getElementById('lyric-drawer-track-title');
+    if (!titleEl) return;
+    titleEl.textContent = state.currentTrack?.title || '선택된 곡 없음';
+}
+
+export function syncLyricDrawerHeader() {
+    updateDrawerTrackTitle();
+}
+
 export function initLyricDrawer() {
     const trigger = document.getElementById('lyric-drawer-trigger');
     const closeBtn = document.getElementById('lyric-drawer-close');
@@ -81,6 +91,7 @@ export function initLyricDrawer() {
     const openDrawer = () => {
         body.classList.add('drawer-open');
         updateDrawerBounds();
+        updateDrawerTrackTitle();
 
         // Sync with bottom toggle button if exists
         const toggle = document.getElementById('toggle-lyric');
@@ -159,6 +170,7 @@ export function initLyricDrawer() {
     window.addEventListener('resize', updateDrawerBounds);
     window.addEventListener('scroll', updateDrawerBounds, { passive: true });
     updateDrawerBounds();
+    updateDrawerTrackTitle();
 
     // Setup real-time sync listener
     listen('playback-progress', (event) => {
@@ -177,6 +189,7 @@ export function initLyricDrawer() {
 export function updateLyrics(segments) {
     const container = document.querySelector('#lyric-drawer .drawer-content');
     if (!container) return;
+    updateDrawerTrackTitle();
 
     if (!segments || segments.length === 0) {
         lastOverlayCurrent = null;

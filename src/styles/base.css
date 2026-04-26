@@ -122,6 +122,66 @@ html[data-theme="light"] {
   --scrollbar-thumb-hover: rgba(104, 84, 65, 0.5);
 }
 
+html[data-theme="pink"] {
+  --bg-color: #fff6f8;
+  --sidebar-bg: rgba(255, 246, 250, 0.96);
+  --dock-bg: rgba(251, 241, 246, 0.9);
+  --glass-bg: rgba(147, 85, 105, 0.05);
+  --glass-border: rgba(147, 85, 105, 0.15);
+
+  --accent-primary: #ef7da8;
+  --accent-rgb: 239 125 168;
+  --accent-secondary: #f4a16e;
+  --accent-gradient: linear-gradient(135deg, #ef7da8 0%, #f4a16e 100%);
+  --accent-glow: rgba(239, 125, 168, 0.26);
+
+  --text-main: #3b2831;
+  --text-muted: #6b4d5b;
+  --text-dim: #8e6b7b;
+  --text-inverse: #ffffff;
+
+  --surface-1: rgba(147, 85, 105, 0.05);
+  --surface-2: rgba(147, 85, 105, 0.09);
+  --surface-3: rgba(147, 85, 105, 0.14);
+  --overlay-bg: rgba(116, 70, 88, 0.2);
+  --shadow-strong: rgba(109, 63, 81, 0.18);
+  --input-bg: rgba(255, 251, 254, 0.94);
+  --input-bg-focus: rgba(255, 255, 255, 1);
+  --menu-bg: rgba(255, 246, 250, 0.97);
+  --scrollbar-thumb: rgba(191, 135, 159, 0.42);
+  --scrollbar-thumb-hover: rgba(165, 110, 134, 0.52);
+}
+
+html[data-theme="sky"] {
+  --bg-color: #eef7ff;
+  --sidebar-bg: rgba(235, 246, 255, 0.96);
+  --dock-bg: rgba(227, 240, 251, 0.9);
+  --glass-bg: rgba(64, 110, 145, 0.05);
+  --glass-border: rgba(64, 110, 145, 0.16);
+
+  --accent-primary: #4da8e8;
+  --accent-rgb: 77 168 232;
+  --accent-secondary: #6ec3f1;
+  --accent-gradient: linear-gradient(135deg, #4da8e8 0%, #6ec3f1 100%);
+  --accent-glow: rgba(77, 168, 232, 0.26);
+
+  --text-main: #1d3142;
+  --text-muted: #415a70;
+  --text-dim: #637e95;
+  --text-inverse: #ffffff;
+
+  --surface-1: rgba(64, 110, 145, 0.05);
+  --surface-2: rgba(64, 110, 145, 0.09);
+  --surface-3: rgba(64, 110, 145, 0.14);
+  --overlay-bg: rgba(53, 88, 116, 0.22);
+  --shadow-strong: rgba(43, 74, 99, 0.2);
+  --input-bg: rgba(251, 254, 255, 0.94);
+  --input-bg-focus: rgba(255, 255, 255, 1);
+  --menu-bg: rgba(235, 246, 255, 0.97);
+  --scrollbar-thumb: rgba(121, 162, 194, 0.4);
+  --scrollbar-thumb-hover: rgba(95, 136, 169, 0.5);
+}
+
 /* Premium Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
