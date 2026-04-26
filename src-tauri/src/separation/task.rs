@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU32};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicU32, AtomicU64};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, WebviewWindow, Manager};
@@ -11,6 +11,10 @@ use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
 use super::{SeparationProgress, ROFORMER_ENGINE, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
+static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
+static MODEL_INIT_INFLIGHT: AtomicU32 = AtomicU32::new(0);
+static MODEL_INIT_TIMEOUT_STREAK: AtomicU32 = AtomicU32::new(0);
+
 pub struct SeparationTask {
     window: WebviewWindow,
     path: String,
@@ -18,6 +22,60 @@ pub struct SeparationTask {
 }
 
 impl SeparationTask {
+    #[cfg(target_os = "macos")]
+    fn model_init_timeout_secs() -> u64 {
+        // macOS에서 ORT 세션 초기화가 hang 성향일 때 UI 정체 시간을 줄인다.
+        35
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn model_init_timeout_secs() -> u64 {
+        // 기존 Windows/Linux 동작은 유지한다.
+        90
+    }
+
+    #[cfg(target_os = "macos")]
+    fn allow_fallback_after_timeout() -> bool {
+        // macOS에서는 timeout이 난 경우 fallback까지 오래 대기하지 않고 즉시 종료.
+        false
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn allow_fallback_after_timeout() -> bool {
+        true
+    }
+
+    #[cfg(target_os = "macos")]
+    fn model_init_cooldown_secs() -> u64 {
+        // macOS는 빠른 재시도를 허용해 사용자 대기 시간을 줄인다.
+        20
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn model_init_cooldown_secs() -> u64 {
+        120
+    }
+
+    #[cfg(target_os = "macos")]
+    fn model_init_timeout_streak_threshold() -> u32 {
+        2
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn model_init_timeout_streak_threshold() -> u32 {
+        u32::MAX
+    }
+
+    #[cfg(target_os = "macos")]
+    fn model_init_circuit_breaker_secs() -> u64 {
+        180
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn model_init_circuit_breaker_secs() -> u64 {
+        0
+    }
+
     pub fn new(window: WebviewWindow, path: String, cache_dir: PathBuf) -> Self {
         Self { window, path, cache_dir }
     }
@@ -60,7 +118,13 @@ impl SeparationTask {
         }).ok();
 
         // 3. Wait for Global AI Queue Lock (One task at a time)
+        let queue_wait_started = std::time::Instant::now();
         let _permit = AI_QUEUE_LOCK.lock().await;
+        sys_log(&format!(
+            "[AI-QUEUE] lock acquired: wait_ms={}, active_separations={}",
+            queue_wait_started.elapsed().as_millis(),
+            ACTIVE_SEPARATIONS.lock().len()
+        ));
 
         // 3.1. Check if cancelled while waiting
         if cancel_flag.load(Ordering::Relaxed) {
@@ -122,7 +186,13 @@ impl SeparationTask {
         }
 
         // Single-flight model init: one initializer at a time across all tasks.
+        let init_lock_wait_started = std::time::Instant::now();
         let _init_guard = MODEL_INIT_LOCK.lock().await;
+        sys_log(&format!(
+            "[AI-ENGINE] model-init lock acquired: wait_ms={}, inflight_init_tasks={}",
+            init_lock_wait_started.elapsed().as_millis(),
+            MODEL_INIT_INFLIGHT.load(Ordering::Relaxed)
+        ));
 
         // Re-check after waiting for lock in case another task initialized it.
         {
@@ -136,7 +206,10 @@ impl SeparationTask {
         let cooldown_until = MODEL_INIT_COOLDOWN_UNTIL.load(Ordering::Relaxed);
         if cooldown_until > now {
             let wait_sec = cooldown_until - now;
-            let err = format!("Error: 모델 초기화 재시도 대기 중 ({}초 후 가능)", wait_sec);
+            let err = format!(
+                "Error: 모델 초기화 재시도 대기 중 ({}초 후 가능). 앱 재시작 또는 모델 재다운로드를 권장합니다.",
+                wait_sec
+            );
             Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
             return Err(err);
         }
@@ -176,9 +249,11 @@ impl SeparationTask {
 
             match manager.ensure_model_by_id(app, &spec.id).await {
                 Ok(resolution) => {
+                    let attempt_id = MODEL_INIT_ATTEMPT_SEQ.fetch_add(1, Ordering::Relaxed);
                     let file_size = resolution.path.metadata().map(|m| m.len()).unwrap_or(0);
                     sys_log(&format!(
-                        "[AI-ENGINE] Init start: id={}, source={}, path={:?}, size={} bytes",
+                        "[AI-ENGINE] Init start: attempt={}, id={}, source={}, path={:?}, size={} bytes",
+                        attempt_id,
                         resolution.spec.id,
                         resolution.source,
                         resolution.path,
@@ -188,15 +263,36 @@ impl SeparationTask {
                     let model_path_for_spawn = resolution.path.clone();
                     let model_id_for_spawn = resolution.spec.id.clone();
                     let init_started = std::time::Instant::now();
-                    let init_result = tokio::time::timeout(Duration::from_secs(90), tokio::task::spawn_blocking(move || {
-                        WaveformRemover::new(&model_path_for_spawn, Some(&model_id_for_spawn))
-                    })).await;
+                    let timeout_secs = Self::model_init_timeout_secs();
+                    let spawn_wait_started = std::time::Instant::now();
+                    MODEL_INIT_INFLIGHT.fetch_add(1, Ordering::Relaxed);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Init spawn: attempt={}, timeout_secs={}, inflight_now={}",
+                        attempt_id,
+                        timeout_secs,
+                        MODEL_INIT_INFLIGHT.load(Ordering::Relaxed)
+                    ));
+                    let init_result = tokio::time::timeout(
+                        Duration::from_secs(timeout_secs),
+                        tokio::task::spawn_blocking(move || {
+                            WaveformRemover::new(&model_path_for_spawn, Some(&model_id_for_spawn))
+                        })
+                    ).await;
+                    let inflight_after_wait = MODEL_INIT_INFLIGHT.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Init wait done: attempt={}, wait_ms={}, inflight_now={}",
+                        attempt_id,
+                        spawn_wait_started.elapsed().as_millis(),
+                        inflight_after_wait
+                    ));
 
                     match init_result {
                         Ok(join_res) => match join_res {
                             Ok(Ok(remover)) => {
+                                MODEL_INIT_TIMEOUT_STREAK.store(0, Ordering::Relaxed);
                                 sys_log(&format!(
-                                    "[AI-ENGINE] Init success: id={}, elapsed_ms={}",
+                                    "[AI-ENGINE] Init success: attempt={}, id={}, elapsed_ms={}",
+                                    attempt_id,
                                     resolution.spec.id,
                                     init_started.elapsed().as_millis()
                                 ));
@@ -216,10 +312,25 @@ impl SeparationTask {
                             }
                         },
                         Err(_) => {
-                            last_error = format!("모델 로딩 시간 초과 ({}): {}초", resolution.spec.name, 90);
+                            last_error = format!("모델 로딩 시간 초과 ({}): {}초", resolution.spec.name, timeout_secs);
                             sys_log(&format!("[AI-ENGINE] {}", last_error));
+                            let streak = MODEL_INIT_TIMEOUT_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
                             // Throttle next attempts for a short period to avoid piling blocked inits.
-                            MODEL_INIT_COOLDOWN_UNTIL.store(Self::now_secs() + 120, Ordering::Relaxed);
+                            let mut cooldown_secs = Self::model_init_cooldown_secs();
+                            if streak >= Self::model_init_timeout_streak_threshold() {
+                                let breaker = Self::model_init_circuit_breaker_secs();
+                                if breaker > cooldown_secs {
+                                    cooldown_secs = breaker;
+                                }
+                                sys_log(&format!(
+                                    "[AI-ENGINE] Circuit breaker activated: streak={}, cooldown_secs={}",
+                                    streak, cooldown_secs
+                                ));
+                            }
+                            MODEL_INIT_COOLDOWN_UNTIL.store(Self::now_secs() + cooldown_secs, Ordering::Relaxed);
+                            if !Self::allow_fallback_after_timeout() {
+                                break;
+                            }
                         }
                     }
                 }

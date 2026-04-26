@@ -13,6 +13,21 @@ const ACTIVE_TASKS_SNAPSHOT_KEY = "activeTasksSnapshot";
 let backendListenersInitialized = false;
 let taskUiUpdateScheduled = false;
 
+function formatSeparationFailure(statusText) {
+  const raw = String(statusText || "").trim();
+  if (!raw) return "분리 실패: 원인을 확인할 수 없습니다.";
+  if (raw.includes("모델 로딩 시간 초과")) {
+    return `${raw}. 잠시 후 재시도하거나 앱 재시작/모델 재다운로드를 권장합니다.`;
+  }
+  if (raw.includes("모델 초기화 재시도 대기 중")) {
+    return `${raw}. 대기 후 다시 시도해 주세요.`;
+  }
+  if (raw.includes("YouTube 오디오")) {
+    return `${raw}. 네트워크 상태 또는 URL 접근 가능 여부를 확인해 주세요.`;
+  }
+  return `분리 실패: ${raw}`;
+}
+
 function youtubeVideoIdFromPath(path) {
   const p = String(path || "").trim();
   if (!p) return null;
@@ -191,7 +206,7 @@ export async function setupBackendListeners() {
           updateAiTogglesState(state.currentTrack);
         }
       } else if (isError) {
-        showNotification(`분리 실패: ${status}`, "error");
+        showNotification(formatSeparationFailure(status), "error");
       }
 
       // Refresh library badges for all termination states (finished, cancelled, error)

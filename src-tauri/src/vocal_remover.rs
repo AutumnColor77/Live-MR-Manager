@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::process::Command;
 use ort::session::Session;
 use ort::value::{Value, ValueType};
 use ndarray::{self, Array4};
 use std::sync::Arc;
 use parking_lot::Mutex;
+use once_cell::sync::Lazy;
 use crate::audio_player::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
 #[cfg(target_os = "windows")]
@@ -22,6 +24,7 @@ use symphonia::core::codecs::DecoderOptions;
 use rubato::{Resampler, SincFixedIn, SincInterpolationType, SincInterpolationParameters, WindowFunction};
 use anyhow::{anyhow, Result};
 const BATCH_SIZE: usize = 4;
+static RUNTIME_DIAGNOSTICS_LOGGED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 pub trait InferenceEngine: Send + Sync {
     fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)>;
@@ -231,6 +234,141 @@ pub struct WaveformRemover {
 }
 
 impl WaveformRemover {
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn ensure_macos_intel_ort_dylib_path() -> Result<()> {
+        use std::path::{Path, PathBuf};
+        use std::fs;
+
+        fn first_matching_dylib(dir: &Path) -> Option<PathBuf> {
+            let entries = fs::read_dir(dir).ok()?;
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let name = p.file_name()?.to_string_lossy().to_string();
+                if name.starts_with("libonnxruntime") && name.ends_with(".dylib") && p.is_file() {
+                    return Some(p);
+                }
+            }
+            None
+        }
+
+        fn scan_cellar(root: &Path) -> Option<PathBuf> {
+            let versions = fs::read_dir(root).ok()?;
+            for version in versions.flatten() {
+                let lib_dir = version.path().join("lib");
+                if let Some(found) = first_matching_dylib(&lib_dir) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+
+        fn scan_brew_prefix_formula(formula: &str) -> Option<PathBuf> {
+            let out = Command::new("brew")
+                .args(["--prefix", formula])
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            let prefix = String::from_utf8(out.stdout).ok()?.trim().to_string();
+            if prefix.is_empty() {
+                return None;
+            }
+            let lib_dir = Path::new(&prefix).join("lib");
+            first_matching_dylib(&lib_dir)
+        }
+
+        if let Ok(v) = std::env::var("ORT_DYLIB_PATH") {
+            let p = Path::new(&v);
+            if p.exists() {
+                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH already set: {}", v));
+                return Ok(());
+            }
+            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH is set but missing: {}", v));
+        }
+
+        let direct_dirs = [
+            Path::new("/usr/local/lib"),
+            Path::new("/opt/homebrew/lib"),
+            Path::new("/usr/lib"),
+            Path::new("/opt/local/lib"),
+        ];
+
+        for dir in direct_dirs {
+            if let Some(found) = first_matching_dylib(dir) {
+                let path_str = found.to_string_lossy().to_string();
+                std::env::set_var("ORT_DYLIB_PATH", &path_str);
+                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected: {}", path_str));
+                return Ok(());
+            }
+        }
+
+        let cellar_roots = [
+            Path::new("/usr/local/Cellar/onnxruntime"),
+            Path::new("/opt/homebrew/Cellar/onnxruntime"),
+        ];
+        for root in cellar_roots {
+            if let Some(found) = scan_cellar(root) {
+                let path_str = found.to_string_lossy().to_string();
+                std::env::set_var("ORT_DYLIB_PATH", &path_str);
+                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected from Cellar: {}", path_str));
+                return Ok(());
+            }
+        }
+
+        if let Some(found) = scan_brew_prefix_formula("onnxruntime") {
+            let path_str = found.to_string_lossy().to_string();
+            std::env::set_var("ORT_DYLIB_PATH", &path_str);
+            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected from brew formula: {}", path_str));
+            return Ok(());
+        }
+
+        Err(anyhow!(
+            "Intel macOS에서 ONNX Runtime 동적 라이브러리를 찾지 못했습니다. \
+ORT_DYLIB_PATH를 libonnxruntime.dylib 경로로 설정하거나 onnxruntime를 설치해 주세요. \
+(예: brew install onnxruntime)"
+        ))
+    }
+
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+    fn ensure_macos_intel_ort_dylib_path() -> Result<()> {
+        Ok(())
+    }
+
+    fn log_runtime_diagnostics_once() {
+        if RUNTIME_DIAGNOSTICS_LOGGED.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
+        sys_log(&format!(
+            "[AI-ENGINE] Runtime diagnostics: os={}, arch={}, family={}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            std::env::consts::FAMILY
+        ));
+
+        #[cfg(target_os = "macos")]
+        {
+            let uname_arch = Command::new("uname")
+                .arg("-m")
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            sys_log(&format!("[AI-ENGINE] Runtime diagnostics: uname_arch={}", uname_arch));
+
+            let trans = Command::new("sysctl")
+                .args(["-in", "sysctl.proc_translated"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            sys_log(&format!("[AI-ENGINE] Runtime diagnostics: rosetta_translated={}", trans));
+        }
+    }
+
     fn detect_instrumental_output(model_id_hint: Option<&str>, model_name: &str) -> bool {
         if let Some(id) = model_id_hint {
             let lower_id = id.to_ascii_lowercase();
@@ -249,6 +387,8 @@ impl WaveformRemover {
     }
 
     pub fn new(model_path: &Path, model_id_hint: Option<&str>) -> Result<Self> {
+        Self::log_runtime_diagnostics_once();
+        Self::ensure_macos_intel_ort_dylib_path()?;
         let threads: usize = 1;
         sys_log(&format!("[AI-ENGINE] Initializing with conservative settings (intra-op threads: {})", threads));
         let init_started = Instant::now();
@@ -290,6 +430,7 @@ impl WaveformRemover {
             sys_log(&format!("[AI-ENGINE] Trying provider: {}", name));
             let provider_started = Instant::now();
             let session_res: Result<Session, ort::Error> = (|| {
+                sys_log(&format!("[AI-ENGINE] Provider {} builder start", name));
                 let builder_started = Instant::now();
                 let mut builder = Session::builder()?
                     .with_intra_threads(threads)?
@@ -300,9 +441,60 @@ impl WaveformRemover {
                     builder_started.elapsed().as_millis()
                 ));
 
-                // For CPU, avoid forcing EP registration path and use ORT defaults.
-                // This is more stable on some Windows machines.
+                // For CPU on Windows, avoid forcing EP registration path and use ORT defaults.
+                // For non-Windows, we can still use explicit EP registration.
+                #[cfg(target_os = "windows")]
+                let use_default_cpu_path = name == "CPU";
+                #[cfg(not(target_os = "windows"))]
+                let use_default_cpu_path = false;
+
+                #[cfg(target_os = "macos")]
                 if name == "CPU" {
+                    // Strategy A (macOS): explicit CPU EP registration path.
+                    sys_log("[AI-ENGINE] Provider CPU strategy A start (explicit EP path)");
+                    let builder_a = Session::builder()?
+                        .with_intra_threads(threads)?
+                        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+                    let ep_started = Instant::now();
+                    if let Ok(mut builder_a) =
+                        builder_a.with_execution_providers([CPUExecutionProvider::default().build()])
+                    {
+                        sys_log(&format!(
+                            "[AI-ENGINE] Provider CPU strategy A EP registration done in {} ms",
+                            ep_started.elapsed().as_millis()
+                        ));
+                        let commit_started = Instant::now();
+                        let explicit_result = builder_a.commit_from_file(model_path);
+                        sys_log(&format!(
+                            "[AI-ENGINE] Provider CPU strategy A commit finished in {} ms",
+                            commit_started.elapsed().as_millis()
+                        ));
+                        if let Ok(session) = explicit_result {
+                            return Ok(session);
+                        }
+                        if let Err(e) = explicit_result {
+                            sys_log(&format!("[AI-ENGINE] Provider CPU strategy A failed: {}", e));
+                        }
+                    } else {
+                        sys_log("[AI-ENGINE] Provider CPU strategy A EP registration failed");
+                    }
+
+                    // Strategy B (macOS): default commit path.
+                    sys_log("[AI-ENGINE] Provider CPU strategy B start (default path)");
+                    let mut builder_b = Session::builder()?
+                        .with_intra_threads(threads)?
+                        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+                    let commit_started = Instant::now();
+                    let result = builder_b.commit_from_file(model_path);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider CPU strategy B commit finished in {} ms",
+                        commit_started.elapsed().as_millis()
+                    ));
+                    return result;
+                }
+
+                if use_default_cpu_path {
+                    sys_log(&format!("[AI-ENGINE] Provider {} commit start (default path)", name));
                     let commit_started = Instant::now();
                     let result = builder.commit_from_file(model_path);
                     sys_log(&format!(
@@ -313,6 +505,7 @@ impl WaveformRemover {
                     result
                 } else {
                     let ep_started = Instant::now();
+                    sys_log(&format!("[AI-ENGINE] Provider {} EP registration start", name));
                     let mut builder = builder
                         .with_execution_providers([ep])?
                         ;
@@ -321,6 +514,7 @@ impl WaveformRemover {
                         name,
                         ep_started.elapsed().as_millis()
                     ));
+                    sys_log(&format!("[AI-ENGINE] Provider {} commit start (explicit EP path)", name));
                     let commit_started = Instant::now();
                     let result = builder.commit_from_file(model_path);
                     sys_log(&format!(

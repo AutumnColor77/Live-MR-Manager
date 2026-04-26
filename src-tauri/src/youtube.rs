@@ -3,6 +3,8 @@ use std::sync::Arc;
 use serde_json::Value;
 use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use std::io::Cursor;
 use tokio::process::Command;
@@ -10,6 +12,8 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
 use futures::StreamExt;
 use std::process::Stdio;
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
@@ -27,7 +31,7 @@ struct SeparationProgress {
     pub provider: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct YoutubeMetadata {
     pub id: Option<String>,
     pub title: Option<String>,
@@ -38,7 +42,93 @@ pub struct YoutubeMetadata {
 
 pub struct YoutubeManager;
 
+static METADATA_CACHE: Lazy<RwLock<HashMap<String, (YoutubeMetadata, Instant)>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+const METADATA_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
+const METADATA_TIMEOUT: Duration = Duration::from_secs(12);
+
 impl YoutubeManager {
+    fn extract_video_id(url: &str) -> Option<String> {
+        let trimmed = url.trim();
+        if let Some(idx) = trimmed.find("youtu.be/") {
+            let tail = &trimmed[idx + "youtu.be/".len()..];
+            let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(idx) = trimmed.find("watch?v=") {
+            let tail = &trimmed[idx + "watch?v=".len()..];
+            let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(idx) = trimmed.find("/shorts/") {
+            let tail = &trimmed[idx + "/shorts/".len()..];
+            let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        None
+    }
+
+    fn metadata_cache_key(url: &str) -> String {
+        if let Some(id) = Self::extract_video_id(url) {
+            return format!("yt:{}", id);
+        }
+        url.trim().to_string()
+    }
+
+    fn read_metadata_cache(key: &str) -> Option<YoutubeMetadata> {
+        let mut cache = METADATA_CACHE.write();
+        if let Some((meta, ts)) = cache.get(key) {
+            if ts.elapsed() <= METADATA_CACHE_TTL {
+                return Some(meta.clone());
+            }
+            cache.remove(key);
+        }
+        None
+    }
+
+    fn write_metadata_cache(key: &str, metadata: &YoutubeMetadata) {
+        let mut cache = METADATA_CACHE.write();
+        cache.insert(key.to_string(), (metadata.clone(), Instant::now()));
+    }
+
+    async fn fetch_oembed_metadata(url: &str, video_id: Option<&str>) -> Option<YoutubeMetadata> {
+        let oembed_url = format!(
+            "https://www.youtube.com/oembed?format=json&url={}",
+            urlencoding::encode(url)
+        );
+        let response = reqwest::get(&oembed_url).await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let payload = response.json::<Value>().await.ok()?;
+        let title = payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let uploader = payload
+            .get("author_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let thumbnail = payload
+            .get("thumbnail_url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                video_id.map(|id| format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id))
+            });
+
+        Some(YoutubeMetadata {
+            id: video_id.map(|s| s.to_string()),
+            title,
+            uploader,
+            duration: None,
+            thumbnail,
+        })
+    }
+
     fn managed_bin_name() -> &'static str {
         #[cfg(target_os = "windows")]
         {
@@ -367,6 +457,12 @@ impl YoutubeManager {
     }
 
     pub async fn get_video_metadata(url: &str) -> Result<YoutubeMetadata, String> {
+        let cache_key = Self::metadata_cache_key(url);
+        if let Some(cached) = Self::read_metadata_cache(&cache_key) {
+            let _ = crate::audio_player::sys_log("[Youtube] Metadata cache hit");
+            return Ok(cached);
+        }
+
         let exe = Self::find_yt_dlp().await;
         let _ = crate::audio_player::sys_log(&format!("[Youtube] Using yt-dlp at: {} for metadata from: {}", exe, url));
         
@@ -375,20 +471,67 @@ impl YoutubeManager {
         {
             cmd.creation_flags(0x08000000);
         }
-        let output = cmd
-            .args(&["-j", "--no-playlist", "--no-warnings", "--no-check-certificates", url])
-            .output()
-            .await
-            .map_err(|e| {
+        let output = tokio::time::timeout(
+            METADATA_TIMEOUT,
+            cmd.args(&[
+                "-j",
+                "--no-playlist",
+                "--skip-download",
+                "--no-warnings",
+                "--no-check-certificates",
+                "--socket-timeout",
+                "8",
+                "--extractor-retries",
+                "1",
+                url,
+            ])
+            .output(),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "yt-dlp metadata timeout after {}s",
+                METADATA_TIMEOUT.as_secs()
+            )
+        })
+        .and_then(|res| {
+            res.map_err(|e| {
                 let err_msg = format!("Failed to start yt-dlp ({}): {}", exe, e);
                 let _ = crate::audio_player::sys_log(&err_msg);
                 err_msg
-            })?;
+            })
+        });
+
+        let output = match output {
+            Ok(v) => v,
+            Err(err_msg) => {
+                let _ = crate::audio_player::sys_log(&format!("[Youtube] {}", err_msg));
+                if let Some(fallback) =
+                    Self::fetch_oembed_metadata(url, Self::extract_video_id(url).as_deref()).await
+                {
+                    let _ = crate::audio_player::sys_log(
+                        "[Youtube] Fallback metadata from oEmbed after yt-dlp failure",
+                    );
+                    Self::write_metadata_cache(&cache_key, &fallback);
+                    return Ok(fallback);
+                }
+                return Err(err_msg);
+            }
+        };
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
             let err_msg = format!("yt-dlp execution failed: {}", err);
             let _ = crate::audio_player::sys_log(&err_msg);
+            if let Some(fallback) =
+                Self::fetch_oembed_metadata(url, Self::extract_video_id(url).as_deref()).await
+            {
+                let _ = crate::audio_player::sys_log(
+                    "[Youtube] Fallback metadata from oEmbed after yt-dlp stderr failure",
+                );
+                Self::write_metadata_cache(&cache_key, &fallback);
+                return Ok(fallback);
+            }
             return Err(err_msg);
         }
 
@@ -432,6 +575,7 @@ impl YoutubeManager {
         };
 
         let _ = crate::audio_player::sys_log(&format!("[Youtube] Successfully fetched metadata: {:?}", metadata.title));
+        Self::write_metadata_cache(&cache_key, &metadata);
         Ok(metadata)
     }
 
@@ -526,6 +670,7 @@ impl YoutubeManager {
                 .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
 
             let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take();
             let mut reader = FramedRead::new(stdout, LinesCodec::new());
             let window_clone = window.clone();
             let dest_clone = destination.clone();
@@ -533,6 +678,25 @@ impl YoutubeManager {
             let wait_for_full_clone = wait_for_full;
 
             tokio::spawn(async move {
+                let stderr_task = stderr.map(|err| {
+                    tokio::spawn(async move {
+                        let mut tail: Vec<String> = Vec::new();
+                        let mut err_reader = FramedRead::new(err, LinesCodec::new());
+                        while let Some(line_result) = err_reader.next().await {
+                            if let Ok(line) = line_result {
+                                let line = line.trim();
+                                if !line.is_empty() {
+                                    tail.push(line.to_string());
+                                    if tail.len() > 8 {
+                                        tail.remove(0);
+                                    }
+                                }
+                            }
+                        }
+                        tail
+                    })
+                });
+
                 while let Some(line_result) = reader.next().await {
                     match line_result {
                         Ok(line) => {
@@ -571,10 +735,25 @@ impl YoutubeManager {
                 }
 
                 let status = child.wait().await;
+                let stderr_tail = if let Some(task) = stderr_task {
+                    task.await.unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
                 
                 {
                     let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
                     active.remove(&dest_clone);
+                    let mut errors = crate::audio_player::DOWNLOAD_ERRORS.lock();
+                    errors.remove(&dest_clone);
+                    if !matches!(status, Ok(s) if s.success()) {
+                        let reason = if stderr_tail.is_empty() {
+                            "yt-dlp exited without stderr output".to_string()
+                        } else {
+                            stderr_tail.join(" | ")
+                        };
+                        errors.insert(dest_clone.clone(), reason);
+                    }
                     
                     // Notify all waiters
                     let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
@@ -614,6 +793,9 @@ impl YoutubeManager {
             }
             
             if destination.exists() { return Ok(destination); }
+            if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
+                return Err(format!("YouTube 오디오 다운로드 실패: {}", reason));
+            }
             return Err("YouTube 오디오 파일을 완전히 다운로드하지 못했습니다".into());
         } else {
             // Streaming mode: wait for headers (8KB)
@@ -640,6 +822,9 @@ impl YoutubeManager {
             }
 
             if !file_ready && !destination.exists() {
+                if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
+                    return Err(format!("YouTube 오디오 파일 생성 실패: {}", reason));
+                }
                 return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
             }
             Ok(destination)

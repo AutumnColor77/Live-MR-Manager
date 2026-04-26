@@ -519,14 +519,17 @@ export function initControlListeners() {
     elements.ytFetchBtn.onclick = async () => {
       const url = elements.ytUrlInput.value.trim();
       if (!url) return;
+      const videoId = extractYoutubeVideoId(url);
+      // Strip playlist/time noise so backend metadata fetch resolves a single video faster.
+      const normalizedUrl = videoId ? `https://youtu.be/${videoId}` : url;
       elements.ytFetchBtn.classList.add("loading-btn");
       elements.ytFetchBtn.disabled = true;
       try {
         const { getAudioMetadata, saveLibrary } = await import('../audio.js');
-        const metadata = await getAudioMetadata(url);
+        const metadata = await getAudioMetadata(normalizedUrl);
 
         const { showNotification } = await import('../utils.js');
-        if (isDuplicateYoutubeTrack(url, metadata)) {
+        if (isDuplicateYoutubeTrack(normalizedUrl, metadata)) {
           showNotification("이미 등록된 곡입니다.", "warning");
           return;
         }

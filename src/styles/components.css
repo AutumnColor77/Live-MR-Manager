@@ -31,6 +31,10 @@
   content: "";
   width: 14px;
   height: 14px;
+  display: inline-block;
+  flex: 0 0 auto;
+  /* Fallback first for environments without color-mix support (e.g. some WebView builds). */
+  border: 2px solid rgba(255, 255, 255, 0.35);
   border: 2px solid color-mix(in srgb, var(--text-inverse) 35%, transparent);
   border-top-color: var(--text-inverse);
   border-radius: 50%;
