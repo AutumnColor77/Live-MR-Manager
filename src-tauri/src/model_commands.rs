@@ -11,6 +11,10 @@ use crate::audio_player::sys_log;
 use crate::youtube::YoutubeManager;
 use ort::ep::ExecutionProvider;
 
+fn normalize_cache_key(path: &str) -> String {
+    path.replace("\\", "/")
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuStatus { pub has_nvidia: bool, pub is_cuda_available: bool, pub is_directml_available: bool, pub recommend_cuda: bool }
@@ -129,7 +133,7 @@ pub fn get_active_separations() -> Vec<String> {
 
 #[tauri::command]
 pub async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
-    let norm = path.replace("\\", "/").to_lowercase();
+    let norm = normalize_cache_key(&path);
     if crate::separation::ACTIVE_SEPARATIONS.lock().contains_key(&norm) {
         let _ = sys_log(&format!("[Command] [Error] start_mr_separation failed: ALREADY_PROCESSING for {}", path));
         return Err("ALREADY_PROCESSING".into()); 
@@ -143,7 +147,7 @@ pub async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<
 
 #[tauri::command]
 pub fn cancel_separation(path: String) -> Result<(), String> {
-    let norm = path.replace("\\", "/").to_lowercase();
+    let norm = normalize_cache_key(&path);
     if let Some((_, flag)) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) {
         flag.store(true, Ordering::Relaxed);
     }
@@ -179,14 +183,14 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
 
 #[tauri::command]
 pub fn check_mr_separated(window: WebviewWindow, path: String) -> bool {
-    let norm = path.replace("\\", "/").to_lowercase();
+    let norm = normalize_cache_key(&path);
     let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
     cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
 }
 
 #[tauri::command]
 pub fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
-    let norm = path.replace("\\", "/").to_lowercase();
+    let norm = normalize_cache_key(&path);
     let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
     if cache.exists() {
         std::fs::remove_dir_all(cache).map_err(|e| e.to_string())?;

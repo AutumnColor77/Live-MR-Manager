@@ -21,6 +21,16 @@ function normalizeTheme(value) {
   return THEME_OPTIONS.has(value) ? value : 'dark';
 }
 
+function applyPlatformClass() {
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const isMac = /Mac/i.test(platform) || /Mac OS X/i.test(ua);
+  const isWindows = /Win/i.test(platform) || /Windows/i.test(ua);
+  const root = document.documentElement;
+  root.classList.toggle("platform-macos", isMac);
+  root.classList.toggle("platform-windows", isWindows);
+}
+
 export function applyTheme(theme, { persist = true } = {}) {
   const nextTheme = normalizeTheme(theme);
   document.documentElement.setAttribute('data-theme', nextTheme);
@@ -72,6 +82,7 @@ console.log("[JS] main.js loaded and executing...");
 
 async function initApp() {
   console.log("[App] Initializing...");
+  applyPlatformClass();
   initTheme();
 
   // 0. Setup custom titlebar immediately (Don't wait for backend)

@@ -296,6 +296,13 @@ h1 {
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* WKWebView on macOS may render transparent + backdrop-filter as black layers. */
+html.platform-macos .page-controls-wrapper {
+  background: color-mix(in srgb, var(--bg-color) 88%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .library-controls {
   margin: 0 !important;
   height: auto;

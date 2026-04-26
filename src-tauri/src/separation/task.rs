@@ -27,7 +27,7 @@ impl SeparationTask {
         let cache_dir = self.cache_dir;
 
         // 1. Normalize path and register in active map immediately to prevent duplicates
-        let norm_p = path.replace("\\", "/").to_lowercase();
+        let norm_p = path.replace("\\", "/");
         
         // [FIX] Clear any previous cancellation records for this path
         crate::audio_player::CANCEL_REQUESTS.lock().remove(&norm_p);
@@ -237,7 +237,7 @@ impl SeparationTask {
             // Clean up from active map
             {
                 let mut active = ACTIVE_SEPARATIONS.lock();
-                let norm_p = p_for_cleanup.replace("\\", "/").to_lowercase();
+                let norm_p = p_for_cleanup.replace("\\", "/");
                 active.remove(&norm_p);
             }
             

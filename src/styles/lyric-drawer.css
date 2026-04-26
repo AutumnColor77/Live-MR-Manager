@@ -49,6 +49,17 @@
     margin-top: 2px;
 }
 
+/* Keep handle label readable on macOS WebKit. */
+html.platform-macos .lyric-drawer-trigger {
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    letter-spacing: 0.4px;
+}
+
+html.platform-macos .lyric-drawer-trigger span {
+    margin-top: 0;
+}
+
 /* 2. Sliding Drawer */
 .lyric-drawer {
     position: fixed;

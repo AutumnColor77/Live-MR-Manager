@@ -23,7 +23,7 @@ pub struct KeyBpmAnalysis {
 fn resolve_analysis_path(path: &str) -> Result<PathBuf, String> {
     // Prefer MR instrumental file when separation exists.
     if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
-        let norm = path.replace("\\", "/").to_lowercase();
+        let norm = path.replace("\\", "/");
         let encoded = urlencoding::encode(&norm).to_string();
         let inst_path = paths.separated.join(encoded).join("inst.wav");
         if inst_path.is_file() {

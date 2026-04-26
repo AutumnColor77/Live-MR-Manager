@@ -78,6 +78,7 @@ html[data-theme="sky"] {
     --align-track-placeholder: color-mix(in srgb, var(--text-main) 50%, transparent);
 }
 
+
 /* 1. Main Layout Container - Global Scrollable Grid */
 .alignment-container {
     flex: 1;
@@ -126,6 +127,12 @@ html[data-theme="sky"] {
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
     overflow: hidden; /* 내부 스크롤 활성화를 위해 다시 hidden으로 변경 */
+}
+
+html.platform-macos .alignment-card {
+    background: var(--card-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .alignment-card:hover {

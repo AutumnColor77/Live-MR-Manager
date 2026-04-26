@@ -302,8 +302,8 @@ impl InferenceEngine for WaveformRemover {
         let load_and_resample_start = Instant::now();
         let (raw_samples, sample_rate, channels) = self.load_any_audio(audio_path)?;
         
-        // Normalize path for reliable cancellation check (ignore slash direction and case)
-        let path_str = audio_path.to_string_lossy().to_string().replace("\\", "/").to_lowercase();
+        // Normalize path for reliable cancellation check (ignore slash direction only)
+        let path_str = audio_path.to_string_lossy().to_string().replace("\\", "/");
         
         let is_cancelled = || {
             cancel_flag.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str)
