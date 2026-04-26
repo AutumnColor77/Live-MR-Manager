@@ -124,9 +124,18 @@ export function switchTab(tabId) {
   }
 
   if (tabId === "overlay") {
-    // Refresh iframe to ensure it's connected
+    // Do not force-reload on every tab switch.
+    // Repeated reloads make preview feel delayed and can drop current preview context.
     const iframe = document.getElementById("overlay-iframe");
-    if (iframe) iframe.src = iframe.src;
+    if (iframe && !iframe.src) {
+      iframe.src = "overlay-info.html?preview=true";
+    }
+    // Ensure preview scale/position is recalculated after the hidden tab becomes visible.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new Event("resize"));
+      });
+    });
   }
 
   if (tabId === "tasks") {

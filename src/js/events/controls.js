@@ -711,6 +711,9 @@ export function initControlListeners() {
       }
       state.themeMode = mode;
       syncThemeToUi(mode);
+      if (typeof syncAllOverlayStylesToBackend === "function") {
+        syncAllOverlayStylesToBackend();
+      }
     });
   }
 
@@ -833,12 +836,14 @@ export function initControlListeners() {
   const overlayScaleVal = document.getElementById('overlay-scale-val');
   const overlayFont = document.getElementById('overlay-font');
   const overlayColor = document.getElementById('overlay-color');
+  const overlayTextColor = document.getElementById('overlay-text-color');
   const overlayBgOpacity = document.getElementById('overlay-bg-opacity');
   const overlayBgOpacityVal = document.getElementById('overlay-bg-opacity-val');
   const overlayRounding = document.getElementById('overlay-rounding');
   const overlayRoundingVal = document.getElementById('overlay-rounding-val');
   const overlayBgColor = document.getElementById('overlay-bg-color');
   const overlayColorHex = document.getElementById('overlay-color-hex');
+  const overlayTextColorHex = document.getElementById('overlay-text-color-hex');
   const overlayBgColorHex = document.getElementById('overlay-bg-color-hex');
   const overlayUrlDisplay = document.getElementById('overlay-url-display');
   const lyricsOverlayUrlDisplay = document.getElementById('lyrics-overlay-url-display');
@@ -913,10 +918,11 @@ export function initControlListeners() {
   };
 
   const updateThemePalette = setupPalette('theme-palette', overlayColor, overlayColorHex);
+  const updateTextPalette = setupPalette('text-palette', overlayTextColor, overlayTextColorHex);
   const updateBgPalette = setupPalette('bg-palette', overlayBgColor, overlayBgColorHex);
 
   const updateOverlaySettings = async (skipSave = false) => {
-    if (!overlayScale || !overlayFont || !overlayColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor || !toggleOverlayForceVisible) return;
+    if (!overlayScale || !overlayFont || !overlayColor || !overlayTextColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor || !toggleOverlayForceVisible) return;
     
     const activeTab = document.querySelector('.preview-tab.active');
     const currentTarget = (activeTab && activeTab.dataset.previewMode === 'lyrics') ? 'lyrics' : 'info';
@@ -926,6 +932,7 @@ export function initControlListeners() {
     
     const font = overlayFont.value;
     const color = overlayColor.value.replace('#', '');
+    const textColor = overlayTextColor.value.replace('#', '');
     
     const bgOpacity = parseFloat(overlayBgOpacity.value);
     if (overlayBgOpacityVal) overlayBgOpacityVal.textContent = `${Math.round(bgOpacity * 100)}%`;
@@ -936,6 +943,7 @@ export function initControlListeners() {
     const bgColor = overlayBgColor.value.replace('#', '');
     const isForceVisible = toggleOverlayForceVisible.checked;
     const animationDirection = overlayAnimationDirection.value || 'left';
+    const themeMode = document.documentElement.getAttribute('data-theme') || 'dark';
     
     // Save to localStorage (Nested structure)
     if (!skipSave) {
@@ -944,7 +952,7 @@ export function initControlListeners() {
       try { config = JSON.parse(saved) || {}; } catch(e) {}
       
       config[currentTarget] = {
-        scale, font, color, bgOpacity, rounding, bgColor, animationDirection
+        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection
       };
       config.isForceVisible = isForceVisible;
       
@@ -986,11 +994,13 @@ export function initControlListeners() {
         scale: parseFloat(scale), 
         font: font, 
         color: color,
+        textColor: textColor,
         bgColor: bgColor,
         bgOpacity: bgOpacity,
         rounding: rounding,
         isForceVisible: isForceVisible,
-        animationDirection: animationDirection
+        animationDirection: animationDirection,
+        themeMode: themeMode
       });
     } catch (err) {
       console.error("Failed to update overlay style:", err);
@@ -1039,6 +1049,7 @@ export function initControlListeners() {
     const defaults = {
       scale: 1.0,
       color: currentTarget === 'lyrics' ? 'ffffff' : '3b82f6',
+      textColor: 'ffffff',
       bgOpacity: 0.6,
       rounding: 20,
       bgColor: '0f0f14',
@@ -1056,6 +1067,12 @@ export function initControlListeners() {
       const hexInput = document.getElementById('overlay-color-hex');
       if (hexInput) hexInput.value = final.color.replace('#', '');
       if (updateThemePalette) updateThemePalette(`#${final.color}`);
+    }
+    if (overlayTextColor) {
+      overlayTextColor.value = `#${final.textColor}`;
+      const textHexInput = document.getElementById('overlay-text-color-hex');
+      if (textHexInput) textHexInput.value = final.textColor.replace('#', '');
+      if (updateTextPalette) updateTextPalette(`#${final.textColor}`);
     }
     if (overlayBgOpacity) overlayBgOpacity.value = final.bgOpacity;
     if (overlayRounding) overlayRounding.value = final.rounding;
@@ -1113,12 +1130,14 @@ export function initControlListeners() {
     try { config = JSON.parse(saved) || {}; } catch (e) {}
 
     const isForceVisible = config.isForceVisible === true;
+    const themeMode = document.documentElement.getAttribute('data-theme') || 'dark';
     const targets = ['info', 'lyrics'];
 
     for (const target of targets) {
       const defaults = {
         scale: 1.0,
         color: target === 'lyrics' ? 'ffffff' : '3b82f6',
+        textColor: 'ffffff',
         bgOpacity: 0.6,
         rounding: 20,
         bgColor: '0f0f14',
@@ -1134,11 +1153,13 @@ export function initControlListeners() {
           scale: parseFloat(final.scale) || 1.0,
           font: final.font || 'Inter',
           color: String(final.color || defaults.color).replace('#', ''),
+          textColor: String(final.textColor || defaults.textColor).replace('#', ''),
           bgColor: String(final.bgColor || defaults.bgColor).replace('#', ''),
           bgOpacity: Number.isFinite(final.bgOpacity) ? final.bgOpacity : defaults.bgOpacity,
           rounding: Number.isFinite(final.rounding) ? final.rounding : defaults.rounding,
           isForceVisible,
-          animationDirection: final.animationDirection || 'left'
+          animationDirection: final.animationDirection || 'left',
+          themeMode
         });
       } catch (err) {
         console.error(`Failed to sync ${target} overlay style:`, err);
@@ -1171,6 +1192,7 @@ export function initControlListeners() {
     overlayFont.addEventListener('change', () => updateOverlaySettings());
   }
   if (overlayColor) overlayColor.addEventListener('input', () => updateOverlaySettings());
+  if (overlayTextColor) overlayTextColor.addEventListener('input', () => updateOverlaySettings());
   if (overlayBgOpacity) {
     overlayBgOpacity.addEventListener('input', () => updateOverlaySettings());
     overlayBgOpacity.addEventListener("wheel", (e) => {

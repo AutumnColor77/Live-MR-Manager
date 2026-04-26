@@ -20,14 +20,6 @@
       --enter-gap-y: 80px;
     }
 
-    html[data-theme="light"] {
-      --glass-bg: rgba(255, 255, 255, 0.82);
-      --glass-border: rgba(15, 23, 42, 0.15);
-      --text-main: #0f172a;
-      --text-muted: rgba(15, 23, 42, 0.62);
-      --thumb-fallback: #e2e8f0;
-    }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -191,8 +183,7 @@
 
   <script>
     const container = document.getElementById('container');
-    const savedTheme = localStorage.getItem('themeMode');
-    document.documentElement.setAttribute('data-theme', savedTheme === 'light' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
     const thumbWrap = document.getElementById('thumb-wrap');
     const thumb = document.getElementById('thumb');
     const activeAnimations = {};
@@ -313,6 +304,10 @@
         document.documentElement.style.setProperty('--overlay-font', `"${style.font || 'Inter'}", 'Noto Sans KR', sans-serif`);
         document.documentElement.style.setProperty('--overlay-rounding', `${style.rounding !== undefined ? style.rounding : 20}px`);
         document.documentElement.style.setProperty('--accent-color', `#${(style.color || '3b82f6').replace('#','')}`);
+        const textColor = `#${(style.text_color || style.textColor || 'ffffff').replace('#', '')}`;
+        const textColorRgb = hexToRgb(style.text_color || style.textColor || 'ffffff');
+        document.documentElement.style.setProperty('--text-main', textColor);
+        document.documentElement.style.setProperty('--text-muted', `rgba(${textColorRgb}, 0.62)`);
         document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(style.bg_color || style.bgColor)}, ${style.bg_opacity ?? style.bgOpacity ?? 0.85})`);
 
         // Layout / Direction
@@ -398,11 +393,6 @@
       document.body.style.height = `${PREVIEW_STAGE_HEIGHT}px`;
     }
     connectWS();
-    window.addEventListener('storage', (event) => {
-      if (event.key !== 'themeMode') return;
-      document.documentElement.setAttribute('data-theme', event.newValue === 'light' ? 'light' : 'dark');
-    });
-
     thumb.onerror = () => {
       if (thumb.src !== DEFAULT_THUMB_URL) {
         thumb.src = DEFAULT_THUMB_URL;

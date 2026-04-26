@@ -25,14 +25,6 @@
       --lyric-lines-gap: 2px;
     }
 
-    html[data-theme="light"] {
-      --glass-bg: rgba(255, 255, 255, 0.86);
-      --glass-border: rgba(15, 23, 42, 0.12);
-      --text-main: #0f172a;
-      --text-sub: rgba(15, 23, 42, 0.58);
-      --text-shadow: rgba(255, 255, 255, 0.2);
-    }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -207,8 +199,7 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const isPreview = urlParams.get('preview') === 'true';
-    const savedTheme = localStorage.getItem('themeMode');
-    document.documentElement.setAttribute('data-theme', savedTheme === 'light' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
 
     function hexToRgb(hex) {
       if (!hex) return "0,0,0";
@@ -266,6 +257,7 @@
       const scale = style.scale || 1.0;
       const font = style.font || 'Inter';
       const color = (style.color || 'ffffff').replace('#', '');
+      const textColorHex = (style.text_color || style.textColor || 'ffffff').replace('#', '');
       const bgColor = (style.bg_color || "0f0f14").replace('#', '');
       const bgOpacity = style.bg_opacity !== undefined ? style.bg_opacity : 0.6;
       const rounding = style.rounding !== undefined ? style.rounding : 20;
@@ -276,6 +268,8 @@
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
       document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
       document.documentElement.style.setProperty('--accent-color', `#${color}`);
+      document.documentElement.style.setProperty('--text-main', `#${textColorHex}`);
+      document.documentElement.style.setProperty('--text-sub', `rgba(${hexToRgb(textColorHex)}, 0.58)`);
       
       let duration = '0.85s';
       if (direction === 'right' || direction === 'left') duration = '1.5s';
@@ -341,10 +335,6 @@
     function hideOverlay() { overlay.classList.remove('visible'); }
     
     connectWS();
-    window.addEventListener('storage', (event) => {
-      if (event.key !== 'themeMode') return;
-      document.documentElement.setAttribute('data-theme', event.newValue === 'light' ? 'light' : 'dark');
-    });
   </script>
 </body>
 </html>

@@ -66,53 +66,132 @@ export function updateTaskUI() {
   }
   
   if (tasks.length === 0) {
-    elements.activeTasksList.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
+    if (!elements.activeTasksList.querySelector('.no-tasks')) {
+      elements.activeTasksList.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
+    }
     return;
   }
 
-  elements.activeTasksList.innerHTML = tasks.map(task => {
+  const statusMap = {
+    "Queued": "대기 중",
+    "Preparing": "준비 중",
+    "Starting": "시작 중",
+    "Processing": "분리 중",
+    "Finished": "완료",
+    "Cancelled": "취소됨",
+    "Error": "오류"
+  };
+
+  const formatTaskViewModel = (task) => {
     const percent = Math.floor(task.percentage || 0);
     const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
     const pStr = (task.provider || "").toUpperCase();
     const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
     const providerLabel = isGPU ? "GPU" : "CPU";
-    
-    // Status Translation
-    const statusMap = {
-      "Queued": "대기 중",
-      "Preparing": "준비 중",
-      "Starting": "시작 중",
-      "Processing": "분리 중",
-      "Finished": "완료",
-      "Cancelled": "취소됨",
-      "Error": "오류"
-    };
     const displayStatus = statusMap[task.status] || task.status || '대기 중';
+    return { percent, thumbUrl, isGPU, providerLabel, displayStatus };
+  };
 
-    return `
-      <div class="task-card" data-path="${task.path}">
-        <div class="task-header-info">
-          <div class="task-icon">
-            ${thumbUrl ? `<img src="${thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>'}
-          </div>
-          <div class="task-main-details">
-            <div class="task-title">${task.title}</div>
-            <div class="task-status-row">
-              <span class="task-status-text">${displayStatus}</span>
-              <span class="task-percentage">${percent}%</span>
-            </div>
-          </div>
-          <div class="task-actions">
-            <div class="task-provider-badge ${isGPU ? 'provider-gpu' : ''}">${providerLabel}</div>
-            <button class="btn-task-cancel" onclick="window.cancelTask(this.closest('.task-card').dataset.path)">취소</button>
+  const createTaskCard = (task) => {
+    const vm = formatTaskViewModel(task);
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.dataset.path = task.path;
+    card.innerHTML = `
+      <div class="task-header-info">
+        <div class="task-icon">
+          ${vm.thumbUrl ? `<img src="${vm.thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>'}
+        </div>
+        <div class="task-main-details">
+          <div class="task-title"></div>
+          <div class="task-status-row">
+            <span class="task-status-text"></span>
+            <span class="task-percentage"></span>
           </div>
         </div>
-        <div class="task-progress-container">
-          <div class="task-progress-bar" style="width: ${percent}%"></div>
+        <div class="task-actions">
+          <div class="task-provider-badge"></div>
+          <button class="btn-task-cancel">취소</button>
         </div>
       </div>
+      <div class="task-progress-container">
+        <div class="task-progress-bar"></div>
+      </div>
     `;
-  }).join("");
+
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (typeof window.cancelTask === 'function') {
+          window.cancelTask(card.dataset.path);
+        }
+      });
+    }
+
+    return card;
+  };
+
+  const updateTaskCard = (card, task) => {
+    const vm = formatTaskViewModel(task);
+    card.dataset.path = task.path;
+
+    const icon = card.querySelector('.task-icon');
+    if (icon) {
+      const prevThumb = card.dataset.thumbUrl || '';
+      if (prevThumb !== vm.thumbUrl) {
+        icon.innerHTML = vm.thumbUrl ? `<img src="${vm.thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>';
+        card.dataset.thumbUrl = vm.thumbUrl;
+      }
+    }
+    const title = card.querySelector('.task-title');
+    if (title) title.textContent = task.title;
+    const status = card.querySelector('.task-status-text');
+    if (status) status.textContent = vm.displayStatus;
+    const percentage = card.querySelector('.task-percentage');
+    if (percentage) percentage.textContent = `${vm.percent}%`;
+
+    const badge = card.querySelector('.task-provider-badge');
+    if (badge) {
+      badge.textContent = vm.providerLabel;
+      badge.classList.toggle('provider-gpu', vm.isGPU);
+    }
+
+    const progressBar = card.querySelector('.task-progress-bar');
+    if (progressBar) {
+      progressBar.style.width = `${vm.percent}%`;
+    }
+  };
+
+  const existingCards = new Map(
+    Array.from(elements.activeTasksList.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+  );
+  const nextPaths = new Set(tasks.map((t) => t.path));
+
+  // Remove empty placeholder if present.
+  const emptyState = elements.activeTasksList.querySelector('.no-tasks');
+  if (emptyState) emptyState.remove();
+
+  // Remove cards for tasks that no longer exist.
+  existingCards.forEach((card, path) => {
+    if (!nextPaths.has(path)) {
+      card.remove();
+      existingCards.delete(path);
+    }
+  });
+
+  // Upsert cards while preserving order from current task list.
+  tasks.forEach((task, index) => {
+    let card = existingCards.get(task.path);
+    if (!card) {
+      card = createTaskCard(task);
+      existingCards.set(task.path, card);
+    }
+    updateTaskCard(card, task);
+    const currentAtIndex = elements.activeTasksList.children[index];
+    if (currentAtIndex !== card) {
+      elements.activeTasksList.insertBefore(card, currentAtIndex || null);
+    }
+  });
 }
 
 export function updateAiTogglesState(song = null) {

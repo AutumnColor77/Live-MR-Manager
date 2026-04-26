@@ -68,6 +68,14 @@ html[data-theme="sky"] {
     --align-wave-inset: color-mix(in srgb, var(--shadow-strong) 32%, transparent);
     --align-track-thumb-bg: color-mix(in srgb, var(--bg-color) 88%, var(--surface-2) 12%);
     --align-zoom-bg: color-mix(in srgb, var(--bg-color) 80%, var(--surface-3) 20%);
+    /* Make timeline segment boxes readable on light-like themes */
+    --align-item-bg: color-mix(in srgb, var(--accent-primary) 16%, var(--surface-1) 84%);
+    --align-item-border: color-mix(in srgb, var(--accent-primary) 42%, transparent);
+    --align-item-hover-bg: color-mix(in srgb, var(--accent-primary) 22%, var(--surface-2) 78%);
+    --align-item-hover-border: color-mix(in srgb, var(--accent-primary) 72%, transparent);
+    --align-item-active-bg: color-mix(in srgb, var(--accent-primary) 30%, var(--surface-2) 70%);
+    --align-item-active-border: color-mix(in srgb, var(--accent-primary) 90%, transparent);
+    --align-track-placeholder: color-mix(in srgb, var(--text-main) 50%, transparent);
 }
 
 /* 1. Main Layout Container - Global Scrollable Grid */

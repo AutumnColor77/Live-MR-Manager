@@ -7,8 +7,51 @@ import { elements } from '../ui/elements.js';
 import { updateTaskUI, updateAiModelStatus, updateCardStatusBadge } from '../ui/components.js';
 import { renderLibrary } from '../ui/library.js';
 import { showNotification } from '../utils.js';
+import { invoke } from '../tauri-bridge.js';
+
+const ACTIVE_TASKS_SNAPSHOT_KEY = "activeTasksSnapshot";
+let backendListenersInitialized = false;
+let taskUiUpdateScheduled = false;
+
+function scheduleTaskUiUpdate() {
+  if (taskUiUpdateScheduled) return;
+  taskUiUpdateScheduled = true;
+  requestAnimationFrame(() => {
+    taskUiUpdateScheduled = false;
+    updateTaskUI();
+  });
+}
+
+function persistActiveTasksSnapshot() {
+  try {
+    const snapshot = {};
+    Object.entries(state.activeTasks || {}).forEach(([path, task]) => {
+      snapshot[path] = {
+        percentage: Number(task?.percentage || 0),
+        status: String(task?.status || "Processing"),
+        provider: String(task?.provider || "UNKNOWN"),
+        model: String(task?.model || "")
+      };
+    });
+    localStorage.setItem(ACTIVE_TASKS_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch (_) {}
+}
+
+function readActiveTasksSnapshot() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_TASKS_SNAPSHOT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
 
 export async function setupBackendListeners() {
+  if (backendListenersInitialized) return;
+  backendListenersInitialized = true;
+
   // Playback Progress Update
   await listen('playback-progress', (event) => {
     if (!state.isSeeking) {
@@ -126,7 +169,8 @@ export async function setupBackendListeners() {
       };
     }
 
-    updateTaskUI();
+    persistActiveTasksSnapshot();
+    scheduleTaskUiUpdate();
 
     // Also update the badge on the library card if it's visible
     updateCardStatusBadge(path);
@@ -183,4 +227,34 @@ export async function setupBackendListeners() {
       }
     }
   });
+
+  // Recover active separation queue after frontend reload (F5).
+  try {
+    const activePaths = await invoke("get_active_separations");
+    if (Array.isArray(activePaths)) {
+      const snapshot = readActiveTasksSnapshot();
+      activePaths.forEach((path) => {
+        if (!path) return;
+        if (!state.activeTasks[path]) {
+          const song = state.songLibrary.find((s) => s.path === path);
+          const saved = snapshot[path] || {};
+          state.activeTasks[path] = {
+            percentage: Number(saved.percentage || 0),
+            status: String(saved.status || "Processing"),
+            provider: String(saved.provider || "UNKNOWN"),
+            model: String(saved.model || ""),
+            title: song?.title || "알 수 없는 곡",
+            thumbnail: song?.thumbnail || ""
+          };
+        }
+      });
+      if (activePaths.length > 0) {
+        persistActiveTasksSnapshot();
+        scheduleTaskUiUpdate();
+        activePaths.forEach((path) => updateCardStatusBadge(path));
+      }
+    }
+  } catch (err) {
+    console.warn("[Backend] Failed to recover active separation queue:", err);
+  }
 }

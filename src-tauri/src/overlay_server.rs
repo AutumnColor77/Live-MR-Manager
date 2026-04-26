@@ -17,6 +17,7 @@ pub struct OverlayStyle {
     pub scale: f32,
     pub font: String,
     pub color: String,
+    pub text_color: String,
     pub bg_color: String,
     pub bg_opacity: f32,
     pub rounding: f32,
@@ -29,6 +30,7 @@ impl Default for OverlayStyle {
             scale: 1.0,
             font: "Inter".to_string(),
             color: "3b82f6".to_string(),
+            text_color: "ffffff".to_string(),
             bg_color: "0f0f14".to_string(),
             bg_opacity: 0.6,
             rounding: 20.0,
@@ -45,6 +47,7 @@ pub struct OverlayState {
     pub is_playing: bool,
     pub current_lyric: String,
     pub next_lyric: String,
+    pub theme_mode: String,
 
     pub info_style: OverlayStyle,
     pub lyrics_style: OverlayStyle,
@@ -61,6 +64,7 @@ impl Default for OverlayState {
             is_playing: false,
             current_lyric: "".to_string(),
             next_lyric: "".to_string(),
+            theme_mode: "dark".to_string(),
             info_style: OverlayStyle::default(),
             lyrics_style: OverlayStyle {
                 color: "ffffff".to_string(),
@@ -293,24 +297,38 @@ pub async fn update_overlay_state(title: String, artist: String, thumbnail: Stri
 }
 
 #[tauri::command]
-pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String) {
+pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, text_color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String, theme_mode: String) {
     let mut state = CURRENT_STATE.lock().await.clone();
     let style = OverlayStyle {
         scale,
         font,
         color,
+        text_color,
         bg_color,
         bg_opacity,
         rounding,
         animation_direction,
     };
+    let shared_color = style.color.clone();
+    let shared_text_color = style.text_color.clone();
+    let shared_bg_color = style.bg_color.clone();
+    let shared_bg_opacity = style.bg_opacity;
 
     if target == "lyrics" {
         state.lyrics_style = style;
+        state.info_style.color = shared_color;
+        state.info_style.text_color = shared_text_color;
+        state.info_style.bg_color = shared_bg_color;
+        state.info_style.bg_opacity = shared_bg_opacity;
     } else {
         state.info_style = style;
+        state.lyrics_style.color = shared_color;
+        state.lyrics_style.text_color = shared_text_color;
+        state.lyrics_style.bg_color = shared_bg_color;
+        state.lyrics_style.bg_opacity = shared_bg_opacity;
     }
     state.is_force_visible = is_force_visible;
+    state.theme_mode = if theme_mode.is_empty() { "dark".to_string() } else { theme_mode };
     broadcast_overlay_state(state).await;
 }
 

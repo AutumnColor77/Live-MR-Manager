@@ -662,23 +662,19 @@ export class ForcedAlignmentViewer {
 
         if (this.state.duration <= 0) return;
 
-        const theme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const isLightLikeTheme = theme === 'light' || theme === 'pink' || theme === 'sky';
-        const palette = isLightLikeTheme
-            ? {
-                segmentFillActive: 'rgba(154, 107, 63, 0.24)',
-                segmentFillIdle: 'rgba(154, 107, 63, 0.1)',
-                segmentBorder: 'rgba(154, 107, 63, 0.45)',
-                segmentHover: 'rgba(154, 107, 63, 0.8)',
-                waveformStroke: 'rgba(79, 64, 50, 0.55)',
-            }
-            : {
-                segmentFillActive: 'rgba(74, 158, 255, 0.3)',
-                segmentFillIdle: 'rgba(74, 158, 255, 0.1)',
-                segmentBorder: 'rgba(74, 158, 255, 0.3)',
-                segmentHover: '#4a9eff',
-                waveformStroke: 'rgba(255,255,255,0.2)',
-            };
+        const rootStyle = getComputedStyle(document.documentElement);
+        const cssVar = (name, fallback) => {
+            const v = rootStyle.getPropertyValue(name).trim();
+            return v || fallback;
+        };
+        const palette = {
+            // Task/segment box colors should follow active app theme tokens.
+            segmentFillActive: cssVar('--align-item-active-bg', 'rgba(74, 158, 255, 0.3)'),
+            segmentFillIdle: cssVar('--align-item-bg', 'rgba(74, 158, 255, 0.1)'),
+            segmentBorder: cssVar('--align-item-border', 'rgba(74, 158, 255, 0.3)'),
+            segmentHover: cssVar('--align-item-hover-border', '#4a9eff'),
+            waveformStroke: cssVar('--align-track-placeholder', 'rgba(255,255,255,0.2)'),
+        };
 
         this.updateScrollbar();
 
