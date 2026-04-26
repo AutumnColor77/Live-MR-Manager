@@ -477,6 +477,7 @@ canvas#waveform-canvas {
     flex-direction: row;
     flex: 1;
     background: var(--accent-blue);
+    color: var(--text-inverse);
     border: none;
     box-shadow: 0 4px 15px color-mix(in srgb, var(--accent-primary) 34%, transparent);
 }
@@ -511,7 +512,7 @@ canvas#waveform-canvas {
 
 .sync-save-btn {
     background: var(--accent-blue);
-    color: var(--text-main);
+    color: var(--text-inverse);
     border: none;
     border-radius: 8px;
     padding: 6px 14px;
