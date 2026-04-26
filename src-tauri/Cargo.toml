@@ -83,4 +83,6 @@ ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "directml"] }
 ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "coreml"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
-ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray"] }
+# Intel macOS does not have reliable prebuilt ORT binaries in this setup.
+# Use dynamic loading so it can link against a system-installed onnxruntime.
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "load-dynamic"] }
