@@ -136,7 +136,7 @@
 
 .task-progress-container {
   height: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--surface-3) 78%, var(--text-main) 22%);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -147,6 +147,22 @@
   background: var(--accent-gradient);
   box-shadow: 0 0 10px var(--accent-glow);
   transition: width 0.3s ease;
+}
+
+html[data-theme="dark"] .task-progress-container {
+  background: color-mix(in srgb, var(--surface-3) 80%, #ffffff 20%);
+}
+
+html[data-theme="light"] .task-progress-container {
+  background: color-mix(in srgb, var(--surface-3) 72%, #000000 28%);
+}
+
+html[data-theme="pink"] .task-progress-container {
+  background: color-mix(in srgb, var(--surface-3) 72%, #000000 28%);
+}
+
+html[data-theme="sky"] .task-progress-container {
+  background: color-mix(in srgb, var(--surface-3) 70%, #000000 30%);
 }
 
 .task-status-row {
@@ -218,6 +234,48 @@
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-main);
+}
+
+.broadcast-tasks-control {
+  margin-left: 10px;
+}
+
+.broadcast-mode-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 6px 12px;
+}
+
+.broadcast-mode-chip-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
+.broadcast-mode-chip-switch {
+  transform: scale(0.85);
+  transform-origin: center;
+  margin-top: 2px;
+}
+
+.broadcast-mode-card {
+  margin-bottom: 20px;
+}
+
+.broadcast-mode-card-actions {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.broadcast-mode-card-switch {
+  transform: scale(1.2);
+  transform-origin: right center;
 }
 
 .ai-recommend-card {

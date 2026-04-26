@@ -7,6 +7,32 @@ import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
 
+export function updateBroadcastTasksControlVisibility() {
+  if (!elements.broadcastTasksControl) return;
+  const isVisibleTab =
+    state.activeView === "library" ||
+    state.activeView === "youtube" ||
+    state.activeView === "local" ||
+    state.activeView === "tasks";
+  const hasActiveTasks = Object.keys(state.activeTasks || {}).length > 0;
+  elements.broadcastTasksControl.style.display = (isVisibleTab && hasActiveTasks) ? "block" : "none";
+}
+
+function youtubeVideoIdFromPath(path) {
+  const p = String(path || "").trim();
+  if (!p) return null;
+  const shortMatch = p.match(/youtu\.be\/([^?&#/]+)/i);
+  if (shortMatch?.[1]) return shortMatch[1];
+  const watchMatch = p.match(/[?&]v=([^&#/]+)/i);
+  if (watchMatch?.[1]) return watchMatch[1];
+  return null;
+}
+
+function isSeparatedSong(song) {
+  if (!song) return false;
+  return !!(song.isSeparated || song.is_separated || song.isMr || song.is_mr || song.mr_path);
+}
+
 export function updateAiModelStatus(statusInput) {
   if (!elements.aiModelStatus) return;
   
@@ -61,9 +87,7 @@ export function updateTaskUI() {
   elements.taskBadge.textContent = tasks.length;
   elements.taskBadge.style.display = tasks.length > 0 ? "flex" : "none";
   
-  if (elements.broadcastTasksControl) {
-    elements.broadcastTasksControl.style.display = tasks.length > 0 ? "flex" : "none";
-  }
+  updateBroadcastTasksControlVisibility();
   
   if (tasks.length === 0) {
     if (!elements.activeTasksList.querySelector('.no-tasks')) {
@@ -200,8 +224,18 @@ export function updateAiTogglesState(song = null) {
   // If no song provided, find from state
   const targetSong = song || (state.selectedTrackIndex !== -1 ? state.songLibrary[state.selectedTrackIndex] : state.currentTrack);
 
-  // Requirement: Enable ONLY if separated MR exists
-  const hasSeparatedMr = targetSong && (targetSong.isSeparated || targetSong.mr_path);
+  // Requirement: Enable ONLY if separated MR exists.
+  // Accept both camel/snake flags and URL variants (youtu.be / youtube.com).
+  let hasSeparatedMr = isSeparatedSong(targetSong);
+  if (!hasSeparatedMr && targetSong?.path) {
+    const targetId = youtubeVideoIdFromPath(targetSong.path);
+    if (targetId) {
+      hasSeparatedMr = state.songLibrary.some((s) => {
+        if (!isSeparatedSong(s)) return false;
+        return youtubeVideoIdFromPath(s.path) === targetId;
+      });
+    }
+  }
   const canToggleVocal = !!hasSeparatedMr;
 
   elements.toggleVocal.checked = state.vocalEnabled;
@@ -292,13 +326,19 @@ export function showSongContextMenu(e, song, originalIndex) {
   invoke('remote_js_log', { msg: `[Context Menu Init] menuPlay=${!!menuPlay}, menuLyricsView=${!!menuLyricsView}, menuEdit=${!!menuEdit}, menuDelete=${!!menuDelete}, menuSeparate=${!!menuSeparate}, menuDeleteMr=${!!menuDeleteMr}` }).catch(() => {});
 
   if (menuDeleteMr) menuDeleteMr.style.display = "none";
-  if (menuSeparate) menuSeparate.style.display = "none";
+  if (menuSeparate) {
+    menuSeparate.style.display = "none";
+    menuSeparate.classList.remove("disabled");
+  }
 
   // Update: Using dynamic import for audio.js
   const menuTargetId = song.path;
   import('../audio.js').then(({ checkMrSeparated, deleteMr }) => {
     invoke('remote_js_log', { msg: `[MR Check] Starting MR check for path: ${song.path}` }).catch(() => {});
     checkMrSeparated(song.path).then(isSeparated => {
+      const separatedFlag = !!(song.isSeparated || song.is_separated || isSeparated);
+      // Distinguish "original instrumental(MR)" from "AI-separated".
+      const isManualMr = !!(song.isMr || song.is_mr) && !separatedFlag;
       invoke('remote_js_log', { msg: `[MR Check] Completed. isSeparated=${isSeparated}` }).catch(() => {});
       // Race condition check: make sure the menu is still for the same song
       if (state.editingSongIndex !== originalIndex) {
@@ -346,30 +386,43 @@ export function showSongContextMenu(e, song, originalIndex) {
           invoke('remote_js_log', { msg: `[MR Separate] Task in progress, showing cancel option` }).catch(() => {});
           menuSeparate.style.display = "block";
           menuSeparate.textContent = "분리 취소";
-          menuSeparate.onclick = () => {
-            invoke('remote_js_log', { msg: `[MR Separate Cancel] Cancelling separation` }).catch(() => {});
-            elements.contextMenu.classList.remove("active");
-            elements.contextMenu.style.display = 'none';
-            // audio.js handles cancel_separation
-            import('../audio.js').then(({ cancelSeparation }) => {
-                cancelSeparation(song.path);
-            });
-          };
+          if (isManualMr) {
+            menuSeparate.classList.add("disabled");
+            menuSeparate.onclick = null;
+          } else {
+            menuSeparate.classList.remove("disabled");
+            menuSeparate.onclick = () => {
+              invoke('remote_js_log', { msg: `[MR Separate Cancel] Cancelling separation` }).catch(() => {});
+              elements.contextMenu.classList.remove("active");
+              elements.contextMenu.style.display = 'none';
+              // audio.js handles cancel_separation
+              import('../audio.js').then(({ cancelSeparation }) => {
+                  cancelSeparation(song.path);
+              });
+            };
+          }
         } else {
           menuSeparate.style.display = isSeparated ? "none" : "block";
           menuSeparate.textContent = "MR 분리";
-          menuSeparate.onclick = async () => {
-            invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
-            elements.contextMenu.classList.remove("active");
-            elements.contextMenu.style.display = 'none';
-            try {
-              const { startMrSeparation } = await import('../audio.js');
-              await startMrSeparation(song.path);
-            } catch (err) {
-              invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
-              console.error("Separation trigger failed:", err);
-            }
-          };
+          if (isManualMr) {
+            menuSeparate.style.display = "block";
+            menuSeparate.classList.add("disabled");
+            menuSeparate.onclick = null;
+          } else {
+            menuSeparate.classList.remove("disabled");
+            menuSeparate.onclick = async () => {
+              invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
+              elements.contextMenu.classList.remove("active");
+              elements.contextMenu.style.display = 'none';
+              try {
+                const { startMrSeparation } = await import('../audio.js');
+                await startMrSeparation(song.path);
+              } catch (err) {
+                invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
+                console.error("Separation trigger failed:", err);
+              }
+            };
+          }
         }
       } else {
         invoke('remote_js_log', { msg: `[MR Separate Init] menuSeparate is null!` }).catch(() => {});

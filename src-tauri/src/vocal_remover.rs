@@ -227,40 +227,109 @@ pub struct WaveformRemover {
     session: Arc<Mutex<Session>>,
     model_name: String,
     active_provider: String,
+    outputs_instrumental: bool,
 }
 
 impl WaveformRemover {
-    pub fn new(model_path: &Path) -> Result<Self> {
-        let threads = (num_cpus::get() / 2).max(1).min(4);
-        sys_log(&format!("[AI-ENGINE] Initializing with {} intra-op threads", threads));
+    fn detect_instrumental_output(model_id_hint: Option<&str>, model_name: &str) -> bool {
+        if let Some(id) = model_id_hint {
+            let lower_id = id.to_ascii_lowercase();
+            if lower_id.contains("inst") || lower_id.contains("kara") || lower_id.contains("instrumental") {
+                return true;
+            }
+            if lower_id == "kim" || lower_id.contains("vocal") {
+                return false;
+            }
+        }
+
+        let lower_name = model_name.to_ascii_lowercase();
+        lower_name.contains("inst")
+            || lower_name.contains("kara")
+            || lower_name.contains("instrumental")
+    }
+
+    pub fn new(model_path: &Path, model_id_hint: Option<&str>) -> Result<Self> {
+        let threads: usize = 1;
+        sys_log(&format!("[AI-ENGINE] Initializing with conservative settings (intra-op threads: {})", threads));
+        let init_started = Instant::now();
+        let file_size = model_path.metadata().map(|m| m.len()).unwrap_or(0);
+        sys_log(&format!("[AI-ENGINE] Model file: {:?} ({} bytes)", model_path, file_size));
+
+        // Some Windows GPU provider setups can terminate the process at native level
+        // during session init. Keep CPU as the safe default, and only opt into GPU
+        // providers explicitly via environment variable.
+        let gpu_opt_in = std::env::var("LIVE_MR_ENABLE_GPU")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
         let mut providers_to_try = Vec::new();
-        #[cfg(target_os = "windows")]
-        {
-            // Windows default GPU path.
-            providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+        if gpu_opt_in {
+            #[cfg(target_os = "windows")]
+            {
+                providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+            }
+            #[cfg(target_os = "macos")]
+            {
+                providers_to_try.push(("GPU (CoreML)", CoreMLExecutionProvider::default().build()));
+            }
+            providers_to_try.push((
+                "GPU (CUDA)",
+                CUDAExecutionProvider::default().with_device_id(0).build(),
+            ));
+            // Keep CPU as the final fallback when GPU is explicitly enabled.
+            providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
+        } else {
+            sys_log("[AI-ENGINE] GPU providers disabled by default (set LIVE_MR_ENABLE_GPU=1 to enable)");
+            providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
         }
-        #[cfg(target_os = "macos")]
-        {
-            // macOS acceleration path.
-            providers_to_try.push(("GPU (CoreML)", CoreMLExecutionProvider::default().build()));
-        }
-        providers_to_try.push((
-            "GPU (CUDA)",
-            CUDAExecutionProvider::default().with_device_id(0).build(),
-        ));
-        providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
 
         let mut session_opt = None;
         let mut active_provider = "Unknown".to_string();
 
         for (name, ep) in providers_to_try {
+            sys_log(&format!("[AI-ENGINE] Trying provider: {}", name));
+            let provider_started = Instant::now();
             let session_res: Result<Session, ort::Error> = (|| {
-                Session::builder()?
+                let builder_started = Instant::now();
+                let mut builder = Session::builder()?
                     .with_intra_threads(threads)?
-                    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-                    .with_execution_providers([ep])?
-                    .commit_from_file(model_path)
+                    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+                sys_log(&format!(
+                    "[AI-ENGINE] Provider {} builder ready in {} ms",
+                    name,
+                    builder_started.elapsed().as_millis()
+                ));
+
+                // For CPU, avoid forcing EP registration path and use ORT defaults.
+                // This is more stable on some Windows machines.
+                if name == "CPU" {
+                    let commit_started = Instant::now();
+                    let result = builder.commit_from_file(model_path);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider {} commit finished in {} ms",
+                        name,
+                        commit_started.elapsed().as_millis()
+                    ));
+                    result
+                } else {
+                    let ep_started = Instant::now();
+                    let mut builder = builder
+                        .with_execution_providers([ep])?
+                        ;
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider {} EP registration done in {} ms",
+                        name,
+                        ep_started.elapsed().as_millis()
+                    ));
+                    let commit_started = Instant::now();
+                    let result = builder.commit_from_file(model_path);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider {} commit finished in {} ms",
+                        name,
+                        commit_started.elapsed().as_millis()
+                    ));
+                    result
+                }
             })();
 
             match session_res {
@@ -270,16 +339,33 @@ impl WaveformRemover {
                     break;
                 }
                 Err(e) => {
-                    sys_log(&format!("[AI-ENGINE] Provider {} failed or unavailable: {}", name, e));
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider {} failed or unavailable after {} ms: {}",
+                        name,
+                        provider_started.elapsed().as_millis(),
+                        e
+                    ));
                 }
             }
         }
 
         let session = session_opt.ok_or_else(|| anyhow!("[AI-ENGINE] Failed to initialize any execution provider"))?;
         let model_name = model_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
+        let outputs_instrumental = Self::detect_instrumental_output(model_id_hint, &model_name);
         
-        sys_log(&format!("[AI-ENGINE] Model loaded: {}, Provider: {}", model_name, active_provider));
-        Ok(Self { session: Arc::new(Mutex::new(session)), model_name, active_provider })
+        sys_log(&format!(
+            "[AI-ENGINE] Model loaded: {}, Provider: {}, instrumental_output={}, total_init_ms={}",
+            model_name,
+            active_provider,
+            outputs_instrumental,
+            init_started.elapsed().as_millis()
+        ));
+        Ok(Self {
+            session: Arc::new(Mutex::new(session)),
+            model_name,
+            active_provider,
+            outputs_instrumental,
+        })
     }
 }
 
@@ -602,7 +688,7 @@ impl InferenceEngine for WaveformRemover {
         let final_inst_clone = Arc::clone(&final_inst);
         let weight_sum_clone = Arc::clone(&weight_sum);
         let compensation = 1.0f32;
-        let is_instrumental_model = self.model_name.contains("Inst") || self.model_name.contains("KARA");
+        let is_instrumental_model = self.outputs_instrumental;
 
         let cancel_flag_post = cancel_flag.clone();
         let path_str_post = path_str.clone();
@@ -914,7 +1000,7 @@ impl WaveformRemover {
     }
 
     fn save_wav(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
-        let is_instrumental = self.model_name.contains("Inst") || self.model_name.contains("KARA");
+        let is_instrumental = self.outputs_instrumental;
         if is_instrumental {
             self.save_wav_inst(samples, path, rate)
         } else {

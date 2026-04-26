@@ -82,6 +82,8 @@ export function initModalListeners() {
       const safeVolume = Number.isFinite(inputVolume)
         ? Math.max(volMin, Math.min(volMax, inputVolume))
         : (Number.isFinite(song?.volume) ? song.volume : 100);
+      const isManualMr = document.getElementById("edit-is-mr").checked;
+      const wasSeparated = !!(song.isSeparated || song.is_separated);
       const updated = {
         ...song,
         title: document.getElementById("edit-title").value,
@@ -95,8 +97,11 @@ export function initModalListeners() {
           const raw = Number.parseInt(document.getElementById("edit-bpm")?.value || "", 10);
           return Number.isFinite(raw) ? raw : null;
         })(),
-        isMr: document.getElementById("edit-is-mr").checked,
-        isSeparated: document.getElementById("edit-is-mr").checked,
+        // Keep "manual MR" and "AI-separated" states independent.
+        isMr: isManualMr,
+        is_mr: isManualMr,
+        isSeparated: wasSeparated,
+        is_separated: wasSeparated,
       };
 
       try {

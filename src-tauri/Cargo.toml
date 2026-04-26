@@ -33,7 +33,7 @@ parking_lot = "0.12.5"
 cpal = "0.17.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["api-24", "ndarray", "load-dynamic"] }
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray"] }
 ndarray = "0.17"
 rubato = "0.16.0"
 rustfft = "6.2.0"
@@ -77,10 +77,10 @@ opt-level = 3
 opt-level = 3
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["api-24", "ndarray", "load-dynamic", "directml"] }
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "directml"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["api-24", "ndarray", "load-dynamic", "coreml"] }
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "coreml"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["api-24", "ndarray", "load-dynamic"] }
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray"] }

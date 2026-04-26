@@ -4,7 +4,7 @@
 import { listen } from '../tauri-bridge.js';
 import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
-import { updateTaskUI, updateAiModelStatus, updateCardStatusBadge } from '../ui/components.js';
+import { updateTaskUI, updateAiModelStatus, updateCardStatusBadge, updateAiTogglesState } from '../ui/components.js';
 import { renderLibrary } from '../ui/library.js';
 import { showNotification } from '../utils.js';
 import { invoke } from '../tauri-bridge.js';
@@ -12,6 +12,24 @@ import { invoke } from '../tauri-bridge.js';
 const ACTIVE_TASKS_SNAPSHOT_KEY = "activeTasksSnapshot";
 let backendListenersInitialized = false;
 let taskUiUpdateScheduled = false;
+
+function youtubeVideoIdFromPath(path) {
+  const p = String(path || "").trim();
+  if (!p) return null;
+  const shortMatch = p.match(/youtu\.be\/([^?&#/]+)/i);
+  if (shortMatch?.[1]) return shortMatch[1];
+  const watchMatch = p.match(/[?&]v=([^&#/]+)/i);
+  if (watchMatch?.[1]) return watchMatch[1];
+  return null;
+}
+
+function pathMatches(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aId = youtubeVideoIdFromPath(a);
+  const bId = youtubeVideoIdFromPath(b);
+  return !!(aId && bId && aId === bId);
+}
 
 function scheduleTaskUiUpdate() {
   if (taskUiUpdateScheduled) return;
@@ -82,6 +100,13 @@ export async function setupBackendListeners() {
     // 2. Playback state
     if (s === "playing") {
       state.isPlaying = true;
+      // Self-heal overlay state sync in case a prior invoke was dropped.
+      invoke('update_overlay_state', {
+        title: state.currentTrack?.title || "",
+        artist: state.currentTrack?.artist || "",
+        thumbnail: state.currentTrack?.thumbnail || "",
+        isPlaying: true
+      }).catch(() => {});
       const { updateProgressBar } = await import('../player.js');
       if (!state.rafId) {
         state.lastRafTime = performance.now();
@@ -112,6 +137,9 @@ export async function setupBackendListeners() {
         updateThumbnailOverlay();
         updatePlayButton();
       }
+      if (s === "error" && message) {
+        showNotification(`재생 오류: ${message}`, "error");
+      }
 
       // Sync overlay state on stop/finish/error
       const { invoke } = await import('../tauri-bridge.js');
@@ -138,21 +166,31 @@ export async function setupBackendListeners() {
   await listen('separation-progress', (event) => {
     const { path, percentage, status, provider, model } = event.payload;
     const s = (status || "").toLowerCase();
+    const isFinished = s === "finished";
+    const isCancelled = s === "cancelled" || s.includes("cancel");
+    const isError = s === "error" || s.startsWith("error:");
 
-    if (s === "finished" || s === "cancelled" || s === "error") {
+    if (isFinished || isCancelled || isError) {
       delete state.activeTasks[path];
 
-      if (s === "finished") {
+      if (isFinished) {
         showNotification("MR 분리가 완료되었습니다.", "success");
-        // Update local state flag
-        const song = state.songLibrary.find(s => s.path === path);
-        if (song) {
+        // Update local state flag (exact path + equivalent YouTube URL variants).
+        state.songLibrary.forEach((song) => {
+          if (!pathMatches(song.path, path)) return;
           song.isSeparated = true;
           song.is_separated = true;
           song.isMr = true;
           song.is_mr = true;
+        });
+        if (state.currentTrack && pathMatches(state.currentTrack.path, path)) {
+          state.currentTrack.isSeparated = true;
+          state.currentTrack.is_separated = true;
+          state.currentTrack.isMr = true;
+          state.currentTrack.is_mr = true;
+          updateAiTogglesState(state.currentTrack);
         }
-      } else if (s === "error") {
+      } else if (isError) {
         showNotification(`분리 실패: ${status}`, "error");
       }
 

@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { renderLibrary } from '../ui/library.js';
 import { getAllWindows, WebviewWindow, emit } from '../tauri-bridge.js';
+import { updateBroadcastTasksControlVisibility } from '../ui/components.js';
 
 export function initNavigation() {
   document.querySelectorAll(".nav-item").forEach(item => {
@@ -28,7 +29,7 @@ export function initNavigation() {
   if (btnCopyOverlayUrl) {
     btnCopyOverlayUrl.addEventListener("click", () => {
       const displayEl = document.getElementById("overlay-url-display");
-      const url = displayEl ? displayEl.textContent : "http://localhost:1420/overlay.html";
+      const url = (displayEl && displayEl.textContent) ? displayEl.textContent : "http://localhost:14202/overlay-info";
       navigator.clipboard.writeText(url).then(() => {
         import('../utils.js').then(u => u.showNotification("URL이 클립보드에 복사되었습니다.", "success"));
       });
@@ -61,7 +62,7 @@ export function switchTab(tabId) {
   if (elements.localSection) elements.localSection.style.display = "none"; // 텅 빈 섹션이므로 gap 발생을 막기 위해 항상 숨김
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
-  if (elements.broadcastTasksControl) elements.broadcastTasksControl.style.display = tabId === "tasks" ? "block" : "none";
+  updateBroadcastTasksControlVisibility();
 
   if (elements.settingsPage) elements.settingsPage.style.display = tabId === "settings" ? "block" : "none";
   if (elements.tasksPage) elements.tasksPage.style.display = tabId === "tasks" ? "block" : "none";

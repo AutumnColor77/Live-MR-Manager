@@ -255,7 +255,10 @@ export async function selectTrack(index) {
   } catch (err) {
     console.error("Playback failed:", err);
     state.isPlaying = false;
-    showNotification("재생에 실패했습니다.", "error");
+    const detail = typeof err === "string"
+      ? err
+      : (err?.message || err?.toString?.() || "알 수 없는 오류");
+    showNotification(`재생에 실패했습니다: ${detail}`, "error");
   } finally {
     clearTimeout(loadingTimeout);
     // Only reset isLoading if this is still the latest request

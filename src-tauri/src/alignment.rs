@@ -467,22 +467,68 @@ pub async fn get_waveform_summary(handle: AppHandle, audio_path: String) -> Resu
 /// 유튜브 URL 등을 실제 로컬 오디오 파일 경로로 변환합니다.
 async fn resolve_audio_path(handle: &AppHandle, path: &str) -> Result<PathBuf, String> {
     let paths = crate::state::AppPaths::from_handle(handle);
-    let cache_key = urlencoding::encode(path).to_string();
-    let separated_dir = paths.separated.join(&cache_key);
-    
-    // 1. 이미 분리된 파일이 있는지 확인 (로컬/유튜브 공통으로 vocal.wav 우선)
-    let vocal_wav = separated_dir.join("vocal.wav");
-    if vocal_wav.exists() {
-        return Ok(vocal_wav);
+    let normalized_input = path.replace("\\", "/");
+    let lower_input = normalized_input.to_lowercase();
+
+    // 1) If this is a separated artifact/path, always prefer vocal waveform.
+    let is_explicit_separated = lower_input.contains("/cache/separated/")
+        || lower_input.contains("\\cache\\separated\\")
+        || lower_input.ends_with("/vocal.wav")
+        || lower_input.ends_with("\\vocal.wav")
+        || lower_input.ends_with("/inst.wav")
+        || lower_input.ends_with("\\inst.wav");
+    if is_explicit_separated {
+        let p = PathBuf::from(path);
+        if p.is_file() {
+            if p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.eq_ignore_ascii_case("inst.wav"))
+                .unwrap_or(false)
+            {
+                if let Some(parent) = p.parent() {
+                    let vocal = parent.join("vocal.wav");
+                    if vocal.exists() {
+                        return Ok(vocal);
+                    }
+                }
+            }
+            return Ok(p);
+        }
+        let vocal = p.join("vocal.wav");
+        if vocal.exists() {
+            return Ok(vocal);
+        }
     }
 
+    // 2) For normal tracks, if separated outputs exist for the same source, use vocal.wav.
+    let mut lookup_keys = if path.starts_with("http") {
+        youtube_url_variants(path)
+    } else {
+        let mut v = vec![path.to_string()];
+        let normalized = normalize_path_key(path);
+        if normalized != path {
+            v.push(normalized);
+        }
+        v
+    };
+    lookup_keys.sort();
+    lookup_keys.dedup();
+    for key in lookup_keys {
+        let cache_dir = paths.separated.join(urlencoding::encode(&key).to_string());
+        let vocal = cache_dir.join("vocal.wav");
+        if vocal.exists() {
+            return Ok(vocal);
+        }
+    }
+
+    // 3) Fallback to original source.
     if !path.starts_with("http") {
         let p = PathBuf::from(path);
         if p.exists() { return Ok(p); }
         return Err(format!("파일을 찾을 수 없습니다: {}", path));
     }
 
-    // 2. temp 폴더에 다운로드된 m4a 파일이 있는지 확인
+    // 4. temp 폴더에 다운로드된 m4a 파일이 있는지 확인
     // yt_id.m4a 형식이므로 id를 추출해야 함
     let metadata = crate::youtube::YoutubeManager::get_video_metadata(path).await.map_err(|e| e.to_string())?;
     if let Some(id) = metadata.id {
@@ -491,7 +537,7 @@ async fn resolve_audio_path(handle: &AppHandle, path: &str) -> Result<PathBuf, S
             return Ok(temp_m4a);
         }
         
-        // 3. 없으면 다운로드 시도 (사용자 요청에 따라)
+        // 5. 없으면 다운로드 시도 (사용자 요청에 따라)
         sys_log(&format!("[Alignment] Audio file not found for {}, starting download...", path));
         let window = handle.get_webview_window("main").ok_or("메인 윈도우를 찾을 수 없습니다")?;
         let downloaded = crate::youtube::YoutubeManager::download_audio(&window, path, temp_m4a.clone(), true).await?;

@@ -12,7 +12,42 @@ use crate::youtube::YoutubeManager;
 use ort::ep::ExecutionProvider;
 
 fn normalize_cache_key(path: &str) -> String {
-    path.replace("\\", "/")
+    let normalized = path.trim().replace("\\", "/");
+    if let Some(id) = extract_youtube_video_id(&normalized) {
+        return format!("https://www.youtube.com/watch?v={}", id);
+    }
+    normalized
+}
+
+fn extract_youtube_video_id(url: &str) -> Option<String> {
+    let u = url.trim();
+    if let Some(idx) = u.find("youtu.be/") {
+        let tail = &u[idx + "youtu.be/".len()..];
+        let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    if let Some(idx) = u.find("watch?v=") {
+        let tail = &u[idx + "watch?v=".len()..];
+        let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+fn cache_key_variants(path: &str) -> Vec<String> {
+    let mut variants = vec![path.trim().replace("\\", "/")];
+    if let Some(id) = extract_youtube_video_id(path) {
+        variants.push(format!("https://youtu.be/{}", id));
+        variants.push(format!("https://www.youtube.com/watch?v={}", id));
+        variants.push(format!("https://youtube.com/watch?v={}", id));
+    }
+    variants.sort();
+    variants.dedup();
+    variants
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -70,27 +105,26 @@ pub async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
 
 #[tauri::command]
 pub async fn check_model_ready(handle: AppHandle, model_id: String) -> bool {
-    if let Some((_, name, _)) = crate::state::MODELS.iter().find(|(id, _, _)| *id == model_id) {
-        ModelManager::new(&handle).get_model_path(name).exists()
-    } else {
-        false
-    }
+    let manager = ModelManager::new(&handle);
+    let spec = match ModelManager::spec_from_id(&model_id) {
+        Ok(spec) => spec,
+        Err(_) => return false,
+    };
+    manager.resolve_model_path(&handle, &spec).is_some()
 }
 
 #[tauri::command]
 pub async fn download_ai_model(window: WebviewWindow, model_id: String) -> Result<(), String> {
     let app = window.app_handle();
     let manager = ModelManager::new(app);
-    
-    let (_, name, url) = crate::state::MODELS.iter()
-        .find(|(id, _, _)| *id == model_id)
-        .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
+    let spec = ModelManager::spec_from_id(&model_id)?;
 
-    window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: format!("{} 모델 다운로드...", name) }).ok();
+    window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: format!("{} 모델 다운로드...", spec.name) }).ok();
     
-    match manager.ensure_model(app, name, url).await {
-        Ok(_) => {
-            window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: format!("{} 모델 준비됨", name) }).ok();
+    match manager.ensure_model(app, &spec.name, &spec.url).await {
+        Ok(path) => {
+            let _ = sys_log(&format!("[Model] Ready: id={}, path={:?}", spec.id, path));
+            window.emit("playback-status", PlaybackStatus { status: Status::Finished, message: format!("{} 모델 준비됨", spec.name) }).ok();
             Ok(())
         }
         Err(e) => {
@@ -146,12 +180,41 @@ pub async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<
 }
 
 #[tauri::command]
-pub fn cancel_separation(path: String) -> Result<(), String> {
+pub fn cancel_separation(window: WebviewWindow, path: String) -> Result<(), String> {
     let norm = normalize_cache_key(&path);
-    if let Some((_, flag)) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) {
+    let removed = if let Some((original_path, flag)) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) {
         flag.store(true, Ordering::Relaxed);
-    }
+        let db = crate::state::DB.lock();
+        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
+        let (_, model_filename, _) = crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id == model_id)
+            .unwrap_or(&crate::state::MODELS[0]);
+        window.emit("separation-progress", crate::separation::SeparationProgress {
+            path: original_path,
+            percentage: 0.0,
+            status: "Cancelled".into(),
+            provider: "SYSTEM".into(),
+            model: model_filename.to_string(),
+        }).ok();
+        true
+    } else {
+        false
+    };
     crate::audio_player::CANCEL_REQUESTS.lock().insert(norm);
+    if !removed {
+        let db = crate::state::DB.lock();
+        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
+        let (_, model_filename, _) = crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id == model_id)
+            .unwrap_or(&crate::state::MODELS[0]);
+        window.emit("separation-progress", crate::separation::SeparationProgress {
+            path,
+            percentage: 0.0,
+            status: "Cancelled".into(),
+            provider: "SYSTEM".into(),
+            model: model_filename.to_string(),
+        }).ok();
+    }
     Ok(())
 }
 
@@ -183,17 +246,29 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
 
 #[tauri::command]
 pub fn check_mr_separated(window: WebviewWindow, path: String) -> bool {
-    let norm = normalize_cache_key(&path);
-    let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
-    cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
+    let separated_root = window.state::<crate::state::AppPaths>().separated.clone();
+    cache_key_variants(&path).iter().any(|key| {
+        let cache = separated_root.join(urlencoding::encode(key).to_string());
+        cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
+    })
 }
 
 #[tauri::command]
 pub fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
-    let norm = normalize_cache_key(&path);
-    let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
-    if cache.exists() {
-        std::fs::remove_dir_all(cache).map_err(|e| e.to_string())?;
+    let separated_root = window.state::<crate::state::AppPaths>().separated.clone();
+    for key in cache_key_variants(&path) {
+        let cache = separated_root.join(urlencoding::encode(&key).to_string());
+        if cache.exists() {
+            let vocal = cache.join("vocal.wav");
+            let inst = cache.join("inst.wav");
+            // Keep lyric files (lyric.lrc / vocal.lrc) when deleting MR outputs.
+            if vocal.exists() {
+                std::fs::remove_file(&vocal).map_err(|e| e.to_string())?;
+            }
+            if inst.exists() {
+                std::fs::remove_file(&inst).map_err(|e| e.to_string())?;
+            }
+        }
     }
     Ok(())
 }

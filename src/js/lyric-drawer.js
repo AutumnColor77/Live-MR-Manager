@@ -190,6 +190,9 @@ export function updateLyrics(segments) {
     const container = document.querySelector('#lyric-drawer .drawer-content');
     if (!container) return;
     updateDrawerTrackTitle();
+    // On track change, always reset lyric drawer to top for singer-friendly flow.
+    container.scrollTop = 0;
+    state.currentLyricIndex = -1;
 
     if (!segments || segments.length === 0) {
         lastOverlayCurrent = null;

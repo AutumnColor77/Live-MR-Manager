@@ -717,18 +717,32 @@ export function initControlListeners() {
     });
   }
 
+  const syncBroadcastModeToggles = (enabled) => {
+    state.broadcastMode = !!enabled;
+    localStorage.setItem("broadcastMode", String(!!enabled));
+    if (elements.toggleBroadcastMode) elements.toggleBroadcastMode.checked = !!enabled;
+    if (elements.toggleBroadcastModeActive) elements.toggleBroadcastModeActive.checked = !!enabled;
+  };
+
+  const applyBroadcastMode = async (enabled) => {
+    try {
+      await invoke("set_broadcast_mode", { enabled: !!enabled });
+      syncBroadcastModeToggles(enabled);
+    } catch (err) {
+      syncBroadcastModeToggles(state.broadcastMode);
+      const { showNotification } = await import('../utils.js');
+      showNotification("방송 제원 보호 모드 변경 실패: " + err, "error");
+    }
+  };
+
   if (elements.toggleBroadcastMode) {
-    elements.toggleBroadcastMode.onchange = async (e) => {
-      try {
-        await invoke("set_broadcast_mode", { enabled: e.target.checked });
-      } catch (err) {
-        const { showNotification } = await import('../utils.js');
-        showNotification("방송 보호 모드 변경 실패: " + err, "error");
-      }
-    };
-    // Initialize state
-    elements.toggleBroadcastMode.checked = state.broadcastMode;
+    elements.toggleBroadcastMode.onchange = (e) => applyBroadcastMode(e.target.checked);
   }
+  if (elements.toggleBroadcastModeActive) {
+    elements.toggleBroadcastModeActive.onchange = (e) => applyBroadcastMode(e.target.checked);
+  }
+  // Initialize both toggle UIs from persisted state
+  syncBroadcastModeToggles(state.broadcastMode);
   const btnOpenCache = document.getElementById("btn-open-cache");
   if (btnOpenCache) {
     btnOpenCache.onclick = async () => {
@@ -747,7 +761,13 @@ export function initControlListeners() {
   const hasPendingSeparations = async () => {
     const localActive = Object.values(state.activeTasks || {}).some((task) => {
       const s = String(task?.status || "").toLowerCase();
-      return !["finished", "cancelled", "error"].includes(s);
+      const done =
+        s === "finished" ||
+        s === "cancelled" ||
+        s === "error" ||
+        s.startsWith("error:") ||
+        s.includes("cancel");
+      return !done;
     });
     if (localActive) return true;
     try {
@@ -960,9 +980,10 @@ export function initControlListeners() {
     }
 
     // URL displays
-    const baseUrl = 'http://localhost:14202/';
-    if (overlayUrlDisplay) overlayUrlDisplay.textContent = baseUrl;
-    if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = baseUrl + 'lyrics';
+    const infoUrl = 'http://localhost:14202/overlay-info';
+    const lyricsUrl = 'http://localhost:14202/overlay-lyrics';
+    if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
+    if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
     
     const setupCopyBtn = (id, text) => {
       const btn = document.getElementById(id);
@@ -976,8 +997,8 @@ export function initControlListeners() {
         };
       }
     };
-    setupCopyBtn('btn-copy-overlay-url', baseUrl);
-    setupCopyBtn('btn-copy-lyrics-overlay-url', baseUrl + 'lyrics?mode=lyrics');
+    setupCopyBtn('btn-copy-overlay-url', infoUrl);
+    setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);
     
     // Ensure iframe is loaded on preview mode without reloading
     if (!overlayIframe.src.includes('preview=true')) {

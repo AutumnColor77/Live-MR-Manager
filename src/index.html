@@ -228,12 +228,10 @@
               </button>
             </div>
             <!-- [NEW] Broadcast Toggle in same line with title -->
-            <div id="broadcast-tasks-control" style="display: none;">
-              <div
-                style="display: flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.08); padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255, 193, 7, 0.25);">
-                <span
-                  style="font-size: 0.75rem; font-weight: 700; color: #ffc107; text-transform: uppercase; letter-spacing: 0.5px;">방송 제원 보호</span>
-                <label class="switch" style="transform: scale(0.85); margin-top: 2px;">
+            <div id="broadcast-tasks-control" class="broadcast-tasks-control" style="display: none;">
+              <div class="broadcast-mode-chip">
+                <span class="broadcast-mode-chip-label">방송 제원 보호 모드</span>
+                <label class="switch broadcast-mode-chip-switch">
                   <input type="checkbox" id="toggle-broadcast-mode-tasks">
                   <span class="slider round"></span>
                 </label>
@@ -654,16 +652,16 @@
               </div>
 
               <!-- 방송 보호 모드 -->
-              <div class="ai-model-card" style="margin-bottom: 20px;">
+              <div class="ai-model-card broadcast-mode-card">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">방송 제원 보호 모드 (Broadcast Safe)</h2>
+                  <h2 class="ai-title-large">방송 제원 보호 모드</h2>
                   <div class="ai-model-desc">
                     켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
                     (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
                   </div>
                 </div>
-                <div class="ai-actions-right" style="align-items: flex-end; justify-content: center;">
-                  <label class="switch" style="transform: scale(1.2); transform-origin: right center;">
+                <div class="ai-actions-right broadcast-mode-card-actions">
+                  <label class="switch broadcast-mode-card-switch">
                     <input type="checkbox" id="toggle-broadcast-mode">
                     <span class="slider round"></span>
                   </label>

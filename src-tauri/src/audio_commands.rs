@@ -19,10 +19,43 @@ use urlencoding;
 // --- Global Statics ---
 pub static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
+fn extract_youtube_video_id(url: &str) -> Option<String> {
+    let u = url.trim();
+    if let Some(idx) = u.find("youtu.be/") {
+        let tail = &u[idx + "youtu.be/".len()..];
+        let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    if let Some(idx) = u.find("watch?v=") {
+        let tail = &u[idx + "watch?v=".len()..];
+        let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+fn cache_key_variants(path: &str) -> Vec<String> {
+    let mut variants = vec![path.trim().replace("\\", "/")];
+    if let Some(id) = extract_youtube_video_id(path) {
+        variants.push(format!("https://youtu.be/{}", id));
+        variants.push(format!("https://www.youtube.com/watch?v={}", id));
+        variants.push(format!("https://youtube.com/watch?v={}", id));
+    }
+    variants.sort();
+    variants.dedup();
+    variants
+}
+
 #[tauri::command]
 pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<u64, String> {
+    let path_for_log = path.clone();
     let res = play_track_internal(window.clone(), path, duration_ms, None, play_now.unwrap_or(true)).await;
     if let Err(ref e) = res {
+        sys_log(&format!("[AUDIO] play_track failed: path={}, error={}", path_for_log, e));
         let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
     }
     res
@@ -82,9 +115,23 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
             (p.join("vocal.wav"), p.join("inst.wav"))
         }
     } else {
-        let cache_key = urlencoding::encode(&path).to_string();
-        let cache_dir = paths.separated.join(&cache_key);
-        (cache_dir.join("vocal.wav"), cache_dir.join("inst.wav"))
+        let mut selected = None;
+        for key in cache_key_variants(&path) {
+            let cache_dir = paths.separated.join(urlencoding::encode(&key).to_string());
+            let v = cache_dir.join("vocal.wav");
+            let i = cache_dir.join("inst.wav");
+            if v.exists() && i.exists() {
+                selected = Some((v, i));
+                break;
+            }
+            if selected.is_none() {
+                selected = Some((v, i));
+            }
+        }
+        selected.unwrap_or_else(|| {
+            let cache_dir = paths.separated.join(urlencoding::encode(&path).to_string());
+            (cache_dir.join("vocal.wav"), cache_dir.join("inst.wav"))
+        })
     };
     
     let target_rate = handler.active_sample_rate;

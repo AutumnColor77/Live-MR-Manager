@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -13,6 +13,8 @@ use crate::vocal_remover::InferenceEngine;
 // AI Engine Management
 pub static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
 pub static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+pub static MODEL_INIT_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+pub static MODEL_INIT_COOLDOWN_UNTIL: AtomicU64 = AtomicU64::new(0);
 pub static ACTIVE_SEPARATIONS: Lazy<Mutex<HashMap<String, (String, Arc<AtomicBool>)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 pub static BROADCAST_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 

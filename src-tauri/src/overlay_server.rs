@@ -91,6 +91,30 @@ static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 
+fn resolve_overlay_info_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/overlay-info.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_INFO_HTML.to_string()
+}
+
+fn resolve_overlay_lyrics_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/overlay-lyrics.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_LYRICS_HTML.to_string()
+}
+
 pub async fn start_overlay_server() {
     // 1. Start WebSocket Data Server (Port 14201)
     let ws_addr = "0.0.0.0:14201".to_string();
@@ -149,7 +173,10 @@ pub async fn start_overlay_server() {
                         let _ = stream.write_all(APP_ICON).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] Served app-icon.png to {}", addr);
-                    } else if request.starts_with("GET /lyrics") {
+                    } else if request.starts_with("GET /lyrics")
+                        || request.starts_with("GET /overlay-lyrics")
+                    {
+                        let html = resolve_overlay_lyrics_html();
                         use tokio::io::AsyncWriteExt;
                         let response = format!(
                             "HTTP/1.1 200 OK\r\n\
@@ -159,13 +186,16 @@ pub async fn start_overlay_server() {
                             Cache-Control: no-cache, no-store, must-revalidate\r\n\
                             Connection: close\r\n\r\n\
                             {}",
-                            OVERLAY_LYRICS_HTML.len(),
-                            OVERLAY_LYRICS_HTML
+                            html.len(),
+                            html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
                         let _ = stream.flush().await;
-                        println!("[Overlay] HTTP Page served to {} (Path: /lyrics)", addr);
-                    } else if request.starts_with("GET / ") {
+                        println!("[Overlay] HTTP Page served to {} (Path: /lyrics or /overlay-lyrics)", addr);
+                    } else if request.starts_with("GET / ")
+                        || request.starts_with("GET /overlay-info")
+                    {
+                        let html = resolve_overlay_info_html();
                         use tokio::io::AsyncWriteExt;
                         let response = format!(
                             "HTTP/1.1 200 OK\r\n\
@@ -175,12 +205,12 @@ pub async fn start_overlay_server() {
                             Cache-Control: no-cache, no-store, must-revalidate\r\n\
                             Connection: close\r\n\r\n\
                             {}",
-                            OVERLAY_INFO_HTML.len(),
-                            OVERLAY_INFO_HTML
+                            html.len(),
+                            html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
                         let _ = stream.flush().await;
-                        println!("[Overlay] HTTP Page served to {} (Path: /)", addr);
+                        println!("[Overlay] HTTP Page served to {} (Path: / or /overlay-info)", addr);
                     }
                 }
             });

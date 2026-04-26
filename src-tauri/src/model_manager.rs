@@ -5,6 +5,20 @@ use tauri::path::BaseDirectory;
 use futures::StreamExt;
 use std::io::Write;
 
+#[derive(Debug, Clone)]
+pub struct ModelSpec {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelResolution {
+    pub spec: ModelSpec,
+    pub path: PathBuf,
+    pub source: String,
+}
+
 #[allow(dead_code)]
 pub struct ModelManager {
     model_dir: PathBuf,
@@ -12,6 +26,47 @@ pub struct ModelManager {
 
 #[allow(dead_code)]
 impl ModelManager {
+    pub fn spec_from_id(model_id: &str) -> Result<ModelSpec, String> {
+        let (id, name, url) = crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id == model_id)
+            .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
+        Ok(ModelSpec {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: url.to_string(),
+        })
+    }
+
+    pub fn fallback_spec(primary_id: &str) -> Option<ModelSpec> {
+        crate::state::MODELS.iter()
+            .find(|(id, _, _)| *id != primary_id)
+            .map(|(id, name, url)| ModelSpec {
+                id: id.to_string(),
+                name: name.to_string(),
+                url: url.to_string(),
+            })
+    }
+
+    fn min_expected_size_bytes(model_name: &str) -> u64 {
+        match model_name {
+            // based on observed production artifacts in this app
+            "Kim_Vocal_2.onnx" => 55 * 1024 * 1024,
+            "UVR-MDX-NET-Inst_HQ_3.onnx" => 55 * 1024 * 1024,
+            _ => 10 * 1024 * 1024,
+        }
+    }
+
+    fn looks_valid_model_file(path: &PathBuf) -> bool {
+        Self::looks_valid_model_file_for(path, "")
+    }
+
+    fn looks_valid_model_file_for(path: &PathBuf, model_name: &str) -> bool {
+        let min_size_bytes = Self::min_expected_size_bytes(model_name);
+        path.metadata()
+            .map(|m| m.len() >= min_size_bytes)
+            .unwrap_or(false)
+    }
+
     pub fn new(handle: &AppHandle) -> Self {
         let paths = handle.state::<crate::state::AppPaths>();
         let model_dir = paths.models.clone();
@@ -20,6 +75,43 @@ impl ModelManager {
 
     pub fn get_model_path(&self, model_name: &str) -> PathBuf {
         self.model_dir.join(model_name)
+    }
+
+    pub fn resolve_model_path(&self, handle: &AppHandle, spec: &ModelSpec) -> Option<ModelResolution> {
+        if let Ok(resource_path) = handle.path().resolve(format!("resources/{}", spec.name), BaseDirectory::Resource) {
+            if resource_path.exists() {
+                return Some(ModelResolution {
+                    spec: spec.clone(),
+                    path: resource_path,
+                    source: "bundled".to_string(),
+                });
+            }
+        }
+
+        let appdata_path = self.get_model_path(&spec.name);
+        if appdata_path.exists() && Self::looks_valid_model_file_for(&appdata_path, &spec.name) {
+            return Some(ModelResolution {
+                spec: spec.clone(),
+                path: appdata_path,
+                source: "appdata".to_string(),
+            });
+        }
+
+        None
+    }
+
+    pub async fn ensure_model_by_id(&self, handle: &AppHandle, model_id: &str) -> Result<ModelResolution, String> {
+        let spec = Self::spec_from_id(model_id)?;
+        if let Some(resolved) = self.resolve_model_path(handle, &spec) {
+            return Ok(resolved);
+        }
+
+        let path = self.ensure_model(handle, &spec.name, &spec.url).await?;
+        Ok(ModelResolution {
+            spec,
+            path,
+            source: "downloaded".to_string(),
+        })
     }
 
     pub async fn ensure_model(&self, handle: &AppHandle, model_name: &str, url: &str) -> Result<PathBuf, String> {
@@ -34,9 +126,15 @@ impl ModelManager {
 
         // 2. Check AppData (fallback or downloaded)
         let path = self.get_model_path(model_name);
-        if path.exists() {
+        if path.exists() && Self::looks_valid_model_file_for(&path, model_name) {
             println!("DEBUG: [ModelManager] Found existing model in AppData: {:?}", path);
             return Ok(path);
+        } else if path.exists() {
+            let _ = crate::audio_player::sys_log(&format!(
+                "[ModelManager] Existing model looks invalid/partial. Re-downloading: {:?}",
+                path
+            ));
+            let _ = fs::remove_file(&path);
         }
 
         println!("DEBUG: [ModelManager] Downloading model: {} from {}", model_name, url);
