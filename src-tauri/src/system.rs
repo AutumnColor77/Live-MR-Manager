@@ -24,11 +24,29 @@ pub async fn get_audio_devices() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
+    let path = window.state::<crate::state::AppPaths>().separated.clone();
     #[cfg(target_os = "windows")]
     {
-        let path = window.state::<crate::state::AppPaths>().separated.clone();
         use std::os::windows::process::CommandExt;
-        std::process::Command::new("explorer").arg(path.to_string_lossy().to_string()).creation_flags(0x08000000).spawn().ok();
+        std::process::Command::new("explorer")
+            .arg(path.to_string_lossy().to_string())
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

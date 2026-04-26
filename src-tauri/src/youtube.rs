@@ -178,7 +178,13 @@ impl YoutubeManager {
     }
 
     fn find_managed_ffmpeg_dir() -> Option<PathBuf> {
-        for dir in [Self::managed_cache_dir(), std::env::current_exe().ok()?.parent()?.join("resources").join("tools")] {
+        let mut dirs = vec![Self::managed_cache_dir()];
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                dirs.push(exe_dir.join("resources").join("tools"));
+            }
+        }
+        for dir in dirs {
             for name in Self::ffmpeg_candidate_names() {
                 let p = dir.join(name);
                 if p.exists() {
