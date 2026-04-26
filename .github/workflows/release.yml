@@ -33,6 +33,15 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      - name: cleanup stale macOS dmg artifacts
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set +e
+          hdiutil info | awk '/\/Volumes\/dmg\./ {print $1}' | xargs -I {} hdiutil detach {} -force
+          rm -f src-tauri/target/release/bundle/macos/rw.*.dmg
+          rm -f src-tauri/target/release/bundle/dmg/*.dmg
+          set -e
+
       - name: build and upload release
         uses: tauri-apps/tauri-action@v0
         env:
