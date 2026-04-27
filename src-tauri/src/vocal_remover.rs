@@ -233,50 +233,92 @@ pub struct WaveformRemover {
     outputs_instrumental: bool,
 }
 
+/// Intel mac: ONNX Runtime `libonnxruntime*.dylib` 위치(환경/일반 경로)를 찾는다. 부작용(set_var) 없음.
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub fn find_intel_mac_ort_dylib() -> Option<PathBuf> {
+    use std::path::{Path, PathBuf};
+    use std::fs;
+
+    fn first_matching_dylib(dir: &Path) -> Option<PathBuf> {
+        let entries = fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = p.file_name()?.to_string_lossy().to_string();
+            if name.starts_with("libonnxruntime") && name.ends_with(".dylib") && p.is_file() {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    fn scan_cellar(root: &Path) -> Option<PathBuf> {
+        let versions = fs::read_dir(root).ok()?;
+        for version in versions.flatten() {
+            let lib_dir = version.path().join("lib");
+            if let Some(found) = first_matching_dylib(&lib_dir) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    fn scan_brew_prefix_formula(formula: &str) -> Option<PathBuf> {
+        let out = Command::new("brew")
+            .args(["--prefix", formula])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let prefix = String::from_utf8(out.stdout).ok()?.trim().to_string();
+        if prefix.is_empty() {
+            return None;
+        }
+        let lib_dir = Path::new(&prefix).join("lib");
+        first_matching_dylib(&lib_dir)
+    }
+
+    if let Ok(v) = std::env::var("ORT_DYLIB_PATH") {
+        let p = Path::new(&v);
+        if p.exists() {
+            return Some(p.to_path_buf());
+        }
+    }
+
+    let direct_dirs = [
+        Path::new("/usr/local/lib"),
+        Path::new("/opt/homebrew/lib"),
+        Path::new("/usr/lib"),
+        Path::new("/opt/local/lib"),
+    ];
+    for dir in direct_dirs {
+        if let Some(found) = first_matching_dylib(dir) {
+            return Some(found);
+        }
+    }
+
+    let cellar_roots = [
+        Path::new("/usr/local/Cellar/onnxruntime"),
+        Path::new("/opt/homebrew/Cellar/onnxruntime"),
+    ];
+    for root in cellar_roots {
+        if let Some(found) = scan_cellar(root) {
+            return Some(found);
+        }
+    }
+
+    scan_brew_prefix_formula("onnxruntime")
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+pub fn find_intel_mac_ort_dylib() -> Option<std::path::PathBuf> {
+    None
+}
+
 impl WaveformRemover {
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     fn ensure_macos_intel_ort_dylib_path() -> Result<()> {
-        use std::path::{Path, PathBuf};
-        use std::fs;
-
-        fn first_matching_dylib(dir: &Path) -> Option<PathBuf> {
-            let entries = fs::read_dir(dir).ok()?;
-            for entry in entries.flatten() {
-                let p = entry.path();
-                let name = p.file_name()?.to_string_lossy().to_string();
-                if name.starts_with("libonnxruntime") && name.ends_with(".dylib") && p.is_file() {
-                    return Some(p);
-                }
-            }
-            None
-        }
-
-        fn scan_cellar(root: &Path) -> Option<PathBuf> {
-            let versions = fs::read_dir(root).ok()?;
-            for version in versions.flatten() {
-                let lib_dir = version.path().join("lib");
-                if let Some(found) = first_matching_dylib(&lib_dir) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-
-        fn scan_brew_prefix_formula(formula: &str) -> Option<PathBuf> {
-            let out = Command::new("brew")
-                .args(["--prefix", formula])
-                .output()
-                .ok()?;
-            if !out.status.success() {
-                return None;
-            }
-            let prefix = String::from_utf8(out.stdout).ok()?.trim().to_string();
-            if prefix.is_empty() {
-                return None;
-            }
-            let lib_dir = Path::new(&prefix).join("lib");
-            first_matching_dylib(&lib_dir)
-        }
+        use std::path::Path;
 
         if let Ok(v) = std::env::var("ORT_DYLIB_PATH") {
             let p = Path::new(&v);
@@ -287,46 +329,17 @@ impl WaveformRemover {
             sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH is set but missing: {}", v));
         }
 
-        let direct_dirs = [
-            Path::new("/usr/local/lib"),
-            Path::new("/opt/homebrew/lib"),
-            Path::new("/usr/lib"),
-            Path::new("/opt/local/lib"),
-        ];
-
-        for dir in direct_dirs {
-            if let Some(found) = first_matching_dylib(dir) {
-                let path_str = found.to_string_lossy().to_string();
-                std::env::set_var("ORT_DYLIB_PATH", &path_str);
-                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected: {}", path_str));
-                return Ok(());
-            }
-        }
-
-        let cellar_roots = [
-            Path::new("/usr/local/Cellar/onnxruntime"),
-            Path::new("/opt/homebrew/Cellar/onnxruntime"),
-        ];
-        for root in cellar_roots {
-            if let Some(found) = scan_cellar(root) {
-                let path_str = found.to_string_lossy().to_string();
-                std::env::set_var("ORT_DYLIB_PATH", &path_str);
-                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected from Cellar: {}", path_str));
-                return Ok(());
-            }
-        }
-
-        if let Some(found) = scan_brew_prefix_formula("onnxruntime") {
+        if let Some(found) = find_intel_mac_ort_dylib() {
             let path_str = found.to_string_lossy().to_string();
             std::env::set_var("ORT_DYLIB_PATH", &path_str);
-            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected from brew formula: {}", path_str));
+            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected: {}", path_str));
             return Ok(());
         }
 
         Err(anyhow!(
             "Intel macOS에서 ONNX Runtime 동적 라이브러리를 찾지 못했습니다. \
-ORT_DYLIB_PATH를 libonnxruntime.dylib 경로로 설정하거나 onnxruntime를 설치해 주세요. \
-(예: brew install onnxruntime)"
+앱이 자동으로 Microsoft 공식 바이너리를 내려받는 데에도 실패한 경우, \
+ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정해 주세요."
         ))
     }
 
@@ -431,6 +444,26 @@ ORT_DYLIB_PATH를 libonnxruntime.dylib 경로로 설정하거나 onnxruntime를 
             let provider_started = Instant::now();
             let session_res: Result<Session, ort::Error> = (|| {
                 sys_log(&format!("[AI-ENGINE] Provider {} builder start", name));
+
+                #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+                if name == "CPU" {
+                    // Intel macOS fallback: keep init path minimal to avoid hangs seen
+                    // in EP registration / builder option chains on older runtimes.
+                    let builder_started = Instant::now();
+                    let mut builder = Session::builder()?;
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider CPU intel-minimal builder ready in {} ms",
+                        builder_started.elapsed().as_millis()
+                    ));
+                    let commit_started = Instant::now();
+                    let result = builder.commit_from_file(model_path);
+                    sys_log(&format!(
+                        "[AI-ENGINE] Provider CPU intel-minimal commit finished in {} ms",
+                        commit_started.elapsed().as_millis()
+                    ));
+                    return result;
+                }
+
                 let builder_started = Instant::now();
                 let mut builder = Session::builder()?
                     .with_intra_threads(threads)?

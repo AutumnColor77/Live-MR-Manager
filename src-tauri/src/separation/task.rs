@@ -1,19 +1,244 @@
+use std::io::{BufRead, BufReader};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicU32};
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+use std::sync::atomic::AtomicU64;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, WebviewWindow, Manager};
 use tokio::sync::oneshot;
 
-use crate::vocal_remover::{InferenceEngine, WaveformRemover};
+use crate::vocal_remover::InferenceEngine;
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+use crate::vocal_remover::WaveformRemover;
 use crate::model_manager::{ModelManager, ModelSpec};
 use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
 use super::{SeparationProgress, ROFORMER_ENGINE, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
 static MODEL_INIT_INFLIGHT: AtomicU32 = AtomicU32::new(0);
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 static MODEL_INIT_TIMEOUT_STREAK: AtomicU32 = AtomicU32::new(0);
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+#[derive(Clone)]
+struct ExternalProcessEngine {
+    model_path: PathBuf,
+    model_id: String,
+    model_name: String,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+#[derive(serde::Serialize)]
+struct WorkerRequest {
+    model_path: String,
+    model_id: String,
+    source_path: String,
+    output_dir: String,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+#[derive(serde::Deserialize)]
+struct WorkerResponse {
+    vocal_path: String,
+    instrumental_path: String,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+impl ExternalProcessEngine {
+    fn worker_timeout_secs() -> Option<u64> {
+        match std::env::var("LIVE_MR_WORKER_TIMEOUT_SECS") {
+            Ok(v) => {
+                let parsed = v.parse::<u64>().ok().unwrap_or(0);
+                if parsed == 0 {
+                    None
+                } else {
+                    Some(parsed.max(120))
+                }
+            }
+            // Default: no hard timeout in external mode.
+            Err(_) => None,
+        }
+    }
+
+    fn worker_binary_path() -> Option<PathBuf> {
+        fn detect_near_current_exe() -> Option<PathBuf> {
+            let exe = std::env::current_exe().ok()?;
+            let dir = exe.parent()?;
+            let candidate = dir.join("separation_worker");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            let debug_candidate = dir.join("../separation_worker");
+            if debug_candidate.exists() {
+                return Some(debug_candidate);
+            }
+            None
+        }
+
+        if let Ok(v) = std::env::var("LIVE_MR_WORKER_PATH") {
+            let p = PathBuf::from(v);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            // Always rebuild in dev so worker changes (progress/logging) are reflected immediately.
+            let build_out = Command::new("cargo")
+                .args(["build", "--bin", "separation_worker"])
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .output();
+            if let Ok(out) = build_out {
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    sys_log(&format!("[AI-ENGINE] worker build failed: {}", stderr.trim()));
+                }
+            }
+            if let Some(p) = detect_near_current_exe() {
+                return Some(p);
+            }
+            let from_manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join("debug")
+                .join("separation_worker");
+            if from_manifest.exists() {
+                return Some(from_manifest);
+            }
+        }
+
+        if let Some(p) = detect_near_current_exe() {
+            return Some(p);
+        }
+
+        None
+    }
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+impl InferenceEngine for ExternalProcessEngine {
+    fn separate(&self, audio_path: &std::path::Path, output_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> anyhow::Result<(PathBuf, PathBuf)> {
+        let Some(worker) = Self::worker_binary_path() else {
+            return Err(anyhow::anyhow!(
+                "외부 분리 엔진 실행 파일을 찾지 못했습니다. `cargo run --bin separation_worker` 빌드 또는 LIVE_MR_WORKER_PATH 설정이 필요합니다."
+            ));
+        };
+        sys_log(&format!("[AI-ENGINE] External worker binary: {}", worker.display()));
+
+        on_progress(1.0);
+        let req = WorkerRequest {
+            model_path: self.model_path.to_string_lossy().to_string(),
+            model_id: self.model_id.clone(),
+            source_path: audio_path.to_string_lossy().to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+        };
+        let req_json = serde_json::to_string(&req)?;
+        let mut child = Command::new(worker)
+            .arg(req_json)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let stderr = child.stderr.take();
+        let (log_tx, log_rx) = std::sync::mpsc::channel::<String>();
+        if let Some(stderr_pipe) = stderr {
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stderr_pipe);
+                for line in reader.lines().map_while(Result::ok) {
+                    let _ = log_tx.send(line);
+                }
+            });
+        }
+        let mut worker_logs: Vec<String> = Vec::new();
+
+        let started = std::time::Instant::now();
+        let timeout_secs = Self::worker_timeout_secs();
+        if let Some(secs) = timeout_secs {
+            sys_log(&format!(
+                "[AI-ENGINE] External worker started (timeout_secs={})",
+                secs
+            ));
+        } else {
+            sys_log("[AI-ENGINE] External worker started (timeout_secs=unlimited)");
+        }
+        loop {
+            while let Ok(line) = log_rx.try_recv() {
+                worker_logs.push(line.clone());
+                if worker_logs.len() > 200 {
+                    let drop_n = worker_logs.len() - 200;
+                    worker_logs.drain(0..drop_n);
+                }
+                if let Some(v) = line.strip_prefix("PROGRESS:") {
+                    if let Ok(p) = v.trim().parse::<f32>() {
+                        on_progress(p.clamp(0.0, 99.9));
+                    }
+                } else {
+                    sys_log(&format!("[AI-WORKER] {}", line));
+                }
+            }
+            if cancel_flag.load(Ordering::Relaxed) {
+                let _ = child.kill();
+                return Err(anyhow::anyhow!("Cancelled"));
+            }
+            if let Some(_status) = child.try_wait()? {
+                break;
+            }
+            if let Some(secs) = timeout_secs {
+                if started.elapsed() >= Duration::from_secs(secs) {
+                    let _ = child.kill();
+                    return Err(anyhow::anyhow!(
+                        "외부 분리 엔진 시간 초과 ({}초). LIVE_MR_WORKER_TIMEOUT_SECS로 조정할 수 있습니다. (0=무제한)",
+                        secs
+                    ));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+
+        let out = child.wait_with_output()?;
+        while let Ok(line) = log_rx.try_recv() {
+            worker_logs.push(line.clone());
+            if worker_logs.len() > 200 {
+                let drop_n = worker_logs.len() - 200;
+                worker_logs.drain(0..drop_n);
+            }
+            if let Some(v) = line.strip_prefix("PROGRESS:") {
+                if let Ok(p) = v.trim().parse::<f32>() {
+                    on_progress(p.clamp(0.0, 99.9));
+                }
+            } else {
+                sys_log(&format!("[AI-WORKER] {}", line));
+            }
+        }
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let fallback = worker_logs
+                .iter()
+                .rev()
+                .find(|l| !l.trim().is_empty() && !l.starts_with("PROGRESS:"))
+                .cloned()
+                .unwrap_or_else(|| "unknown error".to_string());
+            return Err(anyhow::anyhow!(
+                "외부 분리 엔진 실패: {}",
+                if err.is_empty() { fallback } else { err }
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        let resp: WorkerResponse = serde_json::from_str(stdout.trim())
+            .map_err(|e| anyhow::anyhow!("외부 분리 응답 파싱 실패: {e}; raw={}", stdout.trim()))?;
+        on_progress(100.0);
+        Ok((PathBuf::from(resp.vocal_path), PathBuf::from(resp.instrumental_path)))
+    }
+
+    fn get_provider(&self) -> String { "EXTERNAL-ORT".to_string() }
+    fn get_model_name(&self) -> String { self.model_name.clone() }
+}
 
 pub struct SeparationTask {
     window: WebviewWindow,
@@ -21,8 +246,15 @@ pub struct SeparationTask {
     cache_dir: PathBuf,
 }
 
+#[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), allow(dead_code))]
 impl SeparationTask {
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn model_init_timeout_secs() -> u64 {
+        // Intel macOS에서는 ORT CPU provider 초기화가 첫 실행 때 35초를 넘는 경우가 잦다.
+        90
+    }
+
+    #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
     fn model_init_timeout_secs() -> u64 {
         // macOS에서 ORT 세션 초기화가 hang 성향일 때 UI 정체 시간을 줄인다.
         35
@@ -223,6 +455,11 @@ impl SeparationTask {
         }).ok();
 
         let app = window.app_handle();
+        if let Err(e) = crate::onnx_runtime_bootstrap::ensure_intel_mac_managed_ort(&app).await {
+            let err = format!("Error: ONNX Runtime 준비 실패 — {}", e);
+            Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
+            return Err(err);
+        }
         let manager = ModelManager::new(app);
         let primary_model_id = Self::read_active_model_id();
         let mut attempt_specs: Vec<ModelSpec> = Vec::new();
@@ -249,6 +486,25 @@ impl SeparationTask {
 
             match manager.ensure_model_by_id(app, &spec.id).await {
                 Ok(resolution) => {
+                    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+                    {
+                        let engine_arc: Arc<dyn InferenceEngine> = Arc::new(ExternalProcessEngine {
+                            model_path: resolution.path.clone(),
+                            model_id: resolution.spec.id.clone(),
+                            model_name: resolution.spec.name.clone(),
+                        });
+                        let mut guard = ROFORMER_ENGINE.lock();
+                        *guard = Some(engine_arc.clone());
+                        MODEL_INIT_COOLDOWN_UNTIL.store(0, Ordering::Relaxed);
+                        sys_log(&format!(
+                            "[AI-ENGINE] Intel macOS uses external worker engine: model={}, path={:?}",
+                            resolution.spec.id, resolution.path
+                        ));
+                        return Ok(engine_arc);
+                    }
+
+                    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+                    {
                     let attempt_id = MODEL_INIT_ATTEMPT_SEQ.fetch_add(1, Ordering::Relaxed);
                     let file_size = resolution.path.metadata().map(|m| m.len()).unwrap_or(0);
                     sys_log(&format!(
@@ -332,6 +588,7 @@ impl SeparationTask {
                                 break;
                             }
                         }
+                    }
                     }
                 }
                 Err(e) => {
@@ -423,26 +680,84 @@ impl SeparationTask {
             let last_percentage = Arc::new(AtomicU32::new(f32::to_bits(-1.0)));
             let last_p_progress = last_percentage.clone();
 
-            let separation_result = engine_for_spawn.separate(
+            let w_first = w.clone();
+            let path_first = p_for_progress.clone();
+            let info_first = info.clone();
+            let model_first = model.clone();
+            let cancel_first = cancel_flag_for_progress.clone();
+            let cancel_separate_first = cancel_flag_for_separate.clone();
+            sys_log("[AI-ENGINE] External worker attempt #1 start");
+            let mut separation_result = engine_for_spawn.separate(
                 &source_path,
                 &cache_dir_clone,
-                cancel_flag_for_separate,
+                cancel_separate_first,
                 Box::new(move |percentage| {
-                    if cancel_flag_for_progress.load(Ordering::Relaxed) { return; }
+                    if cancel_first.load(Ordering::Relaxed) { return; }
                     
                     let last = f32::from_bits(last_p_progress.load(Ordering::Relaxed));
                     if (percentage - last).abs() >= 0.5 || percentage >= 100.0 || percentage <= 0.0 {
                         last_p_progress.store(f32::to_bits(percentage), Ordering::Relaxed);
-                        let _ = w.emit("separation-progress", SeparationProgress {
-                            path: p_for_progress.clone(),
+                        let _ = w_first.emit("separation-progress", SeparationProgress {
+                            path: path_first.clone(),
                             percentage,
                             status: "Processing".into(),
-                            provider: info.clone(),
-                            model: model.clone(),
+                            provider: info_first.clone(),
+                            model: model_first.clone(),
                         });
                     }
                 })
             ).map_err(|e| e.to_string());
+
+            if let Err(e) = &separation_result {
+                sys_log(&format!("[AI-ENGINE] External worker attempt #1 failed: {}", e));
+            }
+
+            // Intel mac external worker: if init timed out once, retry one clean worker launch.
+            if info == "EXTERNAL-ORT" {
+                if let Err(e) = &separation_result {
+                    if e.contains("worker init timeout") {
+                        let _ = w.emit("separation-progress", SeparationProgress {
+                            path: p_for_progress.clone(),
+                            percentage: 1.0,
+                            status: "외부 엔진 초기화 재시도 중...".into(),
+                            provider: info.clone(),
+                            model: model.clone(),
+                        });
+                        sys_log("[AI-ENGINE] External worker init timeout; retrying once (attempt #2)");
+                        let _ = w.emit("separation-progress", SeparationProgress {
+                            path: p_for_progress.clone(),
+                            percentage: 1.0,
+                            status: "외부 엔진 재시도 2/2...".into(),
+                            provider: info.clone(),
+                            model: model.clone(),
+                        });
+                        sys_log("[AI-ENGINE] External worker attempt #2 start");
+                        separation_result = engine_for_spawn.separate(
+                            &source_path,
+                            &cache_dir_clone,
+                            cancel_flag_for_separate.clone(),
+                            Box::new(move |percentage| {
+                                if cancel_flag_for_progress.load(Ordering::Relaxed) { return; }
+                                let last = f32::from_bits(last_percentage.load(Ordering::Relaxed));
+                                if (percentage - last).abs() < 0.5 && percentage > 0.0 && percentage < 100.0 {
+                                    return;
+                                }
+                                last_percentage.store(f32::to_bits(percentage), Ordering::Relaxed);
+                                let _ = w.emit("separation-progress", SeparationProgress {
+                                    path: p_for_progress.clone(),
+                                    percentage,
+                                    status: "Processing".into(),
+                                    provider: info.clone(),
+                                    model: model.clone(),
+                                });
+                            }),
+                        ).map_err(|e| e.to_string());
+                        if let Err(e2) = &separation_result {
+                            sys_log(&format!("[AI-ENGINE] External worker attempt #2 failed: {}", e2));
+                        }
+                    }
+                }
+            }
             
             // Clean up from active map
             {
@@ -467,11 +782,16 @@ impl SeparationTask {
             }
             Ok(Err(e)) => {
                 let _ = std::fs::remove_dir_all(&cache_dir);
-                let status = if e.contains("Cancelled") { "Cancelled" } else { "Error" };
+                let status = if e.contains("Cancelled") {
+                    "Cancelled".to_string()
+                } else {
+                    sys_log(&format!("[AI-ENGINE] Separation failed: {}", e));
+                    format!("Error: {}", e)
+                };
                 window.emit("separation-progress", SeparationProgress {
                     path: path.clone(),
                     percentage: 0.0,
-                    status: status.into(),
+                    status,
                     provider: engine.get_provider(),
                     model: engine.get_model_name(),
                 }).ok();

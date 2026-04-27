@@ -33,7 +33,6 @@ parking_lot = "0.12.5"
 cpal = "0.17.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
-ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray"] }
 ndarray = "0.17"
 rubato = "0.16.0"
 rustfft = "6.2.0"
@@ -56,6 +55,8 @@ tokio-tungstenite = "0.21"
 base64 = "0.22"
 futures-util = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1.0"
+tar = { version = "0.4", default-features = false }
 
 
 # Enable optimizations in dev mode for AI/DSP performance
@@ -83,6 +84,8 @@ ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "directml"] }
 ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "coreml"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
-# Intel macOS does not have reliable prebuilt ORT binaries in this setup.
-# Use dynamic loading so it can link against a system-installed onnxruntime.
-ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "load-dynamic"] }
+# Intel macOS: dynamic loading + lower API level for broader runtime compatibility.
+ort = { version = "2.0.0-rc.12", features = ["api-17", "ndarray", "load-dynamic"] }
+
+[target.'cfg(not(any(target_os = "windows", target_os = "macos")))'.dependencies]
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray"] }

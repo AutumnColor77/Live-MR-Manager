@@ -7,6 +7,7 @@ mod model_manager;
 pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
+mod onnx_runtime_bootstrap;
 pub mod state;
 mod alignment;
 mod metadata_fetcher;
