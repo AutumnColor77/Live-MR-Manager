@@ -18,7 +18,11 @@ jobs:
           - platform: windows-latest
             bundleArgs: --bundles nsis
           - platform: macos-latest
-            bundleArgs: --bundles dmg,app
+            rustTarget: aarch64-apple-darwin
+            bundleArgs: --bundles dmg,app --target aarch64-apple-darwin
+          - platform: macos-13
+            rustTarget: x86_64-apple-darwin
+            bundleArgs: --bundles dmg,app --target x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -31,6 +35,10 @@ jobs:
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: add rust target
+        if: matrix.rustTarget != ''
+        run: rustup target add ${{ matrix.rustTarget }}
 
       - name: install frontend dependencies
         run: npm install
@@ -56,11 +64,9 @@ jobs:
 
             AI 기반 오디오 분리 및 정밀 제어를 지원하는 Live MR Manager(Beta)의 최신 릴리즈입니다.
 
-            주요 업데이트 사항:
-            - 앱 전역 다크/라이트 테마를 도입하고, 아이보리 톤 라이트 팔레트 + 색상 토큰 기반 리디자인으로 주요 화면(메인/모달/토스트/Lyric Sync/OBS 오버레이)의 저대비 및 톤 불일치 문제를 전반적으로 정리했습니다.
-            - Lyric Sync 및 곡 정보 관리자 화면의 가독성을 개선했습니다. (파형/세그먼트 시인성, 테이블 대비/열 너비/버튼 정렬)
-            - YouTube 추가 UX를 개선했습니다. (`정보 가져오기` 로딩 표시, 버튼 정렬, 동일 영상(video ID) 중복 등록 차단)
-            - 안정성과 사용성을 개선했습니다. (목록 자동 복구 통계 표시, 기본 우클릭 메뉴 차단, 입력창 전용 편집 메뉴 제공)
+            macOS 설치 파일 선택 가이드:
+            - `aarch64-apple-darwin` 표기가 포함된 파일: Apple Silicon(M1/M2/M3/M4)용
+            - `x86_64-apple-darwin` 표기가 포함된 파일: Intel Mac용
           releaseDraft: true
           prerelease: false
           args: "--verbose ${{ matrix.bundleArgs }}"
