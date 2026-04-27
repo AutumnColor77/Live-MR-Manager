@@ -408,12 +408,12 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
         let file_size = model_path.metadata().map(|m| m.len()).unwrap_or(0);
         sys_log(&format!("[AI-ENGINE] Model file: {:?} ({} bytes)", model_path, file_size));
 
-        // Some Windows GPU provider setups can terminate the process at native level
-        // during session init. Keep CPU as the safe default, and only opt into GPU
-        // providers explicitly via environment variable.
-        let gpu_opt_in = std::env::var("LIVE_MR_ENABLE_GPU")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+        // Keep prior fast-path on Windows (GPU by default), while allowing explicit
+        // opt-in/opt-out via env var across platforms.
+        let gpu_opt_in = match std::env::var("LIVE_MR_ENABLE_GPU") {
+            Ok(v) => v == "1" || v.eq_ignore_ascii_case("true"),
+            Err(_) => cfg!(target_os = "windows"),
+        };
 
         let mut providers_to_try = Vec::new();
         if gpu_opt_in {
@@ -432,7 +432,7 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
             // Keep CPU as the final fallback when GPU is explicitly enabled.
             providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
         } else {
-            sys_log("[AI-ENGINE] GPU providers disabled by default (set LIVE_MR_ENABLE_GPU=1 to enable)");
+            sys_log("[AI-ENGINE] GPU providers disabled (set LIVE_MR_ENABLE_GPU=1 to enable)");
             providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
         }
 
@@ -606,6 +606,8 @@ impl InferenceEngine for WaveformRemover {
     fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)> {
         let start_time = Instant::now();
         sys_log(&format!("DEBUG: [WaveformRemover] Starting advanced separation for: {:?}. Using: {}", audio_path, self.active_provider));
+        // Emit an early progress tick so UI does not stay visually frozen at 0%.
+        on_progress(1.0);
         
         if !output_dir.exists() {
             std::fs::create_dir_all(output_dir)?;
@@ -663,6 +665,8 @@ impl InferenceEngine for WaveformRemover {
         } else {
             raw_samples
         };
+        // Audio decode/resample completed.
+        on_progress(5.0);
 
         // [ENHANCE] Always add 1.0s silence padding for AI Stabilizing
         let ai_padding_sec = 1.0;
@@ -785,6 +789,8 @@ impl InferenceEngine for WaveformRemover {
 
         let num_chunks = (total_samples + step_size - 1) / step_size;
         sys_log(&format!("PERF: [WaveformRemover] Parameter setup took: {:?}", setup_start.elapsed()));
+        // Parameter discovery/setup completed.
+        on_progress(10.0);
 
         // --- 3-STAGE PIPELINE SETUP ---
         let _pipeline_start = Instant::now();
@@ -1028,8 +1034,10 @@ impl InferenceEngine for WaveformRemover {
                 }
                 
                 processed_count += 1;
-                if processed_count % 5 == 0 || processed_count == num_chunks {
-                    on_progress(processed_count as f32 / num_chunks as f32 * 100.0);
+                if num_chunks > 0 {
+                    // Keep processing range in 10..99 and emit every chunk for smoother UI.
+                    let processing_pct = 10.0 + ((processed_count as f32 / num_chunks as f32) * 89.0);
+                    on_progress(processing_pct.min(99.0));
                 }
             }
             sys_log(&format!("PERF: [AI-ENGINE] Stage 3 (Post-processing) thread finished in {:?}. (Processed {} chunks)", post_proc_start.elapsed(), processed_count));
