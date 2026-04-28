@@ -20,7 +20,9 @@ jobs:
           - platform: macos-latest
             rustTarget: aarch64-apple-darwin
             bundleArgs: --bundles dmg,app --target aarch64-apple-darwin
-          - platform: macos-13
+          # macos-13 runner 이미지는 GitHub에서 폐기됨 (2025-12-04). Intel(x86_64) 빌드는 macos-15-intel 사용.
+          # https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
+          - platform: macos-15-intel
             rustTarget: x86_64-apple-darwin
             bundleArgs: --bundles dmg,app --target x86_64-apple-darwin
 
@@ -44,7 +46,7 @@ jobs:
         run: npm install
 
       - name: cleanup stale macOS dmg artifacts
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
         run: |
           set +e
           hdiutil info | awk '/\/Volumes\/dmg\./ {print $1}' | xargs -I {} hdiutil detach {} -force
