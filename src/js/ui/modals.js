@@ -3,6 +3,7 @@
  */
 import { state } from '../state.js';
 import { elements } from './elements.js';
+import { getSongCategory } from './library.js';
 
 export function openEditModal(song, index) {
   if (!elements.metadataModal) return;
@@ -47,7 +48,7 @@ export function openEditModal(song, index) {
     }
   }
 
-  document.getElementById("edit-category").value = song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "") || "기본";
+  document.getElementById("edit-category").value = getSongCategory(song) || "기본";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
   const editVolume = document.getElementById("edit-volume");
   const editVolumeVal = document.getElementById("edit-volume-val");

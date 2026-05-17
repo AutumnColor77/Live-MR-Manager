@@ -3,6 +3,7 @@
  */
 import { state } from '../state.js';
 import { elements } from './elements.js';
+import { getSongCategory } from './library.js';
 
 export function openLibraryManager() {
   if (!elements.managerModal) return;
@@ -159,6 +160,9 @@ export function initManagerEvents() {
             const oldValues = song[field] || [];
             if (JSON.stringify(newValues) !== JSON.stringify(oldValues)) {
               song[field] = newValues;
+              if (field === "categories") {
+                song.curationCategory = newValues[0] || null;
+              }
               changed = true;
             }
           } else {
@@ -181,6 +185,9 @@ export function initManagerEvents() {
         const { loadLibrary } = await import('../audio.js');
         const freshSongs = await loadLibrary();
         state.songLibrary = freshSongs;
+
+        const { refreshFilterDropdowns } = await import('./core.js');
+        await refreshFilterDropdowns();
         
         showNotification(`${updates.length}개의 곡 정보가 저장되었습니다.`, "success");
         elements.managerModal.classList.remove("active");
@@ -299,7 +306,10 @@ export function renderManagerTable() {
   elements.managerTableBody.innerHTML = filtered.map((song) => {
     const originalIndex = songs.indexOf(song);
     const tagsStr = (song.tags || []).join(', ');
-    const catsStr = (song.categories || []).join(', ');
+    const catsStr =
+      song.categories && song.categories.length > 0
+        ? song.categories.join(", ")
+        : getSongCategory(song);
     const genreStr = song.genre || '-';
     const durationStr = song.duration || '-';
 

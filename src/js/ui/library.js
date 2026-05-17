@@ -12,6 +12,20 @@ export function updateLibraryCount(count) {
   if (countEl) countEl.textContent = count;
 }
 
+/** User-edited categories take priority over auto curation metadata. */
+export function getSongCategory(song) {
+  if (!song) return "";
+  if (song.categories && song.categories.length > 0) {
+    const first = String(song.categories[0] || "").trim();
+    if (first) return first;
+  }
+  if (song.category && String(song.category).trim()) return String(song.category).trim();
+  if (song.curationCategory && String(song.curationCategory).trim()) {
+    return String(song.curationCategory).trim();
+  }
+  return "";
+}
+
 export function getFilteredSongs() {
   const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
   const genreFilter = elements.libGenreFilter?.value || "all";
@@ -31,7 +45,7 @@ export function getFilteredSongs() {
       s.title.toLowerCase().includes(query) ||
       (s.artist && s.artist.toLowerCase().includes(query)) ||
       (s.genre && s.genre.toLowerCase().includes(query)) ||
-      (s.category && s.category.toLowerCase().includes(query)) ||
+      getSongCategory(s).toLowerCase().includes(query) ||
       (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
     );
   }
@@ -43,7 +57,11 @@ export function getFilteredSongs() {
 
   // Category Filter
   if (categoryFilter !== "all" && categoryFilter !== "") {
-    filtered = filtered.filter(s => s.category === categoryFilter || (s.categories && s.categories.includes(categoryFilter)));
+    filtered = filtered.filter(
+      (s) =>
+        getSongCategory(s) === categoryFilter ||
+        (s.categories && s.categories.includes(categoryFilter))
+    );
   }
 
   // Sorting
@@ -119,7 +137,7 @@ export function addSongCard(song, index) {
       let badgeHtml = "";
       if (activeTask && activeTask.status !== "Finished") {
         badgeHtml = `<span class="status-badge processing sm">ING</span>`;
-      } else if (song.isSeparated || song.isMr || song.mr_path) {
+      } else if (song.isSeparated || song.is_separated || song.isMr || song.is_mr || song.mr_path) {
         badgeHtml = `<span class="status-badge mr sm">MR</span>`;
       }
 
@@ -142,11 +160,11 @@ export function addSongCard(song, index) {
         const status = (activeTask.status || "").toLowerCase();
         const isWaiting = status.includes("queued") || status.includes("pending") || status.includes("starting") || status.includes("preparing");
         badgeHtml = `<span class="status-badge ${isWaiting ? 'pending' : 'processing'}">${isWaiting ? '대기중' : '분리중'}</span>`;
-      } else if (song.isSeparated || song.isMr || song.mr_path) {
+      } else if (song.isSeparated || song.is_separated || song.isMr || song.is_mr || song.mr_path) {
         badgeHtml = `<span class="status-badge mr">MR</span>`;
       }
 
-      const category = song.curationCategory || song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "");
+      const category = getSongCategory(song);
 
       return `
         <div class="col col-info">
@@ -170,7 +188,7 @@ export function addSongCard(song, index) {
         </div>
       `;
     })() : (() => {
-      const category = song.curationCategory || song.category || (song.categories && song.categories.length > 0 ? song.categories[0] : "");
+      const category = getSongCategory(song);
       return `
       <div class="song-info-content grid-layout">
         <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
@@ -261,6 +279,8 @@ export async function deleteSong(index) {
   openConfirmModal("곡 삭제", `'${song.title}' 곡을 삭제하시겠습니까?`, async () => {
     try {
       await performDeleteSong(index);
+      const { refreshFilterDropdowns } = await import('./core.js');
+      await refreshFilterDropdowns();
       renderLibrary();
       showNotification("곡이 삭제되었습니다.", "success");
     } catch (err) {

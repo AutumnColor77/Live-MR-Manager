@@ -114,6 +114,15 @@
 - **버전 정합성 업데이트**: 앱 메타데이터(`package`, `cargo`, `tauri`)를 `0.4.9`로 통일했습니다.
 - **문서/타이틀 버전 표기 정리**: 사용자 매뉴얼 및 앱 타이틀에 노출되는 버전을 `v0.4.9`로 갱신했습니다.
 
+### 🆕 v0.4.10 업데이트 (안정화 패치)
+
+- **MR 캐시 경로 통일 (`cache_key_variants`)**: 유튜브 URL 형식(`youtu.be`, `watch?v=` 등) 차이로 MR 파일·배지·KEY/BPM 분석 경로가 어긋나던 문제를 재생/삭제 로직과 동일한 변형 키 탐색으로 통일했습니다.
+- **MR 배지 신뢰성 개선**: 라이브러리 로드 시 `vocal.wav`/`inst.wav` 존재 여부를 변형 키로 판별하고, 카드 렌더 시 `check_mr_separated`로 한 번 더 확인해 F5 이후에도 배지가 유지됩니다.
+- **KEY/BPM 분석 MR 연동 수정**: MR 분리 완료 후에도 `inst.wav`를 찾지 못하던 경로 불일치를 해결해, 온라인 곡에서도 MR 기반 분석이 동작합니다.
+- **카테고리 필터 드롭다운 정합성**: 실제 곡에 쓰인 카테고리만 표시하고, 메타데이터·관리자 저장·곡 추가/삭제 후 **재시작 없이** 목록이 갱신됩니다.
+- **카테고리 표시/저장 동기화**: `categories`와 `curationCategory` 우선순위를 정리해 카드·필터·편집 모달이 같은 값을 보여 주며, 저장 시 DB에 일관되게 반영됩니다.
+- **Windows 개발 환경 가이드 보강**: `signalsmith-stretch` 빌드용 **LLVM(libclang)** 및 PowerShell 실행 정책/`npm.cmd` 안내를 추가했습니다.
+
 ---
 
 ## 🏗️ 기술 아키텍처 (Layer Structure)
@@ -147,9 +156,10 @@
 
 ### 사전 요구 사항
 
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Node.js](https://nodejs.org/) (v18+)
-- [C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (SoX 엔진 빌드용)
+- [Rust](https://www.rust-lang.org/tools/install) (rustup + stable toolchain)
+- [Node.js](https://nodejs.org/) (LTS, v18+)
+- [LLVM](https://releases.llvm.org/) 또는 `winget install LLVM.LLVM` — `signalsmith-stretch` 빌드 시 **libclang** 필요 (`LIBCLANG_PATH` → `...\LLVM\bin`)
+- [C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) — 네이티브 크레이트 및 Tauri 빌드용 (**「C++를 사용한 데스크톱 개발」** 워크로드 권장)
 
 ### 프로젝트 시작
 
@@ -157,9 +167,18 @@
 # 의존성 설치
 npm install
 
+# Rust 크레이트 미리 받기 (선택)
+cd src-tauri && cargo fetch && cd ..
+
 # Tauri 개발 모드 실행
 npm run tauri dev
 ```
+
+**Windows PowerShell 참고**
+
+- `npm`이 인식되지 않으면: 터미널을 새로 열거나 `npm.cmd` 사용
+- `npm.ps1` 실행 정책 오류 시: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 또는 `npm.cmd run tauri dev`
+- MR/AI 캐시 데이터: `%LOCALAPPDATA%\com.autumncolor77.live-mr-manager\`
 
 ---
 

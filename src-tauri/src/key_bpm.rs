@@ -22,12 +22,17 @@ pub struct KeyBpmAnalysis {
 
 fn resolve_analysis_path(path: &str) -> Result<PathBuf, String> {
     // Prefer MR instrumental file when separation exists.
+    // Use the same cache-key variants as playback / check_mr_separated (MR is stored under
+    // normalize_cache_key, e.g. https://www.youtube.com/watch?v=ID, not always the library URL).
     if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
-        let norm = path.replace("\\", "/");
-        let encoded = urlencoding::encode(&norm).to_string();
-        let inst_path = paths.separated.join(encoded).join("inst.wav");
-        if inst_path.is_file() {
-            return Ok(inst_path);
+        for key in crate::model_commands::cache_key_variants(path) {
+            let inst_path = paths
+                .separated
+                .join(urlencoding::encode(&key).to_string())
+                .join("inst.wav");
+            if inst_path.is_file() {
+                return Ok(inst_path);
+            }
         }
     }
 

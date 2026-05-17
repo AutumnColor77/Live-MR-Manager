@@ -4,8 +4,8 @@
 
 import { state } from './js/state.js';
 import { 
-  initDomReferences, renderLibrary, updateGenreDropdowns, 
-  updateCategoryDropdown, updateSortDropdown, updateAiModelStatus, 
+  initDomReferences, renderLibrary,
+  refreshFilterDropdowns, updateSortDropdown, updateAiModelStatus, 
   updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
 } from './js/ui/index.js';
 import { initAllEvents, switchTab } from './js/events/index.js';
@@ -156,8 +156,7 @@ async function initApp() {
     const initialTab = "library";
     switchTab(initialTab);
     
-    await updateGenreDropdowns();
-    await updateCategoryDropdown();
+    await refreshFilterDropdowns();
     updateSortDropdown();
   } catch (err) {
     console.error("Failed to set initial UI state:", err);

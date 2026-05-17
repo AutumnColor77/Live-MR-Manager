@@ -106,12 +106,10 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
             }
         }
         
-        let norm = row.get::<_, String>(1).unwrap_or_default().replace("\\", "/").to_lowercase();
-        let cache_dir = paths.separated.join(urlencoding::encode(&norm).to_string());
-        let is_separated = cache_dir.join("vocal.wav").exists() && cache_dir.join("inst.wav").exists();
-        
-        // Check for .lrc file in the same folder
         let track_path = row.get::<_, String>(1).unwrap_or_default();
+        let is_separated = crate::model_commands::mr_separated_files_exist(&paths, &track_path);
+
+        // Check for .lrc file in the same folder
         let lrc_path = std::path::Path::new(&track_path).with_extension("lrc");
         let has_lyrics = lrc_path.exists();
 
@@ -153,10 +151,35 @@ pub async fn load_library(paths: tauri::State<'_, crate::state::AppPaths>) -> Re
 #[tauri::command]
 pub async fn get_categories() -> Result<Vec<crate::types::Category>, String> {
     let db = DB.lock();
-    let mut stmt = db.prepare("SELECT id, name FROM Categories").map_err(to_sqlite_err)?;
-    let iter = stmt.query_map([], |row| Ok(crate::types::Category { id: row.get(0)?, name: row.get(1)? })).map_err(to_sqlite_err)?;
+    // Only categories that appear on at least one track (same idea as get_genres).
+    let mut stmt = db.prepare(
+        "SELECT COALESCE(c.id, 0) AS id, u.name
+         FROM (
+            SELECT DISTINCT TRIM(c.name) AS name
+            FROM Categories c
+            INNER JOIN Track_Category_Map m ON c.id = m.category_id
+            UNION
+            SELECT DISTINCT TRIM(t.curation_category) AS name
+            FROM Tracks t
+            WHERE t.curation_category IS NOT NULL AND TRIM(t.curation_category) != ''
+         ) u
+         LEFT JOIN Categories c ON c.name = u.name
+         WHERE u.name IS NOT NULL AND TRIM(u.name) != ''
+         ORDER BY u.name COLLATE NOCASE",
+    )
+    .map_err(to_sqlite_err)?;
+    let iter = stmt
+        .query_map([], |row| {
+            Ok(crate::types::Category {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(to_sqlite_err)?;
     let mut res = Vec::new();
-    for i in iter { res.push(i.map_err(to_sqlite_err)?); }
+    for i in iter {
+        res.push(i.map_err(to_sqlite_err)?);
+    }
     Ok(res)
 }
 
@@ -223,12 +246,21 @@ pub async fn save_library_internal(songs: Vec<SongMetadata>) -> Result<(), Strin
             tx.query_row("SELECT id FROM Genres WHERE name = ?", params![g], |row| row.get(0)).ok()
         } else { None };
 
+        // When categories are sent from the UI, they are the source of truth (clears stale curation_category).
+        let curation_category = match &song.categories {
+            Some(cats) => cats
+                .first()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            None => song.curation_category.clone(),
+        };
+
         tx.execute(
             "INSERT OR REPLACE INTO Tracks (path, title, thumbnail, duration, source, pitch, tempo, volume, artist, play_count, date_added, is_mr, genre_id, original_title, translated_title, curation_category)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![song.path, song.title, song.thumbnail, song.duration, song.source, song.pitch.unwrap_or(0.0), song.tempo.unwrap_or(1.0),
                     song.volume.unwrap_or(100.0), song.artist, song.play_count.unwrap_or(0), song.date_added, if song.is_mr.unwrap_or(false) { 1 } else { 0 }, 
-                    genre_id, song.original_title, song.translated_title, song.curation_category]
+                    genre_id, song.original_title, song.translated_title, curation_category]
         ).ok();
 
         let track_id: Option<i64> = tx.query_row("SELECT id FROM Tracks WHERE path = ?", params![song.path], |row| row.get(0)).ok();

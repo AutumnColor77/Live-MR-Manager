@@ -38,7 +38,7 @@ fn extract_youtube_video_id(url: &str) -> Option<String> {
     None
 }
 
-fn cache_key_variants(path: &str) -> Vec<String> {
+pub(crate) fn cache_key_variants(path: &str) -> Vec<String> {
     let mut variants = vec![path.trim().replace("\\", "/")];
     if let Some(id) = extract_youtube_video_id(path) {
         variants.push(format!("https://youtu.be/{}", id));
@@ -48,6 +48,14 @@ fn cache_key_variants(path: &str) -> Vec<String> {
     variants.sort();
     variants.dedup();
     variants
+}
+
+/// True when both MR output files exist for any URL/path variant of this track.
+pub(crate) fn mr_separated_files_exist(paths: &crate::state::AppPaths, path: &str) -> bool {
+    cache_key_variants(path).iter().any(|key| {
+        let cache = paths.separated.join(urlencoding::encode(key).to_string());
+        cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -246,11 +254,8 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
 
 #[tauri::command]
 pub fn check_mr_separated(window: WebviewWindow, path: String) -> bool {
-    let separated_root = window.state::<crate::state::AppPaths>().separated.clone();
-    cache_key_variants(&path).iter().any(|key| {
-        let cache = separated_root.join(urlencoding::encode(key).to_string());
-        cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
-    })
+    let paths = window.state::<crate::state::AppPaths>();
+    mr_separated_files_exist(paths.inner(), &path)
 }
 
 #[tauri::command]

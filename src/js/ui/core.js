@@ -3,6 +3,7 @@
  */
 import { state, getAllGenres, getAllCategories } from '../state.js';
 import { elements } from './elements.js';
+import { getSongCategory } from './library.js';
 import { invoke } from '../tauri-bridge.js';
 
 export async function updateGenreDropdowns() {
@@ -18,17 +19,62 @@ export async function updateGenreDropdowns() {
   }
 }
 
+function collectCategoriesFromLibrary() {
+  const names = new Set();
+  for (const song of state.songLibrary) {
+    const primary = getSongCategory(song);
+    if (primary) names.add(primary);
+    if (song.categories) {
+      for (const c of song.categories) {
+        if (c && String(c).trim()) names.add(String(c).trim());
+      }
+    }
+  }
+  return names;
+}
+
+function applyCustomSelectValue(dropdown, value, allLabel) {
+  if (!dropdown) return;
+  const hidden = dropdown.querySelector('input[type="hidden"]');
+  const trigger = dropdown.querySelector(".selected-text");
+  const effective = value || "all";
+  if (hidden) hidden.value = effective;
+  if (trigger) trigger.textContent = effective === "all" ? allLabel : effective;
+  dropdown.querySelectorAll(".option-item").forEach((opt) => {
+    opt.classList.toggle("selected", opt.dataset.value === effective);
+  });
+}
+
 export async function updateCategoryDropdown() {
-  const cats = ["전체", ...(await getAllCategories())];
   const dropdown = document.getElementById("lib-category-dropdown");
   if (!dropdown) return;
 
+  const hidden = document.getElementById("lib-category-filter");
+  const current = hidden?.value || "all";
+
+  const merged = new Set([...(await getAllCategories()), ...collectCategoriesFromLibrary()]);
+  if (current !== "all" && current) merged.add(current);
+
+  const sorted = Array.from(merged).sort((a, b) => a.localeCompare(b, "ko"));
+  const cats = ["전체", ...sorted];
+
   const optionsContainer = dropdown.querySelector(".select-options");
   if (optionsContainer) {
-    optionsContainer.innerHTML = cats.map(c => `
-      <div class="option-item ${c === "전체" ? "selected" : ""}" data-value="${c === "전체" ? "all" : c}">${c}</div>
-    `).join("");
+    optionsContainer.innerHTML = cats
+      .map((c) => {
+        const value = c === "전체" ? "all" : c;
+        const selected = value === current ? "selected" : "";
+        return `<div class="option-item ${selected}" data-value="${value}">${c}</div>`;
+      })
+      .join("");
   }
+
+  const hasCurrent = current === "all" || sorted.includes(current);
+  applyCustomSelectValue(dropdown, hasCurrent ? current : "all", "전체 카테고리");
+}
+
+export async function refreshFilterDropdowns() {
+  await Promise.all([updateGenreDropdowns(), updateCategoryDropdown()]);
 }
 
 export function updateSortDropdown() {

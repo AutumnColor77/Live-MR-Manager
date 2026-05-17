@@ -276,6 +276,8 @@ export async function setupBackendListeners() {
       if (addedCount > 0) {
         await saveLibrary(state.songLibrary);
         showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        await refreshFilterDropdowns();
         renderLibrary();
       }
     }

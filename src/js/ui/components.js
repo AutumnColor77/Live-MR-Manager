@@ -357,6 +357,7 @@ export function showSongContextMenu(e, song, originalIndex) {
             const { stopPlayback } = await import('../player.js');
             if (typeof stopPlayback === 'function') await stopPlayback();
             await deleteMr(song.path);
+            clearMrPresenceCache(song.path);
             invoke('remote_js_log', { msg: `[MR Delete] Successfully deleted MR` }).catch(() => {});
             
             // Update local state to reflect deletion
@@ -502,6 +503,8 @@ export function showSongContextMenu(e, song, originalIndex) {
     invoke('remote_js_log', { msg: `[Menu Delete Init] menuDelete is null!` }).catch(() => {});
   }
 }
+const mrPresenceChecked = new Set();
+
 export function updateCardStatusBadge(path, card = null) {
   const targetCard = card || Array.from(document.querySelectorAll('.song-card')).find(el => el.dataset.path === path);
   if (!targetCard) return;
@@ -538,14 +541,31 @@ export function updateCardStatusBadge(path, card = null) {
 
     badge.classList.add(isWaiting ? "pending" : "processing");
     badge.textContent = isWaiting ? "대기중" : "분리중";
-  } else if ((song && (song.isSeparated || song.isMr || song.mr_path))) {
+  } else if (song && (song.isSeparated || song.is_separated || song.isMr || song.is_mr || song.mr_path)) {
     badge.classList.add("mr");
     badge.textContent = "MR";
+  } else if (song && !mrPresenceChecked.has(path)) {
+    mrPresenceChecked.add(path);
+    invoke("check_mr_separated", { path })
+      .then((separated) => {
+        if (!separated) return;
+        song.isSeparated = true;
+        song.is_separated = true;
+        updateCardStatusBadge(path, targetCard);
+      })
+      .catch(() => {});
+    return;
   } else {
     return; // No badge to show
   }
 
   parent.appendChild(badge);
+}
+
+/** Call after MR delete so cards can re-probe cache on next render. */
+export function clearMrPresenceCache(path) {
+  if (path) mrPresenceChecked.delete(path);
+  else mrPresenceChecked.clear();
 }
 
 export function updateThumbnailOverlay() {

@@ -84,12 +84,14 @@ export function initModalListeners() {
         : (Number.isFinite(song?.volume) ? song.volume : 100);
       const isManualMr = document.getElementById("edit-is-mr").checked;
       const wasSeparated = !!(song.isSeparated || song.is_separated);
+      const categoryText = document.getElementById("edit-category").value.trim();
       const updated = {
         ...song,
         title: document.getElementById("edit-title").value,
         artist: document.getElementById("edit-artist").value,
         genre: document.getElementById("edit-genre-custom").value.trim() || document.getElementById("edit-genre-select").value,
-        categories: [document.getElementById("edit-category").value.trim()].filter(c => c),
+        categories: categoryText ? [categoryText] : [],
+        curationCategory: categoryText || null,
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
         volume: safeVolume,
         key: (document.getElementById("edit-key")?.value || "").trim(),
@@ -106,13 +108,19 @@ export function initModalListeners() {
 
       try {
         await invoke('update_song_metadata', { song: updated });
-        state.songLibrary[idx] = updated;
+        const { loadLibrary } = await import('../audio.js');
+        const freshLibrary = await loadLibrary();
+        state.songLibrary = freshLibrary || [];
+        const freshIdx = state.songLibrary.findIndex((s) => s.path === updated.path);
+        if (freshIdx >= 0) state.editingSongIndex = freshIdx;
+        const freshSong = freshIdx >= 0 ? state.songLibrary[freshIdx] : updated;
         if (state.currentTrack && state.currentTrack.path === updated.path) {
-          state.currentTrack = updated;
-          // Apply per-track volume immediately for currently playing song.
+          state.currentTrack = freshSong;
           await invoke('set_volume', { volume: safeVolume });
         }
         const { renderLibrary } = await import('../ui/library.js');
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        await refreshFilterDropdowns();
         renderLibrary();
         const { closeEditModal } = await import('../ui/modals.js');
         closeEditModal();

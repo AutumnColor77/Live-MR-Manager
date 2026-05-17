@@ -539,6 +539,8 @@ export function initControlListeners() {
         elements.ytUrlInput.value = "";
         showNotification("추가되었습니다.", "success");
         const { renderLibrary } = await import('../ui/library.js');
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        await refreshFilterDropdowns();
         renderLibrary();
       } catch (err) {
         const { showNotification } = await import('../utils.js');
@@ -643,6 +645,8 @@ export function initControlListeners() {
         const { loadLibrary } = await import('../audio.js');
         const { renderLibrary } = await import('../ui/library.js');
         state.songLibrary = await loadLibrary() || [];
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        await refreshFilterDropdowns();
         renderLibrary();
         showNotification("백업본에서 없는 곡들을 성공적으로 병합했습니다.", "success");
       } catch (err) {
@@ -676,6 +680,8 @@ export function initControlListeners() {
           stats.failed > 0 ? "warning" : "success"
         );
         state.songLibrary = await loadLibrary() || [];
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        await refreshFilterDropdowns();
         renderLibrary();
       } catch (err) {
         showNotification("복구 중 오류가 발생했습니다: " + err, "error");
