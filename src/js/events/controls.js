@@ -656,6 +656,65 @@ export function initControlListeners() {
       }
     };
   }
+  const reloadLibraryAfterSpreadsheetImport = async (result) => {
+    const { showNotification } = await import('../utils.js');
+    const { loadLibrary } = await import('../audio.js');
+    const { renderLibrary } = await import('../ui/library.js');
+    const { refreshFilterDropdowns } = await import('../ui/core.js');
+    state.songLibrary = await loadLibrary() || [];
+    await refreshFilterDropdowns();
+    renderLibrary();
+    const added = Number(result?.added || 0);
+    const updated = Number(result?.updated || 0);
+    const skipped = Number(result?.skipped || 0);
+    const errCount = Array.isArray(result?.errors) ? result.errors.length : 0;
+    let msg = `가져오기 완료: 추가 ${added}곡, 갱신 ${updated}곡`;
+    if (skipped > 0) msg += `, 건너뜀 ${skipped}행`;
+    if (errCount > 0) msg += `, 오류 ${errCount}건`;
+    showNotification(msg, errCount > 0 ? "warning" : "success");
+    if (errCount > 0 && result.errors?.length) {
+      console.warn("[spreadsheet import]", result.errors.slice(0, 20));
+    }
+  };
+  if (elements.btnExportSpreadsheetTemplate) {
+    elements.btnExportSpreadsheetTemplate.onclick = async () => {
+      const { showNotification } = await import('../utils.js');
+      try {
+        await invoke("export_library_spreadsheet", { templateOnly: true });
+        showNotification("가져오기 양식(CSV)을 저장했습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("양식 저장 중 오류: " + err, "error");
+        }
+      }
+    };
+  }
+  if (elements.btnExportSpreadsheet) {
+    elements.btnExportSpreadsheet.onclick = async () => {
+      const { showNotification } = await import('../utils.js');
+      try {
+        await invoke("export_library_spreadsheet", { templateOnly: false });
+        showNotification("라이브러리를 CSV로 저장했습니다.", "success");
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("CSV 보내기 중 오류: " + err, "error");
+        }
+      }
+    };
+  }
+  if (elements.btnImportSpreadsheet) {
+    elements.btnImportSpreadsheet.onclick = async () => {
+      const { showNotification } = await import('../utils.js');
+      try {
+        const result = await invoke("import_library_spreadsheet");
+        await reloadLibraryAfterSpreadsheetImport(result);
+      } catch (err) {
+        if (err !== "CANCELLED") {
+          showNotification("가져오기 중 오류: " + err, "error");
+        }
+      }
+    };
+  }
   if (elements.btnRunRescue) {
     elements.btnRunRescue.onclick = async () => {
       const { showNotification } = await import('../utils.js');

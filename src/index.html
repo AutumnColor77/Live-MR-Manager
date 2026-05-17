@@ -620,7 +620,22 @@
 
               <div class="ai-model-card" style="margin-top: 15px;">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">데이터 백업 및 복원 (병합)</h2>
+                  <h2 class="ai-title-large">엑셀(CSV) 가져오기 / 보내기</h2>
+                  <div class="ai-model-desc">
+                    엑셀·구글 시트에서 편집한 곡 목록을 CSV 또는 XLSX로 가져오거나, 현재 라이브러리를 CSV로 보낼 수 있습니다.
+                    첫 행에 <strong>path</strong>(경로) 열이 필요하며, 한글 헤더(경로·제목·아티스트·장르·카테고리 등)도 인식합니다.
+                    같은 경로는 정보를 갱신하고, 새 경로는 곡을 추가합니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-export-spreadsheet-template" class="btn-ai-action secondary">양식 받기</button>
+                  <button id="btn-export-spreadsheet" class="btn-ai-action secondary">CSV 보내기</button>
+                  <button id="btn-import-spreadsheet" class="btn-ai-action">가져오기 (병합)</button>
+                </div>
+              </div>
+              <div class="ai-model-card" style="margin-top: 15px;">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">데이터 백업 및 복원 (JSON)</h2>
                   <div class="ai-model-desc">
                     현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
                   </div>

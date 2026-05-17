@@ -18,6 +18,7 @@ mod key_bpm;
 mod audio_commands;
 mod model_commands;
 mod system;
+mod spreadsheet;
 mod rescue;
 mod overlay_server;
 
@@ -67,7 +68,9 @@ pub fn run() {
             library::delete_song, library::map_track_to_categories, 
             system::get_app_paths, 
             system::export_backup, 
-            system::import_backup, 
+            system::import_backup,
+            system::export_library_spreadsheet,
+            system::import_library_spreadsheet,
             rescue::run_cache_rescue,
             rescue::run_local_rescue,
             model_commands::get_active_separations,

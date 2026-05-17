@@ -94,6 +94,47 @@ pub async fn import_backup(_app: AppHandle, paths: State<'_, crate::state::AppPa
     }
 }
 #[tauri::command]
+pub async fn export_library_spreadsheet(
+    paths: State<'_, crate::state::AppPaths>,
+    template_only: Option<bool>,
+) -> Result<(), String> {
+    let template = template_only.unwrap_or(false);
+    let bytes = crate::spreadsheet::export_library_csv(paths.inner(), template).await?;
+    let default_name = if template {
+        "LiveMR_Import_Template.csv"
+    } else {
+        "LiveMR_Library.csv"
+    };
+    if let Some(path) = rfd::AsyncFileDialog::new()
+        .add_filter("CSV (Excel)", &["csv"])
+        .set_file_name(default_name)
+        .save_file()
+        .await
+    {
+        std::fs::write(path.path(), bytes).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("CANCELLED".into())
+    }
+}
+
+#[tauri::command]
+pub async fn import_library_spreadsheet(
+    paths: State<'_, crate::state::AppPaths>,
+) -> Result<crate::spreadsheet::SpreadsheetImportResult, String> {
+    if let Some(path) = rfd::AsyncFileDialog::new()
+        .add_filter("스프레드시트", &["csv", "xlsx", "xls", "xlsm"])
+        .pick_file()
+        .await
+    {
+        let rows = crate::spreadsheet::parse_spreadsheet_file(path.path())?;
+        crate::spreadsheet::merge_rows_into_library(paths.inner(), rows).await
+    } else {
+        Err("CANCELLED".into())
+    }
+}
+
+#[tauri::command]
 pub async fn remote_js_log(msg: String) {
     let _ = crate::audio_player::sys_log(&format!("[JS] {}", msg));
 }
