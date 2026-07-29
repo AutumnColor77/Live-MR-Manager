@@ -47,6 +47,9 @@ export const elements = {
   btnNext: null,
   aiModelStatus: null,
   aiEngineProvider: null,
+  gpuPackStatus: null,
+  gpuPackDetail: null,
+  btnOpenGpuPack: null,
   btnDownloadModel: null,
   btnDeleteModel: null,
   btnStartTrack: null,
@@ -89,6 +92,7 @@ export const elements = {
   tasksPage: null,
   overlayPage: null,
   activeTasksList: null,
+  alignmentTasksList: null,
   taskBadge: null,
   btnExportBackup: null,
   btnImportBackup: null,
@@ -149,6 +153,9 @@ export function initDomReferences() {
   elements.btnNext = document.getElementById("btn-next");
   elements.aiModelStatus = document.getElementById("ai-model-status");
   elements.aiEngineProvider = document.getElementById("ai-engine-provider");
+  elements.gpuPackStatus = document.getElementById("gpu-pack-status");
+  elements.gpuPackDetail = document.getElementById("gpu-pack-detail");
+  elements.btnOpenGpuPack = document.getElementById("btn-open-gpu-pack");
   elements.btnDownloadModel = document.getElementById("btn-download-model");
   elements.btnDeleteModel = document.getElementById("btn-delete-model");
   elements.btnStartTrack = document.getElementById("btn-start-track");
@@ -188,7 +195,8 @@ export function initDomReferences() {
   elements.settingsPage = document.getElementById("settings-page");
   elements.tasksPage = document.getElementById("tasks-page");
   elements.overlayPage = document.getElementById("overlay-tab");
-  elements.activeTasksList = document.getElementById("active-tasks-list");
+  elements.activeTasksList = document.getElementById("separation-tasks-list");
+  elements.alignmentTasksList = document.getElementById("alignment-tasks-list");
   elements.taskBadge = document.getElementById("task-badge");
   elements.btnExportBackup = document.getElementById("btn-export-backup");
   elements.btnImportBackup = document.getElementById("btn-import-backup");

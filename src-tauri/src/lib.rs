@@ -5,6 +5,7 @@ mod types;
 mod youtube;
 mod youtube_url;
 mod model_manager;
+mod custom_models;
 pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
@@ -14,6 +15,10 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+pub mod gpu_pack;
+pub mod dereverb;
+mod title_parser;
+mod search;
 mod meloming;
 mod key_bpm;
 mod audio_commands;
@@ -97,6 +102,8 @@ pub fn run() {
             let paths = crate::state::AppPaths::from_handle(app.handle());
             *crate::state::APP_PATHS.lock() = Some(paths.clone());
             app.manage(paths);
+            // TensorRT/cuDNN 팩이 있으면 ORT가 찾을 수 있게 DLL 경로를 먼저 등록.
+            crate::gpu_pack::register_dll_search_path();
             crate::audio_player::sys_log("[App] Startup complete");
             let _ = &*crate::state::DB;
             
@@ -122,9 +129,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             audio_commands::get_model_settings, audio_commands::update_model_settings,
             audio_commands::play_track, audio_commands::toggle_playback, audio_commands::stop_playback, audio_commands::seek_to, audio_commands::set_pitch, audio_commands::set_tempo, audio_commands::set_volume, audio_commands::set_master_volume,
-            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature, 
+            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature,
+            audio_commands::list_output_devices, audio_commands::get_output_device, audio_commands::set_output_device,
+            audio_commands::get_mr_output_device, audio_commands::set_mr_output_device,
+            audio_commands::set_channel_route, audio_commands::set_metronome, audio_commands::set_bus_delay, audio_commands::set_limiter,
+            audio_commands::get_mix_state, audio_commands::set_track_fader, audio_commands::set_track_mute, audio_commands::set_track_solo,
             model_commands::check_mr_separated,
-            model_commands::delete_mr, 
+            model_commands::get_separation_info,
+            model_commands::delete_mr,
             model_commands::start_mr_separation, 
             model_commands::youtube_metadata_fetcher,
             library::get_audio_metadata, audio_commands::get_playback_state, 
@@ -135,13 +147,31 @@ pub fn run() {
             model_commands::set_broadcast_mode,
             model_commands::get_mr_cache_format,
             model_commands::set_mr_cache_format,
-            system::get_audio_devices, 
-            system::open_cache_folder, 
-            model_commands::delete_ai_model, 
-            model_commands::get_gpu_recommendation, 
+            system::get_audio_devices,
+            system::open_cache_folder,
+            system::open_mr_folder,
+            system::get_mr_cache_dir,
+            system::set_mr_cache_dir,
+            system::reset_mr_cache_dir,
+            model_commands::delete_ai_model,
+            model_commands::get_gpu_recommendation,
+            model_commands::list_model_presets,
+            model_commands::list_all_models,
+            model_commands::list_custom_models,
+            model_commands::add_custom_model,
+            model_commands::remove_custom_model,
             library::add_category, library::delete_category,
-            library::delete_song, library::map_track_to_categories, 
-            system::get_app_paths, 
+            library::delete_song, library::map_track_to_categories,
+            system::get_app_paths,
+            system::pick_audio_files,
+            system::open_lyrics_window,
+            gpu_pack::get_gpu_pack_status,
+            gpu_pack::open_gpu_pack_dir,
+            dereverb::get_dereverb_status,
+            dereverb::set_dereverb_enabled,
+            dereverb::open_dereverb_dir,
+            search::search_youtube,
+            search::search_lyrics_sites,
             system::export_backup, 
             system::import_backup,
             system::export_library_spreadsheet,
@@ -157,6 +187,7 @@ pub fn run() {
             alignment::cancel_forced_alignment, alignment::read_audio_file,
             alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
+            alignment::download_alignment_model, alignment::list_downloadable_alignment_models,
             alignment::save_lrc_file, alignment::load_lrc_file,
             system::remote_js_log,
             updater::check_for_app_update,
@@ -167,7 +198,9 @@ pub fn run() {
             overlay_server::update_overlay_state,
             overlay_server::update_overlay_style,
             overlay_server::update_overlay_lyrics,
+            overlay_server::update_overlay_lyrics_full,
             overlay_server::get_overlay_state,
+            overlay_server::get_lan_addresses,
             meloming::meloming_get_user_profile,
             meloming::meloming_get_channel_id,
             meloming::meloming_set_channel_id,

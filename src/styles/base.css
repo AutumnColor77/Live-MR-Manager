@@ -51,6 +51,25 @@
   user-select: none;
 }
 
+/* 네이티브 컨트롤(셀렉트 팝업 목록, 스크롤바, 체크박스 등)이 테마를 따르게
+   한다 — 지정하지 않으면 다크 모드에서도 OS 기본(밝은) 팝업이 떠서 이질적. */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"],
+html[data-theme="pink"],
+html[data-theme="sky"] {
+  color-scheme: light;
+}
+
+/* 셀렉트 옵션 색을 테마 토큰으로 고정 (color-scheme 미지원 렌더러 안전망) */
+select option {
+  background-color: var(--menu-bg, #16161c);
+  color: var(--text-main, #f8fafc);
+}
+
 :root,
 html[data-theme="dark"] {
   --bg-color: #08080a;
@@ -372,4 +391,41 @@ body {
   width: 32px;
   height: 32px;
   border-width: 4px;
+}
+/* ── 공용 버튼 (테마 토큰 기반) ────────────────────────────────────
+   .sync-reset-btn(빨강, 위험/초기화 용도)을 일반 액션에 재사용하며 색이
+   어긋나던 것을 대체한다. 중립 액션 = .app-btn, 주요 액션 = .app-btn-primary */
+.app-btn {
+  background: var(--surface-2);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.app-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--accent-primary);
+}
+
+.app-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.app-btn-primary {
+  background: rgb(var(--accent-rgb) / 0.16);
+  color: var(--accent-primary);
+  border-color: rgb(var(--accent-rgb) / 0.45);
+}
+
+.app-btn-primary:hover {
+  background: rgb(var(--accent-rgb) / 0.28);
+  border-color: var(--accent-primary);
 }

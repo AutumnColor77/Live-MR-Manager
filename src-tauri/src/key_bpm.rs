@@ -18,6 +18,9 @@ const MAX_SECONDS: f32 = 90.0;
 pub struct KeyBpmAnalysis {
     pub key: String,
     pub bpm: f32,
+    /// Rough timing anchor (seconds) for BPM-grid lyric placement — see
+    /// `estimate_bpm`'s doc comment. Not a true intro-end/downbeat detector.
+    pub first_onset_sec: f32,
 }
 
 fn resolve_analysis_path(path: &str) -> Result<PathBuf, String> {
@@ -176,7 +179,12 @@ fn build_chroma(samples: &[f32], sr: u32) -> [f32; 12] {
     chroma
 }
 
-fn estimate_bpm(samples: &[f32], sr: u32) -> f32 {
+/// Returns `(bpm, first_onset_sec)`. `first_onset_sec` is a rough timing
+/// anchor — the first energy-onset peak that clears 30% of the track's
+/// strongest onset, used as a starting point for beat-grid placement. Not a
+/// true downbeat/intro-end detector, just a cheap reuse of the onset
+/// envelope this function already computes for BPM autocorrelation.
+fn estimate_bpm(samples: &[f32], sr: u32) -> (f32, f32) {
     let hop = ((sr as f32) * 0.01).max(1.0) as usize;
     let mut env = Vec::new();
     let mut i = 0usize;
@@ -186,13 +194,17 @@ fn estimate_bpm(samples: &[f32], sr: u32) -> f32 {
         i += hop;
     }
     if env.len() < 32 {
-        return 120.0;
+        return (120.0, 0.0);
     }
     let mut onsets = vec![0.0f32; env.len()];
     for j in 1..env.len() {
         onsets[j] = (env[j] - env[j - 1]).max(0.0);
     }
     let frame_dur = hop as f32 / sr as f32;
+    let max_onset = onsets.iter().cloned().fold(0.0f32, f32::max);
+    let onset_threshold = max_onset * 0.3;
+    let first_onset_frame = onsets.iter().position(|&v| v >= onset_threshold).unwrap_or(0);
+    let first_onset_sec = first_onset_frame as f32 * frame_dur;
     let mut best_bpm = 120.0f32;
     let mut best_score = -1.0f32;
     for bpm in 60i32..=200 {
@@ -245,7 +257,7 @@ fn estimate_bpm(samples: &[f32], sr: u32) -> f32 {
     if s_dbl > 0.0 && s_dbl > fs * 0.95 {
         fb = b_dbl;
     }
-    fb
+    (fb, first_onset_sec)
 }
 
 pub fn analyze_key_bpm_for_path(path: &str) -> Result<KeyBpmAnalysis, String> {
@@ -259,8 +271,8 @@ pub fn analyze_key_bpm_for_path(path: &str) -> Result<KeyBpmAnalysis, String> {
     }
     let chroma = build_chroma(&mono, ANALYSIS_SR);
     let key = estimate_key(&chroma);
-    let bpm = estimate_bpm(&mono, ANALYSIS_SR);
-    Ok(KeyBpmAnalysis { key, bpm })
+    let (bpm, first_onset_sec) = estimate_bpm(&mono, ANALYSIS_SR);
+    Ok(KeyBpmAnalysis { key, bpm, first_onset_sec })
 }
 
 #[command]

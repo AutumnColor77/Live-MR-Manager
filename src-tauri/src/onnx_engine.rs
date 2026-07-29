@@ -59,6 +59,15 @@ impl OnnxEngine {
             let total_chunks = (total_samples as f32 / chunk_size as f32).ceil() as usize;
 
             for (i, start) in (0..total_samples).step_by(chunk_size).enumerate() {
+                // Forced-alignment inference is chunked into 30s windows and can
+                // take a long time on a full song; check for a user cancellation
+                // between chunks instead of only after the whole loop finishes,
+                // otherwise "cancel" only takes effect once inference is already
+                // complete (i.e. it does nothing useful).
+                if crate::alignment::CANCEL_ALIGNMENT.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("작업이 사용자에 의해 취소되었습니다.".to_string());
+                }
+
                 let end = (start + chunk_size).min(total_samples);
                 let chunk = &audio_data[start..end];
                 let seq_len = chunk.len();

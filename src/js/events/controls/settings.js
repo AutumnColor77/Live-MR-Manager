@@ -335,4 +335,98 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
       }
     };
   }
+
+  // 인트로 자동 건너뛰기 — 가사 싱크 탭에서 지정한 "보컬 시작 지점" 마커가
+  // 있는 곡은 재생 시작 시 그 지점으로 자동 탐색(player.js::selectTrack).
+  // 기본 켜짐, localStorage에 저장(다른 순수 프론트 토글과 동일 패턴).
+  const toggleIntroSkip = document.getElementById('toggle-intro-skip');
+  if (toggleIntroSkip) {
+    const stored = localStorage.getItem('introSkipEnabled');
+    toggleIntroSkip.checked = stored === null ? true : stored === 'true';
+    toggleIntroSkip.onchange = (e) => {
+      localStorage.setItem('introSkipEnabled', String(!!e.target.checked));
+    };
+  }
+
+  // 우클릭 메뉴의 재생/가사 보기 항목 표시 여부 — 기본 숨김(false).
+  // 메뉴를 단순하게 유지하되, 원하는 사용자는 여기서 되살릴 수 있음.
+  [
+    ['toggle-ctx-menu-play', 'ctxMenuPlayEnabled'],
+    ['toggle-ctx-menu-lyrics', 'ctxMenuLyricsViewEnabled'],
+  ].forEach(([elId, storageKey]) => {
+    const toggle = document.getElementById(elId);
+    if (!toggle) return;
+    toggle.checked = localStorage.getItem(storageKey) === 'true';
+    toggle.onchange = (e) => {
+      localStorage.setItem(storageKey, String(!!e.target.checked));
+    };
+  });
+
+  initMrCacheDirControls();
+}
+
+/**
+ * MR 캐시 저장 위치 카드 — 현재/설정된 경로 표시 + 폴더 변경/기본값 복귀.
+ * 변경은 오버라이드 파일에만 저장되고 앱 재시작 후 적용된다(백엔드가 세션
+ * 내내 경로를 고정하므로, configured ≠ current면 "재시작 필요"로 안내).
+ */
+async function initMrCacheDirControls() {
+  const statusEl = document.getElementById('mr-cache-dir-status');
+  const changeBtn = document.getElementById('btn-change-cache-dir');
+  const resetBtn = document.getElementById('btn-reset-cache-dir');
+  if (!statusEl || !changeBtn || !resetBtn) return;
+
+  const { invoke } = await import('../../tauri-bridge.js');
+
+  const refresh = async () => {
+    try {
+      const info = await invoke('get_mr_cache_dir');
+      if (!info) return;
+      const isOverridden = !!info.configured;
+      const pendingRestart = isOverridden
+        ? info.configured !== info.current
+        : info.current !== info.defaultDir;
+      let html = `현재 위치: <span style="color: var(--text-main);">${info.current}</span>`;
+      if (isOverridden && pendingRestart) {
+        html += `<br>변경된 위치(재시작 후 적용): <span style="color: var(--accent-primary);">${info.configured}</span>`;
+      } else if (!isOverridden && pendingRestart) {
+        html += `<br><span style="color: var(--accent-primary);">기본 위치로 초기화됨 — 재시작 후 적용</span>`;
+      }
+      statusEl.innerHTML = html;
+      resetBtn.style.display = isOverridden ? '' : 'none';
+    } catch (err) {
+      console.error('[Settings] get_mr_cache_dir failed:', err);
+    }
+  };
+
+  changeBtn.onclick = async () => {
+    try {
+      changeBtn.disabled = true;
+      const picked = await invoke('set_mr_cache_dir');
+      if (picked) {
+        const { showNotification } = await import('../../utils.js');
+        showNotification('MR 캐시 저장 위치가 변경되었습니다. 앱을 재시작하면 적용됩니다.', 'success');
+        await refresh();
+      }
+    } catch (err) {
+      const { showNotification } = await import('../../utils.js');
+      showNotification('저장 위치 변경 실패: ' + err, 'error');
+    } finally {
+      changeBtn.disabled = false;
+    }
+  };
+
+  resetBtn.onclick = async () => {
+    try {
+      await invoke('reset_mr_cache_dir');
+      const { showNotification } = await import('../../utils.js');
+      showNotification('기본 저장 위치로 되돌렸습니다. 앱을 재시작하면 적용됩니다.', 'info');
+      await refresh();
+    } catch (err) {
+      const { showNotification } = await import('../../utils.js');
+      showNotification('초기화 실패: ' + err, 'error');
+    }
+  };
+
+  refresh();
 }

@@ -63,9 +63,56 @@ export function updateAiModelStatus(statusInput) {
   }
 }
 
-export function updateTaskUI() {
-  if (!elements.taskBadge || !elements.activeTasksList) return;
-  
+/**
+ * Generic keyed upsert of `.task-card` elements into a list container —
+ * shared by the separation task list and the alignment queue list so both
+ * keep the same diff/reorder behavior (no full innerHTML rebuild per tick).
+ */
+function upsertTaskCards(container, items, emptyHtml, createCard, updateCard) {
+  if (!container) return;
+
+  if (items.length === 0) {
+    if (!container.querySelector('.no-tasks')) {
+      container.innerHTML = `<div class="no-tasks">${emptyHtml}</div>`;
+    }
+    // Clear any stale cards alongside the placeholder.
+    container.querySelectorAll('.task-card').forEach((c) => c.remove());
+    return;
+  }
+
+  const existingCards = new Map(
+    Array.from(container.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+  );
+  const nextPaths = new Set(items.map((t) => t.path));
+
+  const emptyState = container.querySelector('.no-tasks');
+  if (emptyState) emptyState.remove();
+
+  existingCards.forEach((card, path) => {
+    if (!nextPaths.has(path)) {
+      card.remove();
+      existingCards.delete(path);
+    }
+  });
+
+  items.forEach((item, index) => {
+    let card = existingCards.get(item.path);
+    if (!card) {
+      card = createCard(item);
+      existingCards.set(item.path, card);
+    }
+    updateCard(card, item);
+    const currentAtIndex = container.children[index];
+    if (currentAtIndex !== card) {
+      container.insertBefore(card, currentAtIndex || null);
+    }
+  });
+}
+
+function renderSeparationTasks() {
+  const container = elements.activeTasksList;
+  if (!container) return 0;
+
   const tasks = Object.entries(state.activeTasks).map(([path, data]) => {
     const song = state.songLibrary.find((s) => s.path === path);
     return {
@@ -76,17 +123,6 @@ export function updateTaskUI() {
       thumbnail: data.thumbnail || song?.thumbnail || "",
     };
   });
-  elements.taskBadge.textContent = tasks.length;
-  elements.taskBadge.style.display = tasks.length > 0 ? "flex" : "none";
-  
-  updateBroadcastTasksControlVisibility();
-  
-  if (tasks.length === 0) {
-    if (!elements.activeTasksList.querySelector('.no-tasks')) {
-      elements.activeTasksList.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
-    }
-    return;
-  }
 
   const statusMap = {
     "Queued": "대기 중",
@@ -95,16 +131,27 @@ export function updateTaskUI() {
     "Processing": "분리 중",
     "Finished": "완료",
     "Cancelled": "취소됨",
-    "Error": "오류"
+    "Error": "오류",
+    "RetryWaiting": "재시도 대기 중"
   };
 
   const formatTaskViewModel = (task) => {
     const percent = Math.floor(task.percentage || 0);
     const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
     const pStr = (task.provider || "").toUpperCase();
-    const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
-    const providerLabel = isGPU ? "GPU" : "CPU";
-    const displayStatus = statusMap[task.status] || task.status || '대기 중';
+    // 대기 중인 태스크는 실제 provider가 아직 정해지지 않아 placeholder("local"/
+    // "SYSTEM"/"UNKNOWN"/"")로 들어온다. 이때 CPU로 단정하면 작업 시작 시 GPU로
+    // 바뀌어 보이는 오해가 생기므로, provider가 확정되기 전엔 "대기"로 표시한다.
+    const providerKnown = pStr !== "" && !["LOCAL", "SYSTEM", "UNKNOWN"].includes(pStr);
+    const isGPU = providerKnown && (pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML") || pStr.includes("TENSORRT"));
+    const providerLabel = providerKnown ? (isGPU ? "GPU" : "CPU") : "대기";
+    let displayStatus = statusMap[task.status] || task.status || '대기 중';
+    // 다운로드 실패 후 백오프 대기 — 몇 번째 시도이고 얼마 뒤인지 같이 보여준다.
+    if (task.status === "RetryWaiting") {
+      const d = Number(task.retryDelayMs || 0);
+      const when = d >= 60000 ? `${Math.round(d / 60000)}분 후` : `${Math.round(d / 1000)}초 후`;
+      displayStatus = `재시도 대기 중 (${task.retryAttempt}/${task.retryMax} · ${when})`;
+    }
     return { percent, thumbUrl, isGPU, providerLabel, displayStatus };
   };
 
@@ -179,34 +226,163 @@ export function updateTaskUI() {
     }
   };
 
-  const existingCards = new Map(
-    Array.from(elements.activeTasksList.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+  upsertTaskCards(container, tasks, '현재 진행 중인 분리 작업이 없습니다.', createTaskCard, updateTaskCard);
+  return tasks.length;
+}
+
+function renderAlignmentQueue() {
+  const container = elements.alignmentTasksList;
+  if (!container) return 0;
+
+  const items = state.alignmentQueue || [];
+
+  // "대기열 전체 지우기" — 항목이 있을 때만 노출, 클릭 시 처리 중 취소 + 전체 제거
+  const actionsBar = document.getElementById('alignment-queue-actions');
+  if (actionsBar) {
+    actionsBar.style.display = items.length > 0 ? 'flex' : 'none';
+    const clearBtn = document.getElementById('alignment-clear-all');
+    if (clearBtn && !clearBtn._wired) {
+      clearBtn._wired = true;
+      clearBtn.onclick = async () => {
+        const hasProcessing = (state.alignmentQueue || []).some((i) => i.status === 'processing');
+        if (hasProcessing && !confirm('처리 중인 정렬이 있습니다. 취소하고 대기열을 모두 지울까요?')) return;
+        const { clearAlignmentQueue } = await import('../alignment-queue.js');
+        await clearAlignmentQueue();
+      };
+    }
+  }
+
+  const statusMap = {
+    'queued': '대기 중',
+    'processing': '정렬 중',
+    'done': '완료',
+    'error': '오류',
+    'no-lyrics': '가사 없음',
+    'cancelled': '취소됨',
+  };
+
+  const createCard = (item) => {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.dataset.path = item.path;
+    const thumbUrl = item.thumbnail ? getThumbnailUrl(item.thumbnail, item) : '';
+    card.innerHTML = `
+      <div class="task-header-info">
+        <div class="task-icon">
+          ${thumbUrl ? `<img src="${thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-align-left"></i>'}
+        </div>
+        <div class="task-main-details">
+          <div class="task-title"></div>
+          <div class="task-status-row">
+            <span class="task-status-text"></span>
+            <span class="task-percentage"></span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn-task-cancel">취소</button>
+        </div>
+      </div>
+      <div class="task-progress-container">
+        <div class="task-progress-bar"></div>
+      </div>
+    `;
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        import('../alignment-queue.js').then(({ cancelAlignmentQueueItem }) => {
+          cancelAlignmentQueueItem(card.dataset.path);
+        });
+      });
+    }
+    return card;
+  };
+
+  const updateCard = (card, item) => {
+    card.dataset.path = item.path;
+    const title = card.querySelector('.task-title');
+    if (title) title.textContent = item.title || item.path;
+
+    // 처리 중이면서 아직 실제 추론 진행률이 안 온 준비 단계('preparing')는
+    // 0%가 아니라 "준비 중(모델 로드 중)"으로 표시 — 모델 로드에 수 초 걸릴 수 있음.
+    const isPreparing = item.status === 'processing' && item.phase === 'preparing';
+
+    const status = card.querySelector('.task-status-text');
+    if (status) {
+      let text = statusMap[item.status] || item.status;
+      if (isPreparing) text = '준비 중 (모델 로드)';
+      // 랩/혼합(듀얼 모델) 모드: 몇 번째 패스인지 표기 (예: "정렬 중 (1/2)")
+      if (item.status === 'processing' && !isPreparing && item.passLabel) text = `정렬 중 (${item.passLabel})`;
+      if (item.status === 'error' && item.error) text = `오류: ${item.error}`;
+      if (item.status === 'done' && item.note) text = `완료 (${item.note})`;
+      status.textContent = text;
+      status.classList.toggle('task-status-error', item.status === 'error');
+    }
+
+    const percentage = card.querySelector('.task-percentage');
+    if (percentage) {
+      // 준비 중에는 퍼센트를 숨기고(0% 오해 방지), 정렬 단계에서만 %표시.
+      percentage.textContent = (item.status === 'processing' && !isPreparing)
+        ? `${Math.floor(item.percentage || 0)}%` : '';
+    }
+
+    const progressBar = card.querySelector('.task-progress-bar');
+    if (progressBar) {
+      const pct = item.status === 'done' ? 100 : (item.status === 'processing' ? Math.floor(item.percentage || 0) : 0);
+      progressBar.style.width = `${pct}%`;
+      // 준비 중에는 불확정 진행 표시(자체 애니메이션)로 "멈춘 게 아님"을 알림.
+      progressBar.classList.toggle('indeterminate', isPreparing);
+    }
+
+    // 종결 상태(완료/오류/가사 없음/취소)에서는 "취소"가 아니라 목록 제거 액션.
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      const finished = ['done', 'error', 'no-lyrics', 'cancelled'].includes(item.status);
+      cancelBtn.textContent = finished ? '지우기' : '취소';
+    }
+  };
+
+  upsertTaskCards(
+    container,
+    items,
+    '대기 중인 정렬 작업이 없습니다. 라이브러리에서 곡을 선택해 "AI 정렬 요청"을 눌러보세요.',
+    createCard,
+    updateCard
   );
-  const nextPaths = new Set(tasks.map((t) => t.path));
+  // 활성(대기/진행) 항목만 배지 카운트에 반영 — 완료·오류 잔여물로 배지가 계속 떠 있지 않게.
+  return items.filter((i) => i.status === 'queued' || i.status === 'processing').length;
+}
 
-  // Remove empty placeholder if present.
-  const emptyState = elements.activeTasksList.querySelector('.no-tasks');
-  if (emptyState) emptyState.remove();
+export function updateTaskUI() {
+  if (!elements.taskBadge) return;
 
-  // Remove cards for tasks that no longer exist.
-  existingCards.forEach((card, path) => {
-    if (!nextPaths.has(path)) {
-      card.remove();
-      existingCards.delete(path);
-    }
-  });
+  const separationCount = renderSeparationTasks();
+  const alignmentActiveCount = renderAlignmentQueue();
 
-  // Upsert cards while preserving order from current task list.
-  tasks.forEach((task, index) => {
-    let card = existingCards.get(task.path);
-    if (!card) {
-      card = createTaskCard(task);
-      existingCards.set(task.path, card);
-    }
-    updateTaskCard(card, task);
-    const currentAtIndex = elements.activeTasksList.children[index];
-    if (currentAtIndex !== card) {
-      elements.activeTasksList.insertBefore(card, currentAtIndex || null);
+  // 99를 넘으면 "99+"로 캡 — 자릿수가 늘어 배지가 셰브론을 밀어내지 않게.
+  const formatCount = (n) => (n > 99 ? '99+' : String(n));
+  const sepBadge = document.getElementById('separation-section-count');
+  if (sepBadge) sepBadge.textContent = formatCount(separationCount);
+  const alignBadge = document.getElementById('alignment-section-count');
+  if (alignBadge) alignBadge.textContent = formatCount((state.alignmentQueue || []).length);
+
+  const total = separationCount + alignmentActiveCount;
+  elements.taskBadge.textContent = total;
+  elements.taskBadge.style.display = total > 0 ? "flex" : "none";
+
+  updateBroadcastTasksControlVisibility();
+}
+
+/** AI 프로세싱 탭의 카테고리 섹션 접기/펴기 — localStorage에 섹션별로 저장. */
+export function initTaskSectionToggles() {
+  document.querySelectorAll('#tasks-page .task-section').forEach((section) => {
+    const key = `taskSectionCollapsed:${section.dataset.section}`;
+    if (localStorage.getItem(key) === 'true') section.classList.add('collapsed');
+    const toggle = section.querySelector('.section-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const collapsed = section.classList.toggle('collapsed');
+        localStorage.setItem(key, String(collapsed));
+      });
     }
   });
 }
@@ -309,9 +485,13 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSelectAll = document.getElementById("menu-select-all");
 
   // Song context: show song actions, hide text-input actions.
-  [menuPlay, menuLyricsView, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
+  [menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
     if (el) el.style.display = "block";
   });
+  // 재생/가사 보기는 기본 숨김 — 카드 클릭/드로어로 대체 가능해 메뉴를
+  // 단순하게 유지. 설정 > 재생에서 다시 켤 수 있음.
+  if (menuPlay) menuPlay.style.display = localStorage.getItem('ctxMenuPlayEnabled') === 'true' ? "block" : "none";
+  if (menuLyricsView) menuLyricsView.style.display = localStorage.getItem('ctxMenuLyricsViewEnabled') === 'true' ? "block" : "none";
   [inputSeparator, menuUndo, menuRedo, menuCut, menuCopy, menuPaste, menuSelectAll].forEach((el) => {
     if (el) el.style.display = "none";
   });
@@ -405,12 +585,13 @@ export function showSongContextMenu(e, song, originalIndex) {
           } else {
             menuSeparate.classList.remove("disabled");
             menuSeparate.onclick = async () => {
-              invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
+              invoke('remote_js_log', { msg: `[MR Separate] Opening mode picker` }).catch(() => {});
               elements.contextMenu.classList.remove("active");
               elements.contextMenu.style.display = 'none';
               try {
-                const { startMrSeparation } = await import('../audio.js');
-                await startMrSeparation(song.path);
+                // 바로 분리하지 않고 속도/품질(모델) 선택 모달을 먼저 띄운다.
+                const { openSeparationModeModal } = await import('../separation-mode-modal.js');
+                openSeparationModeModal(song);
               } catch (err) {
                 invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
                 console.error("Separation trigger failed:", err);
@@ -590,6 +771,25 @@ export function updateThumbnailOverlay() {
     elements.thumbOverlay.classList.toggle("active", isCurrent);
     elements.thumbOverlay.classList.toggle("playing", isCurrent && state.isPlaying);
     elements.thumbOverlay.classList.toggle("loading", isCurrent && state.isLoading);
+  }
+}
+
+export async function refreshGpuPackStatus() {
+  if (!elements.gpuPackStatus) return;
+  try {
+    const s = await invoke("get_gpu_pack_status");
+    const installed = !!s.installed;
+    elements.gpuPackStatus.textContent = installed ? "설치됨" : "미설치";
+    elements.gpuPackStatus.className = "ai-status-badge " + (installed ? "status-online" : "status-offline");
+    if (elements.gpuPackDetail) {
+      elements.gpuPackDetail.textContent = installed
+        ? s.dir
+        : (s.missing && s.missing.length
+            ? `빠진 파일 ${s.missing.length}개 (${s.missing.slice(0, 3).join(", ")}${s.missing.length > 3 ? " 외" : ""}) — 위치: ${s.dir}`
+            : s.dir);
+    }
+  } catch (err) {
+    elements.gpuPackStatus.textContent = "확인 실패";
   }
 }
 

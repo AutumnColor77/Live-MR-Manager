@@ -22,6 +22,12 @@ export const state = {
   prevVolume: 100,
   activeTasks: {}, // path -> { title, percentage, status }
   cancelledPaths: new Set(), // path blacklist for UI updates
+  // AI 가사 정렬 배치 대기열 (분리의 activeTasks와 별개 — JS 주도 순차 처리,
+  // alignment-queue.js가 소유). status: queued/processing/done/error/no-lyrics/cancelled
+  alignmentQueue: [], // [{ path, title, thumbnail, status, percentage?, error? }]
+  // 라이브러리 다중 선택 모드 (일괄 AI 정렬 요청용)
+  librarySelectionMode: false,
+  selectedSongPaths: new Set(),
   playbackSequence: 0, // Latest playback request ID to handle race conditions
   
   // Interpolation / Progress State

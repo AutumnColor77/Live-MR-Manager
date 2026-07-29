@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "lyrics-hover",
+  "description": "가사 호버창(항상 위·투명·드래그 이동) 권한",
+  "windows": ["lyrics-hover"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top"
+  ]
+}

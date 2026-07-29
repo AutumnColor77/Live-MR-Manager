@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "dev": "npx -y serve src -l 1420",
+    "dev": "node scripts/dev-server.mjs --root src --port 1420",
     "test": "vitest run",
     "test:watch": "vitest"
   },

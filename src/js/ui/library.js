@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
-import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong } from '../library-filters.js';
+import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong, getLyricSyncStatus } from '../library-filters.js';
 import { updateCardStatusBadge, updateThumbnailOverlay, showSongContextMenu } from './components.js';
 
 export function updateLibraryCount(count) {
@@ -26,6 +26,7 @@ export function getFilteredSongs() {
     query: elements.libSearchInput?.value || "",
     genreFilter: elements.libGenreFilter?.value || "all",
     categoryFilter: elements.libCategoryFilter?.value || "all",
+    syncFilter: document.getElementById("lib-sync-filter")?.value || "all",
     sortBy: elements.libSortSelect?.value || "dateNew",
     currentTab: state.activeView || "library",
   });
@@ -72,9 +73,18 @@ export function addSongCard(song, index) {
 
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
 
+  // 가사 싱크 상태 배지 (싱크 완료/미싱크만 표시, 가사 없음은 생략해 과밀 방지)
+  const syncStatus = getLyricSyncStatus(song);
+  const syncBadge = syncStatus === 'synced'
+    ? `<span class="lyric-sync-badge synced" title="가사 싱크 완료">싱크</span>`
+    : (syncStatus === 'unsynced'
+        ? `<span class="lyric-sync-badge unsynced" title="가사만 있음 (미싱크)">미싱크</span>`
+        : '');
+
   card.innerHTML = `
     <div class="thumbnail">
       <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
+      ${syncBadge}
       <div class="thumb-overlay">
         <svg class="icon-loading" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3">
           <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
@@ -174,8 +184,35 @@ export function addSongCard(song, index) {
   // Unified Status Badge (MR / 분리중 / 대기중)
   updateCardStatusBadge(song.path, card);
 
+  // 선택 모드 체크박스 (3개 뷰 모드 공통 — CSS가 [data-selection-mode]로 게이팅).
+  // 실제 <input> 대신 표시 전용 마커를 쓰고 클릭은 카드 전체가 받는다.
+  const selectMarker = document.createElement('div');
+  selectMarker.className = 'song-select-marker';
+  if (state.selectedSongPaths && state.selectedSongPaths.has(song.path)) {
+    card.classList.add('selected-for-batch');
+  }
+  card.prepend(selectMarker);
+
   // Integrated click handler: Play immediately on card or thumbnail click
   const handlePlayClick = async (e) => {
+    // 0. 선택 모드에서는 재생 대신 선택 토글
+    if (state.librarySelectionMode) {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = state.selectedSongPaths;
+      if (selected.has(song.path)) {
+        selected.delete(song.path);
+        card.classList.remove('selected-for-batch');
+      } else {
+        selected.add(song.path);
+        card.classList.add('selected-for-batch');
+      }
+      import('../events/controls/library.js').then((m) => {
+        if (m.updateSelectionBar) m.updateSelectionBar();
+      });
+      return;
+    }
+
     // 1. If any modal is active, block playback from library cards
     const activeModal = document.querySelector(".modal-overlay.active");
     if (activeModal) {

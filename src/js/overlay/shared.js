@@ -16,7 +16,13 @@
 
   function connectWS(onMessage, port) {
     const wsPort = port || 14201;
-    const host = global.location.hostname || 'localhost';
+    let host = global.location.hostname || 'localhost';
+    // 앱 내부 창(Tauri는 tauri.localhost/asset 호스트로 페이지를 띄움)에서는
+    // 오버레이 서버가 같은 PC에 있으므로 localhost로 붙는다. OBS/브라우저에서
+    // http로 열었을 때는 그 호스트(LAN IP 포함)를 그대로 사용.
+    if (!host || host === 'tauri.localhost' || host.endsWith('.localhost')) {
+      host = 'localhost';
+    }
     const socket = new WebSocket(`ws://${host}:${wsPort}`);
     socket.onmessage = (event) => {
       try {

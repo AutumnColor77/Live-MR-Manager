@@ -108,6 +108,7 @@ export function initModalListeners() {
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
         volume: safeVolume,
         songKey: (document.getElementById("edit-key")?.value || "").trim(),
+        lyricsLink: (document.getElementById("edit-lyrics-link")?.value || "").trim() || null,
         bpm: (() => {
           const raw = Number.parseInt(document.getElementById("edit-bpm")?.value || "", 10);
           return Number.isFinite(raw) ? raw : null;

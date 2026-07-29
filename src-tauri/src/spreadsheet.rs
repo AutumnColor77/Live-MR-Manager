@@ -513,6 +513,7 @@ fn song_from_row(row: &HashMap<String, String>) -> Result<SongMetadata, String> 
         is_mr: Some(false),
         is_separated: Some(false),
         has_lyrics: Some(false),
+        lyric_sync_status: None,
         original_title: None,
         translated_title: None,
         curation_category: None,

@@ -14,6 +14,68 @@ export function initViewMode(updateViewMode) {
   if (elements.viewButtonBtn) {
     elements.viewButtonBtn.onclick = () => updateViewMode("button");
   }
+  initSelectionMode();
+}
+
+/** 선택 바(N개 선택됨 + 일괄 작업 버튼) 표시/카운트 갱신. 카드 클릭 토글
+ *  (ui/library.js)에서도 호출된다. */
+export function updateSelectionBar() {
+  const bar = document.getElementById('library-selection-bar');
+  const countEl = document.getElementById('library-selection-count');
+  if (!bar) return;
+  const count = state.selectedSongPaths ? state.selectedSongPaths.size : 0;
+  bar.style.display = (state.librarySelectionMode && count > 0) ? 'flex' : 'none';
+  if (countEl) countEl.textContent = `${count}개 선택됨`;
+}
+
+function exitSelectionMode() {
+  state.librarySelectionMode = false;
+  state.selectedSongPaths.clear();
+  const btn = document.getElementById('library-select-mode');
+  if (btn) btn.classList.remove('active');
+  if (elements.viewport) elements.viewport.removeAttribute('data-selection-mode');
+  document.querySelectorAll('.song-card.selected-for-batch').forEach((c) => c.classList.remove('selected-for-batch'));
+  updateSelectionBar();
+}
+
+function initSelectionMode() {
+  const toggleBtn = document.getElementById('library-select-mode');
+  if (toggleBtn) {
+    toggleBtn.onclick = () => {
+      if (state.librarySelectionMode) {
+        exitSelectionMode();
+        return;
+      }
+      state.librarySelectionMode = true;
+      state.selectedSongPaths.clear();
+      toggleBtn.classList.add('active');
+      if (elements.viewport) elements.viewport.setAttribute('data-selection-mode', 'true');
+      updateSelectionBar();
+    };
+  }
+
+  const clearBtn = document.getElementById('btn-selection-clear');
+  if (clearBtn) clearBtn.onclick = () => exitSelectionMode();
+
+  const alignBtn = document.getElementById('btn-selection-align');
+  if (alignBtn) {
+    alignBtn.onclick = async () => {
+      const paths = Array.from(state.selectedSongPaths);
+      if (paths.length === 0) return;
+      const { enqueueAlignment } = await import('../../alignment-queue.js');
+      const added = enqueueAlignment(paths);
+      exitSelectionMode();
+      const { showNotification } = await import('../../utils.js');
+      if (added > 0) {
+        showNotification(`${added}곡을 AI 정렬 대기열에 추가했습니다.`, 'success');
+      } else {
+        showNotification('선택한 곡이 모두 이미 대기열에 있습니다.', 'info');
+      }
+      // 진행 상황을 바로 볼 수 있게 AI 프로세싱 탭으로 이동
+      const { callAppHandler } = await import('../../app-context.js');
+      callAppHandler('switchToTab', 'tasks');
+    };
+  }
 }
 
 export function createViewModeUpdater() {
@@ -87,6 +149,12 @@ export function initLibraryListeners(updateViewMode) {
       if (popover) popover.classList.remove("active");
     }
 
+    // 컨트롤바 현재 곡 메뉴(⋮)도 바깥 클릭 시 닫기
+    if (!e.target.closest(".dock-more")) {
+      const morePopover = document.getElementById("dock-more-popover");
+      if (morePopover) morePopover.classList.remove("active");
+    }
+
     const card = e.target.closest(".song-card");
     const dock = e.target.closest(".control-dock");
     const modal = e.target.closest(".modal-content");
@@ -126,6 +194,10 @@ export function initLibraryListeners(updateViewMode) {
   }
   if (elements.libSortSelect) {
     elements.libSortSelect.addEventListener("change", renderLibraryDeferred);
+  }
+  const libSyncFilter = document.getElementById("lib-sync-filter");
+  if (libSyncFilter) {
+    libSyncFilter.addEventListener("change", renderLibraryDeferred);
   }
 
   if (updateViewMode) {

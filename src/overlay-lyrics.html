@@ -20,8 +20,13 @@
       --text-shadow: rgba(0, 0, 0, 0.3);
       --enter-gap-x: 120px;
       --enter-gap-y: 80px;
-      --lyric-current-height: 34px;
-      --lyric-next-height: 26px;
+      /* 가사 폰트 크기 — 설정에서 조정 가능(update_overlay_style font_size).
+         줄 높이는 폰트 크기에 비례해 따라가므로 크기를 키워도 잘리지 않음. */
+      --lyric-font-size: 22px;
+      /* 원문/차음(+번역) 3줄 모드는 <br>로 2~3줄이 들어올 수 있어 여유를 둠.
+         (전체 오버레이 레이아웃 리디자인은 하지 않고 높이만 늘림) */
+      --lyric-current-height: calc(var(--lyric-font-size) * 2.27);
+      --lyric-next-height: calc(var(--lyric-font-size) * 1.82);
       --lyric-lines-gap: 4px;
     }
 
@@ -121,7 +126,7 @@
 
     .lyric-line.current {
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       line-height: 1.35;
       font-weight: 700;
       text-shadow: 0 2px 4px var(--text-shadow);
@@ -133,7 +138,7 @@
 
     .lyric-line.next {
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       margin-top: 4px;
       line-height: 1.35;
       height: var(--lyric-next-height);
@@ -142,11 +147,25 @@
       overflow: hidden;
     }
 
+    /* 3줄(원문/차음/번역) 모드에서 2줄 이상이 한 슬롯에 들어갈 때 — 고정
+       높이 박스 안에 단일 줄 기준 폰트 크기를 그대로 쓰면 잘리거나 겹쳐서
+       가독성이 떨어짐. 줄 수에 맞춰 기준 폰트를 줄이고 줄간격도 좁힌다.
+       (하위 줄은 lyric-drawer.js의 displayText()가 0.7em 인라인 스타일로
+       이미 상대적으로 더 작게 렌더링하므로, 여기서는 컨테이너 기준값만 조정) */
+    .lyric-line.current.multi-line {
+      font-size: calc(var(--lyric-font-size) * 0.77);
+      line-height: 1.22;
+    }
+    .lyric-line.next.multi-line {
+      font-size: calc(var(--lyric-font-size) * 0.59);
+      line-height: 1.22;
+    }
+
     .lyrics-container.line-promoting #lyric-current {
       transform: translateY(-14px);
       opacity: 0.72;
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       font-weight: 500;
       transition-delay: 0ms;
     }
@@ -154,7 +173,7 @@
       transform: translateY(calc(-1 * (var(--lyric-next-height) + var(--lyric-lines-gap))));
       opacity: 1;
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       font-weight: 700;
       transition-delay: 0ms;
     }
@@ -216,8 +235,17 @@
     let pendingTrackShowTimer = null;
 
     function setLineTexts(currentText, nextText) {
-      lyricCurrent.innerHTML = currentText && currentText.trim() ? currentText : '&nbsp;';
-      lyricNext.innerHTML = nextText && nextText.trim() ? nextText : '&nbsp;';
+      // .lyric-line is `display:flex`; a bare text-node + <br> + <span> as
+      // *direct* flex children each become their own flex item and lay out
+      // side-by-side in a row — the <br> has no effect at all. Wrapping the
+      // whole payload in one element makes it a single flex item, so its
+      // *internal* content (including <br>) uses normal inline flow instead.
+      lyricCurrent.innerHTML = currentText && currentText.trim() ? `<span>${currentText}</span>` : '&nbsp;';
+      lyricNext.innerHTML = nextText && nextText.trim() ? `<span>${nextText}</span>` : '&nbsp;';
+      // 3줄 모드에서 2줄 이상 보여지는 슬롯은 폰트를 줄여 고정 높이 박스 안에서
+      // 잘리거나 겹치지 않게 한다(<br>로 조인되므로 그 존재 여부로 판단).
+      lyricCurrent.classList.toggle('multi-line', /<br\s*\/?>/i.test(currentText || ''));
+      lyricNext.classList.toggle('multi-line', /<br\s*\/?>/i.test(nextText || ''));
       displayedCurrent = currentText || "";
       displayedNext = nextText || "";
     }
@@ -232,15 +260,8 @@
       setLineTexts(newCurrent, newNext);
     }
 
-    function updateOverlay(data) {
-      if (!data) return;
-
-      if (!data.is_playing && !isPreview && !data.is_force_visible) {
-        hideOverlay();
-        return;
-      }
-      
-      const style = data.lyrics_style || {};
+    /** 오버레이 스타일(CSS 변수) 적용 — 표시 여부와 무관하게 호출된다. */
+    function applyStyle(style) {
       const scale = style.scale || 1.0;
       const font = style.font || 'Inter';
       const color = (style.color || 'ffffff').replace('#', '');
@@ -251,18 +272,38 @@
       const direction = style.animation_direction || 'right';
 
       document.documentElement.style.setProperty('--overlay-scale', scale);
+      // 가사 폰트 크기 — 0/미지정이면 기본 22px. 줄 높이는 CSS calc로 비례.
+      const fontSize = Number(style.font_size ?? style.fontSize) || 0;
+      document.documentElement.style.setProperty('--lyric-font-size', `${fontSize > 0 ? fontSize : 22}px`);
       document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
       document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
       document.documentElement.style.setProperty('--accent-color', `#${color}`);
       document.documentElement.style.setProperty('--text-main', `#${textColorHex}`);
       document.documentElement.style.setProperty('--text-sub', `rgba(${hexToRgb(textColorHex)}, 0.58)`);
-      
+
       let duration = '0.85s';
       if (direction === 'right' || direction === 'left') duration = '1.5s';
       else duration = '0.7s';
       document.documentElement.style.setProperty('--anim-duration', duration);
-      
+    }
+
+    function updateOverlay(data) {
+      if (!data) return;
+
+      // 스타일은 표시 여부와 무관하게 항상 먼저 반영한다 — 예전에는 재생
+      // 중이 아닐 때 아래 early-return이 스타일 적용을 건너뛰어, 설정에서
+      // 바꾼 폰트 크기 등이 미리보기(iframe, isPreview)에만 보이고 OBS
+      // 쪽에는 다음 재생 전까지 반영되지 않는 버그가 있었음.
+      applyStyle(data.lyrics_style || {});
+
+      if (!data.is_playing && !isPreview && !data.is_force_visible) {
+        hideOverlay();
+        return;
+      }
+
+      const direction = (data.lyrics_style || {}).animation_direction || 'right';
+
       const hasCurrent = data.current_lyric && data.current_lyric.trim() !== "";
       const hasNext = data.next_lyric && data.next_lyric.trim() !== "";
       const nextTitle = (data.title || "").trim();

@@ -244,12 +244,16 @@ html[data-theme="sky"] {
 }
 
 .lyric-sidebar .card-header h3 {
-    flex: 1;
-    min-width: 0;
+    /* 제목이 옆 버튼들에 밀려 몇 글자만 남던 문제 — 제목은 항상 온전히
+       보이게 하고, 공간이 모자라면 버튼 묶음이 아랫줄로 내려간다. */
+    flex: 0 0 auto;
     font-size: 1.02rem;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.lyric-sidebar .card-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
 }
 
 .lyric-sidebar .card-header > div {
@@ -327,6 +331,23 @@ canvas#waveform-canvas {
     animation: sync-pulse 1.5s infinite ease-in-out;
 }
 
+/* 타겟팅된 가사 — 클릭으로 고정하거나 재생/시크로 따라온 블럭.
+   active(재생 중)와 겹칠 수 있어, 배경 대신 왼쪽 인디케이터로 구분한다. */
+.lyric-line-item.targeted::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12%;
+    height: 76%;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent-primary);
+}
+
+.lyric-line-item.targeted {
+    border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
 @keyframes sync-pulse {
     0% { border-color: var(--align-sync-pulse-border-1); box-shadow: 0 0 15px var(--align-sync-pulse-shadow-1); }
     50% { border-color: var(--align-sync-pulse-border-2); box-shadow: 0 0 35px var(--align-sync-pulse-shadow-2); }
@@ -349,6 +370,37 @@ canvas#waveform-canvas {
     color: var(--text-main);
     outline: none;
     transition: color 0.2s;
+}
+
+.lyric-line-item .triplet-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.triplet-line-0 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.triplet-line-1 {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--align-text-soft);
+}
+
+.triplet-line-2 {
+    font-size: 0.78rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--accent-primary);
+}
+
+#toggle-translation-btn.active-toggle {
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    border-color: var(--align-item-active-border);
 }
 
 .lyric-line-item .lyric-text[contenteditable="true"] {
@@ -502,6 +554,22 @@ canvas#waveform-canvas {
     letter-spacing: 0.05em;
 }
 
+.marker-suggestion-btn {
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    border: 1px solid var(--align-item-active-border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-left: 2px;
+}
+
+.marker-suggestion-btn:hover {
+    background: var(--align-item-hover-bg);
+}
+
 .tap-sub {
     font-size: 0.65rem;
     font-weight: 600;
@@ -559,6 +627,17 @@ canvas#waveform-canvas {
     background: var(--align-danger-hover-bg);
     color: var(--text-main);
     box-shadow: 0 0 15px var(--align-danger-hover-shadow);
+}
+
+#lyrics-link-btn {
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    border: 1px solid var(--align-item-active-border);
+}
+
+#lyrics-link-btn:hover {
+    background: var(--align-item-hover-bg);
+    box-shadow: 0 0 15px var(--align-shadow-accent);
 }
 
 .sync-save-status {
@@ -727,6 +806,95 @@ canvas#waveform-canvas {
     text-overflow: ellipsis;
 }
 
+/* --- 음원 선택 모달: 상태 필터 칩 --- */
+.track-filter-chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.track-filter-chip {
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--align-track-item-bg);
+    color: var(--align-text-soft);
+    border: 1px solid var(--align-track-item-border);
+    transition: all 0.15s ease;
+}
+.track-filter-chip:hover {
+    border-color: var(--accent-primary);
+}
+.track-filter-chip.active {
+    background: var(--accent-primary);
+    color: #fff;
+    border-color: var(--accent-primary);
+}
+
+/* --- 음원 선택 모달: 상태별 접이식 그룹 --- */
+.track-group {
+    margin-bottom: 10px;
+}
+.track-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--align-track-item-border);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 8px;
+}
+.track-group-count {
+    margin-left: auto;
+    min-width: 20px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgb(var(--accent-rgb) / 0.15);
+    color: var(--accent-primary);
+    font-size: 0.72rem;
+    text-align: center;
+}
+.track-group-chevron {
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+.track-group.collapsed .track-group-chevron {
+    transform: rotate(-90deg);
+}
+.track-group.collapsed .track-group-body {
+    display: none;
+}
+.track-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 트랙 항목 상태 배지 + 현재 로드된 곡 하이라이트 */
+.track-status-badge {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #fff;
+}
+.track-status-badge.synced { background: rgba(16, 185, 129, 0.9); }
+.track-status-badge.unsynced { background: rgba(245, 158, 11, 0.9); }
+.track-item.current {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary) inset;
+}
+
 /* Scrollbar for track list */
 .alignment-track-list::-webkit-scrollbar {
     width: 6px;
@@ -868,3 +1036,115 @@ canvas#waveform-canvas {
 }
 
 
+
+/* 마커 목록 패널 — 파형 아래에 보컬 시작/간주 마커를 번호별로 나열 */
+.marker-list-panel {
+    margin-top: 8px;
+    border-top: 1px solid var(--align-item-border);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.marker-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--align-item-border);
+    background: var(--align-surface-input);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.marker-list-row:hover {
+    border-color: var(--accent-primary);
+}
+
+.marker-num {
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    font-size: 0.7rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.marker-label {
+    font-size: 0.78rem;
+    color: var(--align-text-soft);
+    min-width: 56px;
+}
+
+.marker-label-vocal {
+    color: #22c55e;
+}
+
+.marker-time-input {
+    width: 74px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--align-item-border);
+    background: transparent;
+    color: var(--text-main, #e2e8f0);
+    text-align: center;
+}
+
+.marker-time-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.marker-time-sep {
+    color: var(--align-text-soft);
+    font-size: 0.75rem;
+}
+
+.marker-row-spacer {
+    flex: 1;
+}
+
+.marker-delete-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid var(--align-item-border);
+    background: transparent;
+    color: var(--align-text-soft);
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.marker-delete-btn:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+/* 타임바 따라가기 토글 (재생 위치 자동 추적) */
+.follow-playhead-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--align-text-soft);
+    cursor: pointer;
+    user-select: none;
+    margin-left: auto;
+}
+
+.follow-playhead-toggle input {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+}

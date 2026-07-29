@@ -28,12 +28,46 @@ pub struct AppPaths {
     pub db: PathBuf,
 }
 
+/// MR 분리 캐시(separated) 저장 위치 오버라이드.
+///
+/// Settings DB가 아니라 앱 루트의 작은 텍스트 파일로 관리한다 — `from_handle`은
+/// DB 락을 잡은 채 호출되는 경로가 있을 수 있어 DB를 읽으면 락 순서 문제가
+/// 생길 수 있고, 경로 설정은 DB보다 먼저 필요해질 수도 있기 때문.
+/// 프로세스 시작 시 1회만 읽어 세션 내내 고정(OnceCell) — 실행 중에 저장
+/// 위치가 바뀌면 이미 열린 캐시 경로와 어긋나므로, 변경은 재시작 후 적용된다.
+static SEPARATED_DIR_OVERRIDE: once_cell::sync::OnceCell<Option<PathBuf>> = once_cell::sync::OnceCell::new();
+
+pub fn separated_override_config_path(root: &std::path::Path) -> PathBuf {
+    root.join("separated_dir_override.txt")
+}
+
+fn read_separated_override(root: &std::path::Path) -> Option<PathBuf> {
+    let raw = fs::read_to_string(separated_override_config_path(root)).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let dir = PathBuf::from(trimmed);
+    if !dir.is_absolute() {
+        println!("WARN: [AppPaths] separated dir override is not absolute, ignoring: {}", trimmed);
+        return None;
+    }
+    if let Err(e) = fs::create_dir_all(&dir) {
+        println!("WARN: [AppPaths] separated dir override unusable ({}), falling back to default: {}", e, trimmed);
+        return None;
+    }
+    Some(dir)
+}
+
 impl AppPaths {
     pub fn from_handle(handle: &tauri::AppHandle) -> Self {
         let root = handle.path().app_local_data_dir().expect("Failed to get app data dir");
         let models = root.join("models");
         let cache = root.join("cache");
-        let separated = cache.join("separated");
+        let separated = SEPARATED_DIR_OVERRIDE
+            .get_or_init(|| read_separated_override(&root))
+            .clone()
+            .unwrap_or_else(|| cache.join("separated"));
         let temp = root.join("temp");
         let db = root.join("library.db");
 
@@ -277,6 +311,8 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
          );",
     )
     .ok();
+
+    crate::custom_models::ensure_table(conn);
 
     // 3. One-time migration from library.json if exists
     let json_path = app_dir.join("library.json");

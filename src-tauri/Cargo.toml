@@ -1,6 +1,6 @@
 [package]
 name = "tauri-app"
-version = "0.5.1"
+version = "0.6.0-beta.5"
 description = "Live MR Manager"
 authors = ["you"]
 edition = "2021"
@@ -86,4 +86,4 @@ opt-level = 3
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "directml"] }
+ort = { version = "2.0.0-rc.12", features = ["api-24", "ndarray", "directml", "cuda", "tensorrt"] }

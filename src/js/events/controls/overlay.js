@@ -1,7 +1,11 @@
 /**
  * OBS overlay customization control listeners
  */
-import { updateOverlayLyrics, updateOverlayStyle } from '../../overlay-api.js';
+import { updateOverlayLyrics, updateOverlayStyle, getLanAddresses } from '../../overlay-api.js';
+import { getLineVisibility, setLineVisibility } from '../../lrc-parser.js';
+
+const OVERLAY_LAN_PREF_KEY = 'overlay-use-lan-address';
+let cachedLanAddress = null;
 
 export function initOverlayListeners() {
   const overlayScale = document.getElementById('overlay-scale');
@@ -23,6 +27,8 @@ export function initOverlayListeners() {
   const overlayPreviewWrapper = document.querySelector('.overlay-preview-wrapper');
   const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
   const overlayAnimationDirection = document.getElementById('overlay-animation-direction');
+  const toggleOverlayLan = document.getElementById('toggle-overlay-lan');
+  const overlayLanStatus = document.getElementById('overlay-lan-status');
 
   const resizeOverlayPreview = () => {
     if (!overlayIframe || !overlayPreviewWrapper) return;
@@ -102,6 +108,14 @@ export function initOverlayListeners() {
     const scale = parseFloat(overlayScale.value).toFixed(1);
     if (overlayScaleVal) overlayScaleVal.textContent = `${scale}x`;
 
+    // 가사 폰트 크기 — 가사 오버레이 전용(곡 정보 탭에서는 행 자체를 숨김)
+    const fontSizeRow = document.getElementById('overlay-font-size-row');
+    const fontSizeInput = document.getElementById('overlay-font-size');
+    const fontSizeVal = document.getElementById('overlay-font-size-val');
+    if (fontSizeRow) fontSizeRow.style.display = currentTarget === 'lyrics' ? 'flex' : 'none';
+    const fontSize = fontSizeInput ? parseInt(fontSizeInput.value, 10) || 22 : 22;
+    if (fontSizeVal) fontSizeVal.textContent = `${fontSize}px`;
+
     const font = overlayFont.value;
     const color = overlayColor.value.replace('#', '');
     const textColor = overlayTextColor.value.replace('#', '');
@@ -123,32 +137,49 @@ export function initOverlayListeners() {
       try { config = JSON.parse(saved) || {}; } catch(e) {}
 
       config[currentTarget] = {
-        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection
+        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize
       };
       config.isForceVisible = isForceVisible;
 
       localStorage.setItem('overlay-settings', JSON.stringify(config));
     }
 
-    const infoUrl = 'http://localhost:14202/overlay-info';
-    const lyricsUrl = 'http://localhost:14202/overlay-lyrics';
+    const useLan = !!(toggleOverlayLan && toggleOverlayLan.checked);
+    const host = (useLan && cachedLanAddress) ? cachedLanAddress : 'localhost';
+    const infoUrl = `http://${host}:14202/overlay-info`;
+    const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
+    const lyricsViewUrl = `http://${host}:14202/lyrics-view`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
+    const lyricsViewUrlDisplay = document.getElementById('lyrics-view-url-display');
+    if (lyricsViewUrlDisplay) lyricsViewUrlDisplay.textContent = lyricsViewUrl;
+    if (overlayLanStatus) {
+      if (useLan && !cachedLanAddress) {
+        overlayLanStatus.textContent = '이 PC의 네트워크 주소를 찾을 수 없습니다. localhost 주소가 표시됩니다.';
+      } else if (useLan) {
+        overlayLanStatus.textContent = `같은 Wi-Fi/네트워크의 다른 PC에서 이 주소로 접속할 수 있습니다: ${cachedLanAddress}`;
+      } else {
+        overlayLanStatus.textContent = '끄면 이 PC(localhost) 주소만 표시됩니다.';
+      }
+    }
 
     const setupCopyBtn = (id, text) => {
       const btn = document.getElementById(id);
-      if (btn && !btn.dataset.listenerAdded) {
-        btn.dataset.listenerAdded = 'true';
-        btn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(text);
-            import('../../utils.js').then(m => m.showNotification("URL이 클립보드에 복사되었습니다.", "success"));
-          } catch (err) { console.error("Failed to copy:", err); }
-        };
-      }
+      if (!btn) return;
+      // Reassigned on every call (not guarded to "once") since `text` closes
+      // over the current infoUrl/lyricsUrl, which changes when the LAN toggle
+      // flips — a one-time guard here would freeze the copy button on
+      // whatever address was current the first time this ran.
+      btn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          import('../../utils.js').then(m => m.showNotification("URL이 클립보드에 복사되었습니다.", "success"));
+        } catch (err) { console.error("Failed to copy:", err); }
+      };
     };
     setupCopyBtn('btn-copy-overlay-url', infoUrl);
     setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);
+    setupCopyBtn('btn-copy-lyrics-view-url', lyricsViewUrl);
 
     if (!overlayIframe.src.includes('preview=true')) {
       const mode = activeTab && activeTab.dataset.previewMode === 'lyrics' ? 'lyrics' : 'info';
@@ -168,7 +199,8 @@ export function initOverlayListeners() {
         rounding,
         isForceVisible,
         animationDirection,
-        themeMode
+        themeMode,
+        fontSize
       });
     } catch (err) {
       console.error("Failed to update overlay style:", err);
@@ -219,7 +251,8 @@ export function initOverlayListeners() {
       rounding: 20,
       bgColor: '0f0f14',
       font: 'Inter',
-      animationDirection: 'left'
+      animationDirection: 'left',
+      fontSize: 22
     };
 
     const settings = config[currentTarget] || {};
@@ -240,6 +273,8 @@ export function initOverlayListeners() {
     }
     if (overlayBgOpacity) overlayBgOpacity.value = final.bgOpacity;
     if (overlayRounding) overlayRounding.value = final.rounding;
+    const fontSizeInput = document.getElementById('overlay-font-size');
+    if (fontSizeInput) fontSizeInput.value = final.fontSize || 22;
     if (overlayBgColor) {
       overlayBgColor.value = `#${final.bgColor}`;
       const bgHexInput = document.getElementById('overlay-bg-color-hex');
@@ -348,6 +383,18 @@ export function initOverlayListeners() {
       overlayScale.dispatchEvent(new Event("input"));
     }, { passive: false });
   }
+  const overlayFontSize = document.getElementById('overlay-font-size');
+  if (overlayFontSize) {
+    overlayFontSize.addEventListener('input', () => updateOverlaySettings());
+    overlayFontSize.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseInt(overlayFontSize.value, 10);
+      if (e.deltaY < 0) val += 1; else val -= 1;
+      val = Math.max(parseInt(overlayFontSize.min, 10), Math.min(parseInt(overlayFontSize.max, 10), val));
+      overlayFontSize.value = val;
+      overlayFontSize.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
   if (overlayFont) overlayFont.addEventListener('change', () => updateOverlaySettings());
   if (overlayColor) overlayColor.addEventListener('input', () => updateOverlaySettings());
   if (overlayTextColor) overlayTextColor.addEventListener('input', () => updateOverlaySettings());
@@ -376,6 +423,34 @@ export function initOverlayListeners() {
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
   if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
   if (overlayAnimationDirection) overlayAnimationDirection.addEventListener('change', () => updateOverlaySettings());
+
+  if (toggleOverlayLan) {
+    toggleOverlayLan.checked = localStorage.getItem(OVERLAY_LAN_PREF_KEY) === 'true';
+    toggleOverlayLan.addEventListener('change', () => {
+      localStorage.setItem(OVERLAY_LAN_PREF_KEY, toggleOverlayLan.checked ? 'true' : 'false');
+      updateOverlaySettings(true);
+    });
+  }
+
+  getLanAddresses()
+    .then((addresses) => {
+      cachedLanAddress = (addresses && addresses[0]) || null;
+      updateOverlaySettings(true);
+    })
+    .catch((err) => console.error('Failed to get LAN address:', err));
+
+  // 3줄(원문/차음/번역) 모드 표시 항목 — 'app'(인앱 가사창)과 'overlay'(OBS)를
+  // 독립적으로 설정. 두 스코프의 초기 체크 상태를 저장된 값으로 채우고,
+  // 바뀔 때마다 해당 스코프에만 저장한다(lrc-parser.js::getLineVisibility).
+  document.querySelectorAll('.lyric-line-visibility-toggle').forEach((box) => {
+    const scope = box.dataset.scope;
+    const field = box.dataset.field;
+    if (!scope || !field) return;
+    box.checked = !!getLineVisibility(scope)[field];
+    box.addEventListener('change', () => {
+      setLineVisibility(scope, field, box.checked);
+    });
+  });
 
   loadOverlaySettings();
   updateOverlaySettings(true);

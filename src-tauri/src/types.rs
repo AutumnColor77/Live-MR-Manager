@@ -38,6 +38,25 @@ pub struct AppState {
     pub vocal_enabled: bool,
     pub lyric_enabled: bool,
     pub is_playing: bool,
+    // 트랙별 독립 페이더(0~100%, 볼륨·밸런스 위에 곱해지는 트림) + 음소거/솔로.
+    pub vocal_fader: f32,
+    pub inst_fader: f32,
+    pub vocal_muted: bool,
+    pub inst_muted: bool,
+    pub vocal_solo: bool,
+    pub inst_solo: bool,
+    // 채널 라우팅: 각 채널(모니터/MR)이 어떤 소스를 포함하는지.
+    // 모니터 = 내가 듣는 것, MR = 방송 출력(2번째 장치).
+    pub mon_route_vocal: bool,
+    pub mon_route_inst: bool,
+    pub mon_route_metro: bool,
+    pub mr_route_vocal: bool,
+    pub mr_route_inst: bool,
+    pub mr_route_metro: bool,
+    // 메트로놈(3번째 소스).
+    pub metro_enabled: bool,
+    pub metro_bpm: f32,  // 0 = 곡 분석 BPM 자동
+    pub metro_gain: f32, // 페이더 0~100
 }
 
 impl Default for AppState {
@@ -51,6 +70,22 @@ impl Default for AppState {
             vocal_enabled: true,
             lyric_enabled: false,
             is_playing: false,
+            vocal_fader: 100.0,
+            inst_fader: 100.0,
+            vocal_muted: false,
+            inst_muted: false,
+            vocal_solo: false,
+            inst_solo: false,
+            // 모니터는 기본으로 보컬+MR을 다 들음(가이드), MR 채널은 반주만.
+            mon_route_vocal: true,
+            mon_route_inst: true,
+            mon_route_metro: false,
+            mr_route_vocal: false,
+            mr_route_inst: true,
+            mr_route_metro: false,
+            metro_enabled: false,
+            metro_bpm: 0.0,
+            metro_gain: 80.0,
         }
     }
 }
@@ -90,6 +125,10 @@ pub struct SongMetadata {
     pub is_mr: Option<bool>,
     pub is_separated: Option<bool>,
     pub has_lyrics: Option<bool>,
+    /// 가사 싱크 상태: "synced"(타임스탬프 있음) / "unsynced"(가사만) / "none"(가사 없음).
+    /// `get_songs_internal`에서만 채워지고, 다른 생성 경로는 None.
+    #[serde(default)]
+    pub lyric_sync_status: Option<String>,
     pub original_title: Option<String>,
     pub translated_title: Option<String>,
     pub curation_category: Option<String>,

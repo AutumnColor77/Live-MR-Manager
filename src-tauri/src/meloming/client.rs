@@ -43,7 +43,6 @@ pub struct SongResponse {
     #[serde(default)]
     pub lyrics_link: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     pub lyrics_text: Option<String>,
     #[serde(default)]
     pub category_ids: Option<Vec<i64>>,

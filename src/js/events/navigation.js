@@ -11,6 +11,20 @@ export function initNavigation() {
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
       const tabId = item.id.replace("nav-", "");
+      // "노래 추가"는 탭이 아니라 원스톱 추가 모달을 연다.
+      if (tabId === "add-song") {
+        import('../ui/add-song-modal.js').then(({ openAddSongModal }) => openAddSongModal());
+        return;
+      }
+      // "가사 창"은 탭이 아니라 별도 가사 호버창을 연다.
+      if (tabId === "lyrics-window") {
+        import('../tauri-bridge.js').then(({ invoke }) => invoke('open_lyrics_window'))
+          .catch((err) => {
+            console.error('[LyricsWindow] open failed:', err);
+            import('../utils.js').then(m => m.showNotification('가사 창을 열지 못했습니다: ' + err, 'error'));
+          });
+        return;
+      }
       if (tabId === "overlay") {
         switchTab("overlay");
         return;
@@ -57,9 +71,8 @@ export function switchTab(tabId) {
     i.classList.toggle("active", i.id === `nav-${tabId}`);
   });
 
-  const isMusicTab = (tabId === "library" || tabId === "youtube" || tabId === "local" || tabId === "meloming");
-  if (elements.youtubeSection) elements.youtubeSection.style.display = tabId === "youtube" ? "block" : "none";
-  if (elements.localSection) elements.localSection.style.display = "none"; // 텅 빈 섹션이므로 gap 발생을 막기 위해 항상 숨김
+  // 유튜브/내 파일 탭은 라이브러리에 합병됨 — 곡 추가는 사이드바 "노래 추가"로.
+  const isMusicTab = (tabId === "library" || tabId === "meloming");
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
   updateBroadcastTasksControlVisibility();
@@ -105,8 +118,10 @@ export function switchTab(tabId) {
       if (alignmentViewer) {
         alignmentViewer.resize();
 
-        // Auto-load currently playing track from library if viewer is empty
-        if (!alignmentViewer.state.currentPath && state.currentTrack) {
+        // 재생 중인 곡을 항상 따라간다 — 라이브러리에서 곡을 재생한 뒤 탭에
+        // 들어와도 그 곡이 로드되게(이전에는 뷰어가 비어있을 때만 1회 로드라
+        // 다른 곡이 남아 있었음). 재생곡이 없으면 기존 로드 상태 유지.
+        if (state.currentTrack && alignmentViewer.state.currentPath !== state.currentTrack.path) {
           alignmentViewer.loadAudio(state.currentTrack.path);
           // Sync UI display name immediately
           const nameEl = document.getElementById('selected-track-name');

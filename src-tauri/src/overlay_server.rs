@@ -22,6 +22,9 @@ pub struct OverlayStyle {
     pub bg_opacity: f32,
     pub rounding: f32,
     pub animation_direction: String,
+    /// 가사 오버레이 전용 폰트 크기(px). 0 = 기본값(22px) 사용.
+    #[serde(default)]
+    pub font_size: f32,
 }
 
 impl Default for OverlayStyle {
@@ -35,6 +38,7 @@ impl Default for OverlayStyle {
             bg_opacity: 0.6,
             rounding: 20.0,
             animation_direction: "left".to_string(),
+            font_size: 0.0,
         }
     }
 }
@@ -53,6 +57,22 @@ pub struct OverlayState {
     pub lyrics_style: OverlayStyle,
 
     pub is_force_visible: bool,
+
+    /// 가사 뷰 페이지(/lyrics-view, OBS 독용 전체 가사 화면)를 위한 상태.
+    /// 곡의 전체 가사 줄 목록과 현재 부르는 줄 인덱스(-1 = 아직 시작 전).
+    #[serde(default)]
+    pub lyrics_lines: Vec<String>,
+    #[serde(default = "default_lyric_index")]
+    pub lyric_index: i32,
+    /// 곡 메타데이터의 키/BPM — 가사 뷰 헤더 표시용(없으면 빈 값/0).
+    #[serde(default)]
+    pub song_key: String,
+    #[serde(default)]
+    pub bpm: f64,
+}
+
+fn default_lyric_index() -> i32 {
+    -1
 }
 
 impl Default for OverlayState {
@@ -71,6 +91,10 @@ impl Default for OverlayState {
                 ..OverlayStyle::default()
             },
             is_force_visible: false,
+            lyrics_lines: Vec::new(),
+            lyric_index: -1,
+            song_key: String::new(),
+            bpm: 0.0,
         }
     }
 }
@@ -89,6 +113,8 @@ pub fn init(handle: tauri::AppHandle) {
 
 static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
+static LYRICS_VIEW_HTML: &str = include_str!("../../src/lyrics-view.html");
+static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 
 fn resolve_overlay_info_html() -> String {
@@ -113,6 +139,30 @@ fn resolve_overlay_lyrics_html() -> String {
         }
     }
     OVERLAY_LYRICS_HTML.to_string()
+}
+
+fn resolve_lyrics_view_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/lyrics-view.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    LYRICS_VIEW_HTML.to_string()
+}
+
+fn resolve_overlay_shared_js() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/js/overlay/shared.js");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_SHARED_JS.to_string()
 }
 
 pub async fn start_overlay_server() {
@@ -173,6 +223,48 @@ pub async fn start_overlay_server() {
                         let _ = stream.write_all(APP_ICON).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] Served app-icon.png to {}", addr);
+                    } else if request.starts_with("GET /js/overlay/shared.js") {
+                        // The overlay HTML pages reference this shared script.
+                        // Without this route it 404s over the network (OBS / LAN),
+                        // leaving `window.OverlayShared` undefined so the overlay
+                        // never connects. (The in-app preview loads it from the
+                        // Tauri bundle, which is why this only breaks externally.)
+                        let js = resolve_overlay_shared_js();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: application/javascript; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            js.len(),
+                            js
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] Served shared.js to {}", addr);
+                    } else if request.starts_with("GET /lyrics-view") {
+                        // 가사 뷰 — 퍼포머 본인이 보는 전체 가사 페이지(OBS 커스텀
+                        // 독/브라우저용). 아래 `/lyrics` 프리픽스 분기보다 먼저
+                        // 매칭해야 하므로 이 순서를 유지할 것.
+                        let html = resolve_lyrics_view_html();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/html; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            html.len(),
+                            html
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] HTTP Page served to {} (Path: /lyrics-view)", addr);
                     } else if request.starts_with("GET /lyrics")
                         || request.starts_with("GET /overlay-lyrics")
                     {
@@ -317,17 +409,20 @@ pub async fn broadcast_overlay_state(mut state: OverlayState) {
 
 
 #[tauri::command]
-pub async fn update_overlay_state(title: String, artist: String, thumbnail: String, is_playing: bool) {
+pub async fn update_overlay_state(title: String, artist: String, thumbnail: String, is_playing: bool, song_key: Option<String>, bpm: Option<f64>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.title = title;
     state.artist = artist;
     state.thumbnail = thumbnail;
     state.is_playing = is_playing;
+    // 가사 뷰(/lyrics-view) 헤더 표시용 — 메타데이터에 있으면 함께 전송.
+    state.song_key = song_key.unwrap_or_default();
+    state.bpm = bpm.unwrap_or(0.0);
     broadcast_overlay_state(state).await;
 }
 
 #[tauri::command]
-pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, text_color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String, theme_mode: String) {
+pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, text_color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String, theme_mode: String, font_size: Option<f32>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     let style = OverlayStyle {
         scale,
@@ -338,6 +433,7 @@ pub async fn update_overlay_style(target: String, scale: f32, font: String, colo
         bg_opacity,
         rounding,
         animation_direction,
+        font_size: font_size.unwrap_or(0.0),
     };
     let shared_color = style.color.clone();
     let shared_text_color = style.text_color.clone();
@@ -364,10 +460,24 @@ pub async fn update_overlay_style(target: String, scale: f32, font: String, colo
 
 
 #[tauri::command]
-pub async fn update_overlay_lyrics(current: String, next: String) {
+pub async fn update_overlay_lyrics(current: String, next: String, index: Option<i32>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.current_lyric = current;
     state.next_lyric = next;
+    if let Some(i) = index {
+        state.lyric_index = i;
+    }
+    broadcast_overlay_state(state).await;
+}
+
+/// 곡이 바뀌거나 가사가 로드될 때 전체 가사 줄 목록을 교체한다 —
+/// 가사 뷰 페이지(/lyrics-view)가 전체 목록을 렌더하고 lyric_index로
+/// 현재 줄을 하이라이트하는 데 사용.
+#[tauri::command]
+pub async fn update_overlay_lyrics_full(lines: Vec<String>) {
+    let mut state = CURRENT_STATE.lock().await.clone();
+    state.lyrics_lines = lines;
+    state.lyric_index = -1;
     broadcast_overlay_state(state).await;
 }
  
@@ -385,4 +495,24 @@ pub async fn update_overlay_lyrics(current: String, next: String) {
 #[tauri::command]
 pub async fn get_overlay_state() -> OverlayState {
     CURRENT_STATE.lock().await.clone()
+}
+
+#[tauri::command]
+pub fn get_lan_addresses() -> Vec<String> {
+    use std::net::UdpSocket;
+
+    let mut addrs = Vec::new();
+
+    // Connecting a UDP socket doesn't send any packets; it just asks the OS
+    // to resolve which local interface/IP would be used to route to that
+    // target, which is a reliable way to find the LAN-facing address.
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
+                addrs.push(local_addr.ip().to_string());
+            }
+        }
+    }
+
+    addrs
 }

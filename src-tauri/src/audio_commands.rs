@@ -8,9 +8,12 @@ use rodio::Source;
 use rodio::source::UniformSourceIterator;
 use std::num::{NonZeroU16, NonZeroU32};
 use crate::audio_player::{
-    AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource,
+    AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource, SoftClipSource,
     sys_log
 };
+
+/// 소프트 리미터 임계값(이 값 이하는 그대로, 이상은 부드럽게 1.0으로 포화).
+const LIMITER_THRESHOLD: f32 = 0.8;
 use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
 use crate::state::DB;
 use crate::youtube::YoutubeManager;
@@ -104,8 +107,8 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         })
     };
     
-    let target_rate = handler.active_sample_rate;
-    let target_channels = handler.active_channels;
+    let target_rate = handler.monitor.sample_rate.load(Ordering::Relaxed).max(1);
+    let target_channels = (handler.monitor.channels.load(Ordering::Relaxed).max(1)) as u16;
     let target_rate_nz = NonZeroU32::new(target_rate).expect("Invalid sample rate");
     let target_channels_nz = NonZeroU16::new(target_channels).expect("Invalid channels");
 
@@ -184,17 +187,36 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
             sys_log(&format!("[DB] Updated missing duration for {}: {}", path, new_duration));
         }
 
+        // 메트로놈 파라미터: 곡 길이만큼만(무한 스트림이라 잘라 씀), 시작 위치 정렬.
+        let start_ms0 = start_pos_ms.unwrap_or(0);
+        let remaining_ms = ms.saturating_sub(start_ms0).max(0);
+        // 메트로놈 BPM은 공유 atomic을 쓴다(재생 중 변경을 클릭에 실시간 반영).
+        handler.metro_bpm.store(handler.state.lock().metro_bpm.to_bits(), Ordering::Relaxed);
+        // 버스별 지연 보정(ms). 해당 버스 믹스 앞에 무음을 붙여 그만큼 늦춘다.
+        // 모니터를 늦추면 재생 위치도 함께 늦어져 가사 싱크는 모니터 소리에 계속 맞는다.
+        let mon_delay_ms = handler.monitor.delay_ms_val() as u64;
+        let mr_delay_ms = handler.mr.delay_ms_val() as u64;
+
+        // --- 모니터 채널 (기존 주 출력) ---
         let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
         let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
-        
+
         let resampled_v = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_v, handler.vocal_volume.clone()), target_channels_nz, target_rate_nz);
         let resampled_i = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_i, handler.instrumental_volume.clone()), target_channels_nz, target_rate_nz);
 
-        let mixed = resampled_i.mix(resampled_v);
-        
+        let start_frame_mon = start_ms0.saturating_mul(target_rate as u64) / 1000;
+        let metro_mon = crate::audio_player::MetronomeSource::new(handler.metro_bpm.clone(), target_rate, target_channels, start_frame_mon)
+            .take_duration(Duration::from_millis(remaining_ms));
+        let resampled_metro = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mon, handler.mon_metro_volume.clone()), target_channels_nz, target_rate_nz);
+
+        // 메트로놈은 게인 0이라도 항상 믹스에 포함(라우팅을 atomic으로 실시간 반영).
+        let mixed_raw = resampled_i.mix(resampled_v).mix(resampled_metro).delay(Duration::from_millis(mon_delay_ms));
+        // 합산 클리핑 방지: 버스 출력 끝단 소프트 리미터.
+        let mixed = SoftClipSource::new(mixed_raw, LIMITER_THRESHOLD, handler.limiter_enabled.clone());
+
         let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
         if final_v != target_version { return Ok(0); }
-        
+
         {
             let controller = handler.controller.lock();
             controller.append(mixed);
@@ -202,6 +224,50 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
                 controller.play();
             } else {
                 controller.pause();
+            }
+        }
+
+        // --- MR 채널 (2번째 출력, 활성 시) ---
+        let mr_active = !handler.mr.device_name.lock().is_empty() && handler.mr_controller.lock().is_some();
+        if mr_active {
+            // 별도 디코더(소스는 1회 소비되므로 파일을 다시 연다).
+            match (File::open(&vocal_path), File::open(&inst_path)) {
+                (Ok(v2), Ok(i2)) => {
+                    let mr_rate = handler.mr.sample_rate.load(Ordering::Relaxed).max(1);
+                    let mr_ch = (handler.mr.channels.load(Ordering::Relaxed).max(1)) as u16;
+                    let mr_rate_nz = NonZeroU32::new(mr_rate).expect("mr rate");
+                    let mr_ch_nz = NonZeroU16::new(mr_ch).expect("mr ch");
+
+                    match (
+                        rodio::Decoder::new(BufReader::new(v2)),
+                        rodio::Decoder::new(BufReader::new(i2)),
+                    ) {
+                        (Ok(mut v_dec2), Ok(mut i_dec2)) => {
+                            if let Some(ms0) = start_pos_ms {
+                                let _ = v_dec2.try_seek(Duration::from_millis(ms0));
+                                let _ = i_dec2.try_seek(Duration::from_millis(ms0));
+                            }
+                            let sv = StretchedSource::new(v_dec2, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
+                            let si = StretchedSource::new(i_dec2, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
+                            let rv = UniformSourceIterator::new(DynamicVolumeSource::new(sv, handler.mr_vocal_volume.clone()), mr_ch_nz, mr_rate_nz);
+                            let ri = UniformSourceIterator::new(DynamicVolumeSource::new(si, handler.mr_inst_volume.clone()), mr_ch_nz, mr_rate_nz);
+                            let start_frame_mr = start_ms0.saturating_mul(mr_rate as u64) / 1000;
+                            let metro_mr = crate::audio_player::MetronomeSource::new(handler.metro_bpm.clone(), mr_rate, mr_ch, start_frame_mr)
+                                .take_duration(Duration::from_millis(remaining_ms));
+                            let rm = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mr, handler.mr_metro_volume.clone()), mr_ch_nz, mr_rate_nz);
+                            let mr_mixed_raw = ri.mix(rv).mix(rm).delay(Duration::from_millis(mr_delay_ms));
+                            let mr_mixed = SoftClipSource::new(mr_mixed_raw, LIMITER_THRESHOLD, handler.limiter_enabled.clone());
+
+                            if let Some(ctrl) = handler.mr_controller.lock().as_ref() {
+                                ctrl.clear();
+                                ctrl.append(mr_mixed);
+                                if play_now { ctrl.play(); } else { ctrl.pause(); }
+                            }
+                        }
+                        _ => sys_log("[AUDIO] MR 채널 디코더 생성 실패 — 모니터만 재생"),
+                    }
+                }
+                _ => sys_log("[AUDIO] MR 채널 파일 열기 실패 — 모니터만 재생"),
             }
         }
 
@@ -353,6 +419,270 @@ pub fn set_master_volume(volume: f32) -> Result<(), String> {
         let final_vol = ratio * ratio;
         sys_log(&format!("[AUDIO] Master Volume set to: {} (ratio: {:.4})", volume, final_vol));
         controller.set_volume(final_vol);
+        // MR 채널이 열려 있으면 함께 적용.
+        if let Some(mr) = handler.mr_controller.lock().as_ref() {
+            mr.set_volume(final_vol);
+        }
+        // 장치 전환 후 새 player에 다시 적용할 수 있도록 보관.
+        handler.master_gain.store(final_vol.to_bits(), Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputDevice {
+    pub name: String,
+    pub config: String, // "48000Hz, 2ch"
+    pub is_active: bool,
+}
+
+/// 사용 가능한 출력 장치 목록. `isActive`는 현재 열려 있는 장치.
+#[tauri::command]
+pub async fn list_output_devices() -> Result<Vec<OutputDevice>, String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let active = match &*AUDIO_HANDLER {
+        Ok(h) => h.monitor.device_name.lock().clone(),
+        Err(_) => String::new(),
+    };
+    let host = cpal::default_host();
+    let devices = host.output_devices().map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for d in devices {
+        if let Ok(desc) = d.description() {
+            let name = desc.name().to_string();
+            let config = d
+                .default_output_config()
+                .map(|c| format!("{}Hz, {}ch", u32::from(c.sample_rate()), c.channels()))
+                .unwrap_or_else(|_| "N/A".into());
+            let is_active = name == active;
+            out.push(OutputDevice { name, config, is_active });
+        }
+    }
+    Ok(out)
+}
+
+/// 현재 선택된 출력 장치 이름(빈 문자열이면 시스템 기본).
+#[tauri::command]
+pub fn get_output_device() -> String {
+    match &*AUDIO_HANDLER {
+        Ok(h) => h.monitor.device_name.lock().clone(),
+        Err(_) => String::new(),
+    }
+}
+
+/// 출력 장치를 실시간 전환한다. 재생 중이면 현재 위치에서 새 장치로 이어서
+/// 재생하고, 마스터/보컬/MR 볼륨·피치·템포는 공유 상태라 그대로 유지된다.
+/// `name`이 빈 문자열이면 시스템 기본 장치로 되돌린다.
+#[tauri::command]
+pub async fn set_output_device(window: WebviewWindow, name: String) -> Result<String, String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+
+    // 현재 재생 상태·위치 파악(전환 후 이어서 재생하기 위해).
+    let (cur_track, was_playing) = {
+        let state = handler.state.lock();
+        (state.current_track.clone(), state.is_playing)
+    };
+    let rate = handler.track_sample_rate.load(Ordering::Relaxed);
+    let pos_samples = handler.current_pos_samples.load(Ordering::Relaxed);
+    let cur_pos_ms = if rate > 0 {
+        (pos_samples as f64 / rate as f64 * 1000.0) as u64
+    } else {
+        0
+    };
+    let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+
+    // cpal 장치 열기는 블로킹이므로 별도 스레드에서.
+    let want = name.clone();
+    let (stream, dev_rate, dev_ch, resolved, est) = tokio::task::spawn_blocking(move || {
+        crate::audio_player::open_output_sink(if want.is_empty() { None } else { Some(&want) })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // 새 player를 만들고, sink/player를 통째로 교체.
+    let new_player = rodio::Player::connect_new(&stream.mixer());
+    new_player.set_volume(f32::from_bits(handler.master_gain.load(Ordering::Relaxed)));
+    {
+        let mut ctrl = handler.controller.lock();
+        ctrl.clear();
+        *handler._stream.lock() = stream;
+        *ctrl = new_player;
+    }
+    handler.monitor.sample_rate.store(dev_rate, Ordering::Relaxed);
+    handler.monitor.channels.store(dev_ch as u32, Ordering::Relaxed);
+    handler.monitor.est_latency_ms.store(est.to_bits(), Ordering::Relaxed);
+    *handler.monitor.device_name.lock() = resolved.clone();
+
+    // 선택 저장(재시작 후 복원).
+    {
+        let db = DB.lock();
+        let _ = db.execute(
+            "INSERT OR REPLACE INTO Settings (key, value) VALUES ('output_device', ?)",
+            rusqlite::params![name],
+        );
+    }
+    sys_log(&format!(
+        "[AUDIO] Output device switched → {} ({}Hz, {}ch)",
+        resolved, dev_rate, dev_ch
+    ));
+
+    // 재생 중이었거나 곡이 로드돼 있으면 새 장치로 현재 위치부터 재개/준비.
+    if let Some(p) = cur_track {
+        if was_playing || cur_pos_ms > 0 {
+            let _ = play_track_internal(window.clone(), p, Some(duration_ms), Some(cur_pos_ms), was_playing).await;
+        }
+    }
+    Ok(resolved)
+}
+
+/// 현재 MR 채널(2번째 출력) 장치 이름. 빈 문자열이면 MR 채널 꺼짐.
+#[tauri::command]
+pub fn get_mr_output_device() -> String {
+    match &*AUDIO_HANDLER {
+        Ok(h) => h.mr.device_name.lock().clone(),
+        Err(_) => String::new(),
+    }
+}
+
+/// MR 채널(2번째 출력) 장치를 설정한다. 빈 문자열이면 MR 채널을 끈다(모니터만).
+/// 곡이 로드돼 있으면 현재 위치에서 두 채널을 다시 구성한다.
+#[tauri::command]
+pub async fn set_mr_output_device(window: WebviewWindow, name: String) -> Result<String, String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+
+    let (cur_track, was_playing) = {
+        let state = handler.state.lock();
+        (state.current_track.clone(), state.is_playing)
+    };
+    let rate = handler.track_sample_rate.load(Ordering::Relaxed);
+    let pos_samples = handler.current_pos_samples.load(Ordering::Relaxed);
+    let cur_pos_ms = if rate > 0 { (pos_samples as f64 / rate as f64 * 1000.0) as u64 } else { 0 };
+    let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+
+    let resolved = if name.trim().is_empty() {
+        // MR 채널 끄기.
+        if let Some(ctrl) = handler.mr_controller.lock().as_ref() { ctrl.clear(); }
+        *handler.mr_controller.lock() = None;
+        *handler.mr_stream.lock() = None;
+        handler.mr.device_name.lock().clear();
+        sys_log("[AUDIO] MR 채널 꺼짐");
+        String::new()
+    } else {
+        let want = name.clone();
+        let (stream, dev_rate, dev_ch, resolved, est) = tokio::task::spawn_blocking(move || {
+            crate::audio_player::open_output_sink(Some(&want))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let player = rodio::Player::connect_new(&stream.mixer());
+        player.set_volume(f32::from_bits(handler.master_gain.load(Ordering::Relaxed)));
+        *handler.mr_stream.lock() = Some(stream);
+        *handler.mr_controller.lock() = Some(player);
+        handler.mr.sample_rate.store(dev_rate, Ordering::Relaxed);
+        handler.mr.channels.store(dev_ch as u32, Ordering::Relaxed);
+        handler.mr.est_latency_ms.store(est.to_bits(), Ordering::Relaxed);
+        *handler.mr.device_name.lock() = resolved.clone();
+        sys_log(&format!("[AUDIO] MR 채널 장치 → {} ({}Hz, {}ch, ~{:.0}ms)", resolved, dev_rate, dev_ch, est));
+        resolved
+    };
+
+    {
+        let db = DB.lock();
+        let _ = db.execute(
+            "INSERT OR REPLACE INTO Settings (key, value) VALUES ('mr_output_device', ?)",
+            rusqlite::params![name],
+        );
+    }
+
+    // 곡이 로드돼 있으면 두 채널을 현재 위치에서 재구성.
+    if let Some(p) = cur_track {
+        if was_playing || cur_pos_ms > 0 {
+            let _ = play_track_internal(window.clone(), p, Some(duration_ms), Some(cur_pos_ms), was_playing).await;
+        }
+    }
+    Ok(resolved)
+}
+
+/// 채널 라우팅 설정. channel: "monitor" | "mr", source: "vocal" | "inst" | "metro".
+#[tauri::command]
+pub async fn set_channel_route(channel: String, source: String, enabled: bool) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    {
+        let mut s = handler.state.lock();
+        match (channel.as_str(), source.as_str()) {
+            ("monitor", "vocal") => s.mon_route_vocal = enabled,
+            ("monitor", "inst") => s.mon_route_inst = enabled,
+            ("monitor", "metro") => s.mon_route_metro = enabled,
+            ("mr", "vocal") => s.mr_route_vocal = enabled,
+            ("mr", "inst") => s.mr_route_inst = enabled,
+            ("mr", "metro") => s.mr_route_metro = enabled,
+            _ => return Err(format!("알 수 없는 채널/소스: {}/{}", channel, source)),
+        }
+    }
+    recompute_mix(&handler);
+    Ok(())
+}
+
+/// 메트로놈 설정(활성/BPM/게인). bpm 0 = 곡 분석 BPM 자동(미구현 시 120).
+/// bpm 변경은 다음 재생/탐색부터 반영된다(생성된 클릭 스트림 특성상).
+#[tauri::command]
+pub async fn set_metronome(enabled: bool, bpm: f64, gain: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    {
+        let mut s = handler.state.lock();
+        s.metro_enabled = enabled;
+        s.metro_bpm = bpm as f32;
+        s.metro_gain = (gain as f32).clamp(0.0, 100.0);
+    }
+    // 재생 중인 클릭에 즉시 반영되도록 공유 atomic 갱신.
+    handler.metro_bpm.store((bpm as f32).to_bits(), Ordering::Relaxed);
+    recompute_mix(&handler);
+    Ok(())
+}
+
+/// 출력 소프트 리미터 on/off. 재생 중 즉시 반영(리미터 소스가 atomic을 읽음).
+#[tauri::command]
+pub async fn set_limiter(enabled: bool) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    handler.limiter_enabled.store(if enabled { 1 } else { 0 }, Ordering::Relaxed);
+    Ok(())
+}
+
+/// 버스 지연 보정(ms) 설정. bus: "monitor" | "mr". 값은 ≥0. 딜레이는 재생
+/// 파이프라인에 붙으므로, 곡이 로드돼 있으면 현재 위치에서 재구성해 즉시 반영한다.
+#[tauri::command]
+pub async fn set_bus_delay(window: WebviewWindow, bus: String, delay_ms: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let d = (delay_ms as f32).max(0.0);
+    let (key, target) = match bus.as_str() {
+        "monitor" => ("output_delay_ms", &handler.monitor),
+        "mr" => ("mr_delay_ms", &handler.mr),
+        other => return Err(format!("알 수 없는 버스: {}", other)),
+    };
+    target.delay_ms.store(d.to_bits(), Ordering::Relaxed);
+    {
+        let db = DB.lock();
+        let _ = db.execute(
+            "INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)",
+            rusqlite::params![key, d.to_string()],
+        );
+    }
+    sys_log(&format!("[AUDIO] {} 버스 지연 보정 → {:.0}ms", bus, d));
+
+    // 곡이 로드돼 있으면 현재 위치에서 재구성(딜레이는 빌드 시 적용).
+    let (cur_track, was_playing) = {
+        let s = handler.state.lock();
+        (s.current_track.clone(), s.is_playing)
+    };
+    if let Some(p) = cur_track {
+        let rate = handler.track_sample_rate.load(Ordering::Relaxed);
+        let pos_samples = handler.current_pos_samples.load(Ordering::Relaxed);
+        let cur_pos_ms = if rate > 0 { (pos_samples as f64 / rate as f64 * 1000.0) as u64 } else { 0 };
+        let duration_ms = handler.total_duration_ms.load(Ordering::Relaxed);
+        if was_playing || cur_pos_ms > 0 {
+            let _ = play_track_internal(window.clone(), p, Some(duration_ms), Some(cur_pos_ms), was_playing).await;
+        }
     }
     Ok(())
 }
@@ -371,6 +701,11 @@ pub async fn toggle_playback() -> Result<bool, String> {
             false
         }
     };
+
+    // MR 채널도 함께 재생/일시정지.
+    if let Some(mr) = handler.mr_controller.lock().as_ref() {
+        if new_is_playing { mr.play(); } else { mr.pause(); }
+    }
 
     {
         let mut state = handler.state.lock();
@@ -408,6 +743,7 @@ pub async fn stop_playback() -> Result<(), String> {
     if let Ok(handler) = &*AUDIO_HANDLER {
         let controller = handler.controller.lock();
         controller.clear();
+        if let Some(mr) = handler.mr_controller.lock().as_ref() { mr.clear(); }
         let mut state = handler.state.lock();
         state.is_playing = false;
         state.current_track = None;
@@ -415,45 +751,202 @@ pub async fn stop_playback() -> Result<(), String> {
     Ok(())
 }
 
+/// 소스 레벨 게인(보컬, 인스트, 메트로놈) — 채널 라우팅 이전. (순수 함수)
+///
+/// 보컬/인스트 = 트랙볼륨 × 밸런스비율 × (페이더/100) × 게이트(음소거·솔로·보컬토글).
+/// 메트로놈 = enabled ? metro_gain : 0 (밸런스·솔로 영향 없음).
+/// 반환값은 atomic에 저장되는 0~125 스케일.
+pub fn source_gains(s: &AppState) -> (f32, f32, f32) {
+    let v_ratio = (s.vocal_balance / 50.0).min(1.0);
+    let i_ratio = ((100.0 - s.vocal_balance) / 50.0).min(1.0);
+
+    // 솔로가 하나라도 켜지면, 솔로된 트랙만 소리난다.
+    let any_solo = s.vocal_solo || s.inst_solo;
+    let v_gate = s.vocal_enabled && !s.vocal_muted && (!any_solo || s.vocal_solo);
+    let i_gate = !s.inst_muted && (!any_solo || s.inst_solo);
+
+    let vocal = if v_gate { s.volume * v_ratio * (s.vocal_fader / 100.0) } else { 0.0 };
+    let inst = if i_gate { s.volume * i_ratio * (s.inst_fader / 100.0) } else { 0.0 };
+    let metro = if s.metro_enabled { s.metro_gain } else { 0.0 };
+    (vocal, inst, metro)
+}
+
+/// 보컬/MR(인스트) 최종 게인 — 기본 라우팅(모니터=보컬+인스트) 기준의 소스 게인.
+/// 기존 단일 채널 동작 및 테스트 호환용.
+#[allow(dead_code)]
+pub fn compute_track_gains(s: &AppState) -> (f32, f32) {
+    let (v, i, _m) = source_gains(s);
+    (v, i)
+}
+
+/// 6개 채널×소스 게인. (모니터/MR) × (보컬/인스트/메트로놈)
+pub struct ChannelGains {
+    pub mon_vocal: f32,
+    pub mon_inst: f32,
+    pub mon_metro: f32,
+    pub mr_vocal: f32,
+    pub mr_inst: f32,
+    pub mr_metro: f32,
+}
+
+/// 소스 게인을 라우팅 매트릭스로 게이트해 채널별 최종 게인을 낸다. (순수 함수)
+pub fn compute_channel_gains(s: &AppState) -> ChannelGains {
+    let (v, i, m) = source_gains(s);
+    ChannelGains {
+        mon_vocal: if s.mon_route_vocal { v } else { 0.0 },
+        mon_inst: if s.mon_route_inst { i } else { 0.0 },
+        mon_metro: if s.mon_route_metro { m } else { 0.0 },
+        mr_vocal: if s.mr_route_vocal { v } else { 0.0 },
+        mr_inst: if s.mr_route_inst { i } else { 0.0 },
+        mr_metro: if s.mr_route_metro { m } else { 0.0 },
+    }
+}
+
+/// 믹스 재계산 — 6개 채널×소스 게인 atomic을 갱신한다. 모든 볼륨/라우팅
+/// 커맨드는 이 함수를 통한다. 모니터 채널의 보컬/인스트는 기존 atomic
+/// (vocal_volume/instrumental_volume)을 그대로 쓴다(단일 채널 무회귀).
+pub fn recompute_mix(handler: &crate::audio_player::AudioHandler) {
+    let g = {
+        let s = handler.state.lock();
+        compute_channel_gains(&s)
+    };
+    handler.vocal_volume.store(g.mon_vocal.to_bits(), Ordering::Relaxed);
+    handler.instrumental_volume.store(g.mon_inst.to_bits(), Ordering::Relaxed);
+    handler.mon_metro_volume.store(g.mon_metro.to_bits(), Ordering::Relaxed);
+    handler.mr_vocal_volume.store(g.mr_vocal.to_bits(), Ordering::Relaxed);
+    handler.mr_inst_volume.store(g.mr_inst.to_bits(), Ordering::Relaxed);
+    handler.mr_metro_volume.store(g.mr_metro.to_bits(), Ordering::Relaxed);
+}
+
 #[tauri::command]
 pub async fn set_volume(volume: f64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
-    let (v_enabled, balance) = {
-        let mut state = handler.state.lock();
-        state.volume = volume as f32;
-        (state.vocal_enabled, state.vocal_balance)
-    };
-    
-    let v_ratio = (balance / 50.0).min(1.0);
-    let i_ratio = ((100.0 - balance) / 50.0).min(1.0);
-    
-    let vol_f = volume as f32;
-    let v_vol = if v_enabled { vol_f * v_ratio } else { 0.0 };
-    let i_vol = vol_f * i_ratio;
-
-    handler.vocal_volume.store(v_vol.to_bits(), Ordering::Relaxed);
-    handler.instrumental_volume.store(i_vol.to_bits(), Ordering::Relaxed);
-    sys_log(&format!("[AUDIO] Track Volume set: Global={}, Vocal={:.2}, Inst={:.2} (Balance: {})", volume, v_vol, i_vol, balance));
+    handler.state.lock().volume = volume as f32;
+    recompute_mix(&handler);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn set_vocal_balance(balance: f64) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
-    let (v_enabled, global_volume) = {
-        let mut state = handler.state.lock();
-        state.vocal_balance = balance as f32;
-        (state.vocal_enabled, state.volume)
-    };
+    handler.state.lock().vocal_balance = balance as f32;
+    recompute_mix(&handler);
+    Ok(())
+}
 
-    let v_ratio = (balance as f32 / 50.0).min(1.0);
-    let i_ratio = ((100.0 - balance as f32) / 50.0).min(1.0);
+/// 믹스·라우팅·메트로놈 상태(UI 복원용).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MixState {
+    pub vocal_fader: f32,
+    pub inst_fader: f32,
+    pub vocal_muted: bool,
+    pub inst_muted: bool,
+    pub vocal_solo: bool,
+    pub inst_solo: bool,
+    // 라우팅 매트릭스.
+    pub mon_route_vocal: bool,
+    pub mon_route_inst: bool,
+    pub mon_route_metro: bool,
+    pub mr_route_vocal: bool,
+    pub mr_route_inst: bool,
+    pub mr_route_metro: bool,
+    // 메트로놈.
+    pub metro_enabled: bool,
+    pub metro_bpm: f32,
+    pub metro_gain: f32,
+    // MR 채널 장치(빈 문자열이면 꺼짐).
+    pub mr_device: String,
+    // 버스별 지연 보정(ms)과 장치 추정 지연(ms, baseline).
+    pub mon_delay_ms: f32,
+    pub mon_est_latency_ms: f32,
+    pub mr_delay_ms: f32,
+    pub mr_est_latency_ms: f32,
+    // 출력 리미터 on/off.
+    pub limiter_enabled: bool,
+}
 
-    let v_vol = if v_enabled { global_volume * v_ratio } else { 0.0 };
-    let i_vol = global_volume * i_ratio;
+#[tauri::command]
+pub fn get_mix_state() -> Result<MixState, String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let mr_device = handler.mr.device_name.lock().clone();
+    let mon_delay = handler.monitor.delay_ms_val();
+    let mon_est = handler.monitor.est_latency_val();
+    let mr_delay = handler.mr.delay_ms_val();
+    let mr_est = handler.mr.est_latency_val();
+    let limiter_enabled = handler.limiter_enabled.load(Ordering::Relaxed) != 0;
+    let s = handler.state.lock();
+    Ok(MixState {
+        vocal_fader: s.vocal_fader,
+        inst_fader: s.inst_fader,
+        vocal_muted: s.vocal_muted,
+        inst_muted: s.inst_muted,
+        vocal_solo: s.vocal_solo,
+        inst_solo: s.inst_solo,
+        mon_route_vocal: s.mon_route_vocal,
+        mon_route_inst: s.mon_route_inst,
+        mon_route_metro: s.mon_route_metro,
+        mr_route_vocal: s.mr_route_vocal,
+        mr_route_inst: s.mr_route_inst,
+        mr_route_metro: s.mr_route_metro,
+        metro_enabled: s.metro_enabled,
+        metro_bpm: s.metro_bpm,
+        metro_gain: s.metro_gain,
+        mr_device,
+        mon_delay_ms: mon_delay,
+        mon_est_latency_ms: mon_est,
+        mr_delay_ms: mr_delay,
+        mr_est_latency_ms: mr_est,
+        limiter_enabled,
+    })
+}
 
-    handler.vocal_volume.store(v_vol.to_bits(), Ordering::Relaxed);
-    handler.instrumental_volume.store(i_vol.to_bits(), Ordering::Relaxed);
+/// 트랙별 독립 페이더(0~100%). track: "vocal" | "inst".
+#[tauri::command]
+pub async fn set_track_fader(track: String, percent: f64) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let pct = (percent as f32).clamp(0.0, 100.0);
+    {
+        let mut s = handler.state.lock();
+        match track.as_str() {
+            "vocal" => s.vocal_fader = pct,
+            "inst" => s.inst_fader = pct,
+            other => return Err(format!("알 수 없는 트랙: {}", other)),
+        }
+    }
+    recompute_mix(&handler);
+    Ok(())
+}
+
+/// 트랙 음소거. track: "vocal" | "inst".
+#[tauri::command]
+pub async fn set_track_mute(track: String, muted: bool) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    {
+        let mut s = handler.state.lock();
+        match track.as_str() {
+            "vocal" => s.vocal_muted = muted,
+            "inst" => s.inst_muted = muted,
+            other => return Err(format!("알 수 없는 트랙: {}", other)),
+        }
+    }
+    recompute_mix(&handler);
+    Ok(())
+}
+
+/// 트랙 솔로. track: "vocal" | "inst". 솔로가 켜진 트랙만 소리난다.
+#[tauri::command]
+pub async fn set_track_solo(track: String, soloed: bool) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    {
+        let mut s = handler.state.lock();
+        match track.as_str() {
+            "vocal" => s.vocal_solo = soloed,
+            "inst" => s.inst_solo = soloed,
+            other => return Err(format!("알 수 없는 트랙: {}", other)),
+        }
+    }
+    recompute_mix(&handler);
     Ok(())
 }
 
@@ -511,19 +1004,15 @@ pub async fn seek_to(window: WebviewWindow, position_ms: u64) -> Result<(), Stri
 #[tauri::command]
 pub async fn toggle_ai_feature(feature: String, enabled: bool) -> Result<(), String> {
     if let Ok(handler) = &*AUDIO_HANDLER {
-        let mut state = handler.state.lock();
-        match feature.as_str() {
-            "vocal" => {
-                state.vocal_enabled = enabled;
-                let global_vol = state.volume;
-                let balance = state.vocal_balance;
-                let v_ratio = (balance / 50.0).min(1.0);
-                let target_v_vol = if enabled { global_vol * v_ratio } else { 0.0 };
-                handler.vocal_volume.store(target_v_vol.to_bits(), Ordering::Relaxed);
-            },
-            "lyric" => state.lyric_enabled = enabled,
-            _ => {}
+        {
+            let mut state = handler.state.lock();
+            match feature.as_str() {
+                "vocal" => state.vocal_enabled = enabled,
+                "lyric" => state.lyric_enabled = enabled,
+                _ => {}
+            }
         }
+        recompute_mix(handler);
     }
     Ok(())
 }
@@ -558,6 +1047,7 @@ pub async fn update_model_settings(model_id: String) -> Result<(), String> {
     db.execute("INSERT OR REPLACE INTO Settings (key, value) VALUES ('active_model_id', ?)", rusqlite::params![model_id]).map_err(|e| e.to_string())?;
     let mut engine = crate::separation::ROFORMER_ENGINE.lock();
     *engine = None;
+    *crate::separation::ENGINE_MODEL_ID.lock() = None;
     Ok(())
 }
 
@@ -614,5 +1104,106 @@ pub fn start_playback_progress_loop(handle: tauri::AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_track_gains;
+    use crate::types::AppState;
+
+    // 기본값(페이더 100, 음소거/솔로 없음)에서는 볼륨×밸런스 결과와 같아야 한다
+    // (독립 페이더/뮤트/솔로 도입 전 동작과 동일 — 무회귀 확인).
+    #[test]
+    fn default_matches_volume_balance() {
+        let s = AppState { volume: 80.0, vocal_balance: 50.0, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        // balance 50 → 두 비율 모두 1.0 → 둘 다 볼륨 그대로.
+        assert!((v - 80.0).abs() < 1e-4);
+        assert!((i - 80.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn fader_scales_only_its_track() {
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, vocal_fader: 50.0, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        assert!((v - 50.0).abs() < 1e-4, "보컬은 페이더 50%로 절반");
+        assert!((i - 100.0).abs() < 1e-4, "MR은 영향 없음");
+    }
+
+    #[test]
+    fn mute_silences_only_its_track() {
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, vocal_muted: true, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        assert_eq!(v, 0.0);
+        assert!((i - 100.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn solo_silences_non_soloed_tracks() {
+        // MR만 솔로 → 보컬 무음.
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, inst_solo: true, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        assert_eq!(v, 0.0, "솔로 안 된 보컬은 무음");
+        assert!((i - 100.0).abs() < 1e-4, "솔로된 MR은 소리남");
+    }
+
+    #[test]
+    fn solo_overrides_mute_on_soloed_track() {
+        // 보컬 솔로+음소거 동시: 솔로는 다른 트랙을 죽이지만, 자기 자신의 음소거는 유지.
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, vocal_solo: true, vocal_muted: true, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        assert_eq!(v, 0.0, "음소거된 보컬은 솔로여도 무음");
+        assert_eq!(i, 0.0, "솔로 안 된 MR도 무음");
+    }
+
+    #[test]
+    fn vocal_toggle_off_silences_vocal() {
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, vocal_enabled: false, ..Default::default() };
+        let (v, i) = compute_track_gains(&s);
+        assert_eq!(v, 0.0);
+        assert!((i - 100.0).abs() < 1e-4);
+    }
+
+    // --- 채널 라우팅 ---
+    use super::compute_channel_gains;
+
+    #[test]
+    fn default_routing_monitor_full_mr_inst_only() {
+        // 기본: 모니터=보컬+인스트, MR=인스트만.
+        let s = AppState { volume: 100.0, vocal_balance: 50.0, ..Default::default() };
+        let g = compute_channel_gains(&s);
+        assert!((g.mon_vocal - 100.0).abs() < 1e-4);
+        assert!((g.mon_inst - 100.0).abs() < 1e-4);
+        assert_eq!(g.mon_metro, 0.0, "메트로놈 기본 꺼짐");
+        assert_eq!(g.mr_vocal, 0.0, "MR 채널 기본은 보컬 없음");
+        assert!((g.mr_inst - 100.0).abs() < 1e-4, "MR 채널은 인스트");
+    }
+
+    #[test]
+    fn metro_routes_to_enabled_channels_only() {
+        // 메트로놈 켜고 모니터에만 라우팅.
+        let s = AppState {
+            volume: 100.0, vocal_balance: 50.0,
+            metro_enabled: true, metro_gain: 80.0,
+            mon_route_metro: true, mr_route_metro: false,
+            ..Default::default()
+        };
+        let g = compute_channel_gains(&s);
+        assert!((g.mon_metro - 80.0).abs() < 1e-4, "모니터에 메트로놈");
+        assert_eq!(g.mr_metro, 0.0, "MR 채널엔 메트로놈 없음");
+    }
+
+    #[test]
+    fn source_fader_flows_into_both_channels() {
+        // 보컬 페이더 50%를 두 채널 모두에 라우팅하면 양쪽 다 절반.
+        let s = AppState {
+            volume: 100.0, vocal_balance: 50.0, vocal_fader: 50.0,
+            mon_route_vocal: true, mr_route_vocal: true,
+            ..Default::default()
+        };
+        let g = compute_channel_gains(&s);
+        assert!((g.mon_vocal - 50.0).abs() < 1e-4);
+        assert!((g.mr_vocal - 50.0).abs() < 1e-4);
+    }
 }
 

@@ -6,7 +6,7 @@ import { state } from './js/state.js';
 import { 
   initDomReferences, renderLibrary,
   refreshFilterDropdowns, updateSortDropdown, updateAiModelStatus, 
-  updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
+  updateAiTogglesState, updateGpuStatus, refreshGpuPackStatus, setupGridResizeObserver, initSortable, elements
 } from './js/ui/index.js';
 import { initAllEvents, switchTab } from './js/events/index.js';
 import { loadLibrary, checkAiModelStatus, cancelSeparation, setMasterVolume } from './js/audio.js';
@@ -106,6 +106,19 @@ async function initApp() {
     const savedLibrary = await loadLibrary();
     state.songLibrary = savedLibrary || [];
     console.log(`[App] Loaded ${state.songLibrary.length} songs.`);
+
+    // 장르/카테고리 표준 재매핑 — 예전 값(소문자 kpop/ballad, 자동수집 '록'
+    // 등)을 새 기준으로 한 번만 정리한다(docs/GENRE_CATEGORY_STANDARD.md).
+    if (localStorage.getItem("taxonomyMigratedV1") !== "true") {
+      const { migrateLibraryTaxonomy } = await import('./js/taxonomy.js');
+      const changed = migrateLibraryTaxonomy(state.songLibrary);
+      if (changed > 0) {
+        const { saveLibrary } = await import('./js/audio.js');
+        await saveLibrary(state.songLibrary);
+        console.log(`[App] Taxonomy migrated: ${changed} songs`);
+      }
+      localStorage.setItem("taxonomyMigratedV1", "true");
+    }
   } catch (err) {
     console.error("Failed to load library:", err);
   }
@@ -142,6 +155,33 @@ async function initApp() {
     updateAiModelStatus(state.isAiModelReady);
     const gpuStatus = await invoke("get_gpu_recommendation");
     updateGpuStatus(gpuStatus);
+  } catch (err) {}
+
+  try {
+    await refreshGpuPackStatus();
+    elements.btnOpenGpuPack?.addEventListener("click", async () => {
+      try {
+        await invoke("open_gpu_pack_dir");
+        await refreshGpuPackStatus();
+      } catch (err) {}
+    });
+  } catch (err) {}
+
+  try {
+    const { initOutputDeviceControls, refreshOutputDevices } = await import('./js/audio-devices.js');
+    initOutputDeviceControls();
+    await refreshOutputDevices();
+  } catch (err) {}
+
+  // 트랙 믹서(페이더·음소거/솔로·메트로놈·채널 라우팅·지연 보정)는 개발용
+  // 최소 UI였어서 이번 릴리즈에서는 화면에서 뺐다. 백엔드 기능은 그대로 살아
+  // 있고 안전한 기본값으로 동작한다(리미터 켜짐, MR 채널 꺼짐, 메트로놈 꺼짐).
+  // 제대로 된 믹서 UI를 만들 때 src/js/track-mixer.js를 다시 연결하면 된다.
+
+  try {
+    const { initDereverbControls, refreshDereverbStatus } = await import('./js/dereverb.js');
+    initDereverbControls();
+    await refreshDereverbStatus();
   } catch (err) {}
 
   // 7. Initial volume sync

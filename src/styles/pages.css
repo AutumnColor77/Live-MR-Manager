@@ -6,6 +6,69 @@
   width: 100%;
 }
 
+/* 카테고리별 접이식 섹션 (AI 보컬 분리 / AI 가사 정렬) */
+.task-section {
+  margin-bottom: 16px;
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.section-toggle:hover {
+  background: var(--surface-2);
+}
+
+.section-count-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 11px;
+  background: rgb(var(--accent-rgb) / 0.15);
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  /* 자릿수가 늘어도(예: 12, 99+) 셰브론을 밀거나 줄바꿈되지 않게 */
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.task-section.collapsed .section-chevron {
+  transform: rotate(-90deg);
+}
+
+.task-section .section-body {
+  padding-top: 12px;
+}
+
+.task-section.collapsed .section-body {
+  display: none;
+}
+
+.task-status-text.task-status-error {
+  color: #ef4444;
+}
+
 .tasks-list {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -147,6 +210,20 @@
   background: var(--accent-gradient);
   box-shadow: 0 0 10px var(--accent-glow);
   transition: width 0.3s ease;
+}
+
+/* 준비 중(모델 로드) — 진행률이 없으므로 불확정 슬라이드 애니메이션으로
+   "멈춘 게 아니라 준비 중"임을 알린다. width는 JS가 0으로 두므로 무시하고
+   자체 폭/이동으로 표시. */
+.task-progress-bar.indeterminate {
+  width: 35% !important;
+  transition: none;
+  animation: task-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes task-indeterminate {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
 }
 
 html[data-theme="dark"] .task-progress-container {
@@ -604,3 +681,333 @@ html[data-theme="sky"] .task-progress-container {
 html[data-theme="dark"] .overlay-preview-wrapper::before {
   opacity: 0.14;
 }
+
+/* ── 노래 추가 원스톱 모달 ────────────────────────────────────── */
+
+/* 사이드바 주요 액션 — 로고 바로 아래 고정된 채움형 "노래 추가" 버튼 */
+.nav-add-song {
+  margin: 4px 12px 14px;
+  justify-content: center;
+  background: rgb(var(--accent-rgb) / 0.16);
+  border: 1px solid rgb(var(--accent-rgb) / 0.45);
+  border-radius: 10px;
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
+.nav-add-song:hover {
+  background: rgb(var(--accent-rgb) / 0.28);
+  border-color: var(--accent-primary);
+}
+
+.addsong-modal {
+  max-width: 640px;
+  width: 92%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 22px;
+}
+
+.addsong-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.addsong-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.addsong-section {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.addsong-section-title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.addsong-hint {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.85rem;
+}
+
+.addsong-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.addsong-or {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.addsong-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+}
+
+.addsong-empty {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 8px;
+}
+
+.addsong-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.addsong-model-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addsong-model-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.addsong-model-option:hover {
+  border-color: var(--accent-primary);
+}
+
+.addsong-model-option.current-default {
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
+.addsong-model-label {
+  font-weight: 700;
+}
+
+.addsong-model-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-lyrics {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.05));
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.addsong-lyrics:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.addsong-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.addsong-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.05));
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.85rem;
+}
+
+.addsong-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.addsong-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.addsong-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.addsong-song-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addsong-song-artist {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 노래 추가 — 통합 검색 결과 (좌: 유튜브 / 우: 가사 링크) */
+.addsong-search-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+@media (max-width: 700px) {
+  .addsong-search-panes { grid-template-columns: 1fr; }
+}
+
+.addsong-search-pane {
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.addsong-pane-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  padding: 2px 4px 8px;
+}
+
+.addsong-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.addsong-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  min-width: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.addsong-result:hover { background: var(--surface-2); }
+
+.addsong-result.selected {
+  border-color: var(--accent-primary);
+  background: rgb(var(--accent-rgb) / 0.1);
+}
+
+.addsong-result-thumb {
+  width: 64px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--surface-2);
+}
+
+.addsong-result-body { flex: 1; min-width: 0; }
+
+.addsong-result-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.addsong-result-snippet {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.addsong-result-sub {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.addsong-official-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.18);
+  color: var(--accent-primary);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.addsong-open-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.addsong-open-btn:hover { color: var(--accent-primary); border-color: var(--accent-primary); }

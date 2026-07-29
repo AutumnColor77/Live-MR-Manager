@@ -5,11 +5,16 @@ use tauri::path::BaseDirectory;
 use futures::StreamExt;
 use std::io::Write;
 
+use crate::vocal_remover::ModelParams;
+
 #[derive(Debug, Clone)]
 pub struct ModelSpec {
     pub id: String,
     pub name: String,
     pub url: String,
+    /// Explicit architecture params for custom models. `None` for built-in
+    /// models, which are detected from their filename by the engine.
+    pub params: Option<ModelParams>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,14 +32,28 @@ pub struct ModelManager {
 #[allow(dead_code)]
 impl ModelManager {
     pub fn spec_from_id(model_id: &str) -> Result<ModelSpec, String> {
-        let (id, name, url) = crate::state::MODELS.iter()
-            .find(|(id, _, _)| *id == model_id)
-            .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
-        Ok(ModelSpec {
-            id: id.to_string(),
-            name: name.to_string(),
-            url: url.to_string(),
-        })
+        if let Some((id, name, url)) = crate::state::MODELS.iter().find(|(id, _, _)| *id == model_id) {
+            return Ok(ModelSpec {
+                id: id.to_string(),
+                name: name.to_string(),
+                url: url.to_string(),
+                params: None,
+            });
+        }
+
+        // Fall back to user-registered custom models.
+        if let Some(custom) = crate::custom_models::get(model_id) {
+            let preset = crate::custom_models::preset_by_key(&custom.preset_key)
+                .ok_or_else(|| format!("Unknown architecture preset: {}", custom.preset_key))?;
+            return Ok(ModelSpec {
+                id: custom.id,
+                name: custom.filename,
+                url: custom.url,
+                params: Some(preset.to_params()),
+            });
+        }
+
+        Err(format!("Unknown model ID: {}", model_id))
     }
 
     pub fn fallback_spec(primary_id: &str) -> Option<ModelSpec> {
@@ -44,6 +63,7 @@ impl ModelManager {
                 id: id.to_string(),
                 name: name.to_string(),
                 url: url.to_string(),
+                params: None,
             })
     }
 

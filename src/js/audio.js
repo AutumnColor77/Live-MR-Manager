@@ -127,15 +127,22 @@ export async function setVocalBalance(balance) {
     console.error("Failed to set balance:", err);
   }
 }
-export async function startMrSeparation(path) {
+export async function startMrSeparation(path, modelId = null) {
   // 1. 즉시 준비 상태 등록 (백엔드 이벤트 도달 전)
   const { state } = await import('./state.js');
   const { renderLibrary } = await import('./ui/library.js');
-  state.activeTasks[path] = { percentage: 0, status: "Preparing", provider: "local" };
+  // modelId를 함께 남긴다 — 앱 재시작 후 대기열을 복원할 때 같은 모델로
+  // 다시 걸어야 하기 때문(백엔드 진행률 이벤트의 model은 표시용 파일명).
+  const song = state.songLibrary.find((s) => s.path === path);
+  state.activeTasks[path] = {
+    percentage: 0, status: "Preparing", provider: "local", modelId: modelId || null,
+    title: song?.title || "", thumbnail: song?.thumbnail || ""
+  };
   renderLibrary(); // 배지 즉시 반영
-  
+
   try {
-    return await invoke("start_mr_separation", { path });
+    // modelId: 분리 방식 선택 모달에서 고른 곡별 모델 (null이면 전역 기본값)
+    return await invoke("start_mr_separation", { path, modelId });
   } catch (err) {
     // 실패 시 activeTasks 정리
     delete state.activeTasks[path];
@@ -151,6 +158,18 @@ export async function startMrSeparation(path) {
 }
 
 export async function cancelSeparation(path) {
+  // 재시도 대기 중이던 곡이면 예약된 타이머부터 취소한다 — 안 그러면
+  // 취소해놓고도 백오프 시간이 지나면 되살아난다.
+  try {
+    const { clearSeparationRetry } = await import('./events/backend.js');
+    clearSeparationRetry(path);
+    const { state } = await import('./state.js');
+    if (state.activeTasks[path]?.status === "RetryWaiting") {
+      delete state.activeTasks[path];
+      const { updateTaskUI } = await import('./ui/components.js');
+      updateTaskUI();
+    }
+  } catch (_) {}
   try {
     return await invoke("cancel_separation", { path });
   } catch (err) {

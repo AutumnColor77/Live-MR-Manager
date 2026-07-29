@@ -130,7 +130,9 @@ export async function stopPlayback() {
       title: "",
       artist: "",
       thumbnail: "",
-      isPlaying: false
+      isPlaying: false,
+      songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+      bpm: Number(state.currentTrack?.bpm) || 0
     });
   } catch (error) {
     console.error("Stop playback failed:", error);
@@ -161,7 +163,9 @@ export async function handlePlaybackToggle() {
           title: state.currentTrack.title,
           artist: state.currentTrack.artist,
           thumbnail: state.currentTrack.thumbnail,
-          isPlaying: true
+          isPlaying: true,
+          songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+          bpm: Number(state.currentTrack?.bpm) || 0
         });
       }
       if (!state.rafId) {
@@ -174,7 +178,9 @@ export async function handlePlaybackToggle() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: false
+        isPlaying: false,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       });
     }
   } catch (error) {
@@ -224,8 +230,26 @@ export async function selectTrack(index) {
   state.targetProgressMs = 0;
   state.currentProgressMs = 0;
 
+  // 가사 싱크 탭이 열려있는 동안은 재생곡이 바뀔 때마다 자동으로 따라가서 로드.
+  // (탭 안의 "음원 선택" 모달로 고른 트랙은 이 경로를 안 타므로 서로 충돌하지 않음 —
+  // 그건 alignment-viewer.js의 loadAudio()가 play_track을 playNow:false로 호출하는
+  // 별도 편집용 로드라, 실제 재생 시작인 여기와는 분리되어 있음.)
+  if (state.activeView === 'alignment') {
+    import('./events/navigation.js').then(({ alignmentViewer }) => {
+      if (alignmentViewer && alignmentViewer.state.currentPath !== song.path) {
+        alignmentViewer.loadAudio(song.path);
+        const nameEl = document.getElementById('selected-track-name');
+        if (nameEl) nameEl.innerText = song.title || 'Unknown Title';
+      }
+    }).catch((err) => console.error('[Player] Failed to auto-follow alignment tab:', err));
+  }
+
   // Load Lyrics for the selected track
+  // Guarded by mySequence: if the user switches tracks again before this
+  // resolves, applying it here would overwrite the newer track's lyrics
+  // with the previous song's (a stale response arriving after a later one).
   loadLyricsForTrack(song.path, parseDurationToMs(song.duration) / 1000).then(lyrics => {
+    if (mySequence !== state.playbackSequence) return;
     state.currentLyrics = lyrics;
     state.currentLyricIndex = -1;
     // Trigger drawer update if it's initialized
@@ -258,7 +282,11 @@ export async function selectTrack(index) {
   updatePlayButton();
 
   // MR이 있는 경우 보컬 토글을 자동으로 꺼짐으로 설정 (요구사항)
-  if (await checkMrSeparated(song.path)) {
+  // Guarded: a slow checkMrSeparated() for a track the user has already
+  // navigated away from must not flip vocalEnabled for the now-current one.
+  const mrSeparated = await checkMrSeparated(song.path);
+  if (mySequence !== state.playbackSequence) return;
+  if (mrSeparated) {
     state.vocalEnabled = false;
   }
 
@@ -318,6 +346,21 @@ export async function selectTrack(index) {
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");
 
+    // 인트로 자동 건너뛰기: 가사 싱크 탭에서 지정해둔 마커 기준으로 자동
+    // 탐색(유튜브 뮤비형 인트로 등). 보컬 시작 전에 간주(전주)가 마킹돼
+    // 있으면 전주가 잘리지 않게 그 간주의 시작(음악 시작)으로만 점프한다.
+    // 마커가 없는 곡(대다수)은 조회 결과가 null이라 평소처럼 처음부터 재생됨.
+    // 사소한 지점(3초 미만)은 건너뛸 실익이 없어 무시.
+    const introSkipEnabled = localStorage.getItem('introSkipEnabled') !== 'false';
+    if (introSkipEnabled) {
+      import('./lyrics.js').then(({ getIntroSkipTarget }) => getIntroSkipTarget(song.path)).then((targetSec) => {
+        if (mySequence !== state.playbackSequence) return; // 트랙이 이미 바뀜
+        if (typeof targetSec === 'number' && targetSec > 3) {
+          seekTo(targetSec * 1000);
+        }
+      }).catch((err) => console.error('[Player] Intro-skip marker lookup failed:', err));
+    }
+
     emit('track-change', {
       title: song.title,
       artist: song.artist,
@@ -328,7 +371,9 @@ export async function selectTrack(index) {
       title: song.title,
       artist: song.artist,
       thumbnail: song.thumbnail,
-      isPlaying: true
+      isPlaying: true,
+      songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+      bpm: Number(state.currentTrack?.bpm) || 0
     });
 
     state.lastRafTime = performance.now();

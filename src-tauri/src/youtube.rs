@@ -234,6 +234,28 @@ impl YoutubeManager {
         "yt-dlp".to_string()
     }
 
+    /// search.rs 등 다른 모듈에서 쓰는 yt-dlp 경로 해석 (관리형 바이너리 우선).
+    pub async fn find_yt_dlp_public() -> String {
+        Self::find_yt_dlp().await
+    }
+
+    /// yt-dlp를 한 번 실행해 stdout을 문자열로 받는다(검색·설명 조회용).
+    /// 콘솔 창이 뜨지 않게 CREATE_NO_WINDOW를 적용하고, 응답이 없을 때를 대비해
+    /// 타임아웃을 건다.
+    pub async fn run_yt_dlp_capture(exe: &str, args: &[String]) -> Result<String, String> {
+        let mut cmd = Command::new(exe);
+        cmd.creation_flags(0x08000000);
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            cmd.args(args).output(),
+        )
+        .await
+        .map_err(|_| "yt-dlp 응답 시간 초과".to_string())?
+        .map_err(|e| format!("yt-dlp 실행 실패 ({}): {}", exe, e))?;
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
     pub async fn get_video_metadata(url: &str) -> Result<YoutubeMetadata, String> {
         let cache_key = Self::metadata_cache_key(url);
         if let Some(cached) = Self::read_metadata_cache(&cache_key) {

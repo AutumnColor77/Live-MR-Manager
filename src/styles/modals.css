@@ -855,3 +855,208 @@
   box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.15) !important;
   outline: none !important;
 }
+/* --- MR 분리 방식(속도/품질) 선택 모달 --- */
+.separation-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.separation-mode-card:hover {
+  background: var(--surface-2);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
+.separation-mode-card.current-default {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.15);
+}
+
+.separation-mode-card.current-default::after {
+  content: "현재 기본값";
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: rgb(var(--accent-rgb) / 0.12);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.separation-mode-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.separation-mode-model {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.separation-mode-card-desc {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* --- 커스텀 모델: 가이드 배너 + 추천 카탈로그 --- */
+.cm-guide-banner {
+  padding: 12px 14px;
+  background: rgb(var(--accent-rgb) / 0.08);
+  border: 1px solid rgb(var(--accent-rgb) / 0.25);
+  border-radius: 12px;
+}
+
+.cm-guide-link {
+  margin-top: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cm-guide-link:hover { text-decoration: underline; }
+
+.cm-catalog-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.cm-catalog-card.recommended {
+  border-color: rgb(var(--accent-rgb) / 0.45);
+}
+
+.cm-catalog-info { flex: 1; min-width: 0; }
+
+.cm-catalog-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cm-catalog-badge {
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.18);
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+.cm-catalog-badge.muted {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.cm-catalog-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.cm-catalog-add {
+  white-space: nowrap;
+  width: auto;
+  padding: 0 16px;
+}
+.cm-catalog-add:disabled { opacity: 0.6; cursor: default; }
+
+.cm-catalog-add.installed {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-color: var(--glass-border);
+}
+
+.cm-advanced > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: 8px 0;
+  list-style: revert;
+}
+.cm-advanced > summary:hover { color: var(--text-main); }
+
+/* --- 트랙 믹서 (개발용 최소 UI) --- */
+.track-mixer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.track-mixer-label {
+  width: 40px;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.track-fader { flex: 1; min-width: 100px; }
+.track-fader-val {
+  width: 42px;
+  text-align: right;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.track-mute.active {
+  background: #b23b3b;
+  color: #fff;
+  border-color: #b23b3b;
+}
+.track-solo.active {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+}
+.metro-enable.active {
+  background: #2f8f5b;
+  color: #fff;
+  border-color: #2f8f5b;
+}
+
+.route-matrix {
+  display: grid;
+  grid-template-columns: 72px repeat(3, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+.route-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+}
+.route-ch-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.route-cb {
+  justify-self: center;
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+}

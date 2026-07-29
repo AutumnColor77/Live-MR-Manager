@@ -24,15 +24,58 @@ pub static CACHED_STATE: Mutex<Option<CachedAlignmentState>> = Mutex::new(None);
 
 pub static CANCEL_ALIGNMENT: AtomicBool = AtomicBool::new(false);
 
+/// Serializes forced-alignment runs (same single-permit pattern as
+/// `separation::AI_QUEUE_LOCK`). `CACHED_STATE` and `CANCEL_ALIGNMENT` are
+/// single-slot globals — holding this lock across the whole run guarantees
+/// at most one alignment owns them at any time, so batch-queued requests and
+/// the interactive editor button can never corrupt each other's state.
+pub static ALIGNMENT_QUEUE_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
+
+/// 곡 구조 지시어(실제로 불리지 않는 라벨) 판별 — 대소문자 무시, 트림 후 전체
+/// 일치만 인정한다("Chorus"는 지시어, "Chorus of angels"는 실제 가사이므로 유지).
+/// 뒤에 숫자가 붙는 것도 허용("Verse 2", "후렴 1").
+fn is_structure_directive(inner: &str) -> bool {
+    const LABELS: &[&str] = &[
+        // 영어
+        "verse", "chorus", "pre-chorus", "prechorus", "post-chorus", "postchorus",
+        "bridge", "intro", "outro", "hook", "refrain", "interlude", "instrumental",
+        "ad-lib", "adlib", "rap", "spoken", "guitar solo", "solo", "drop",
+        "build-up", "buildup", "breakdown", "fade out", "fade in", "repeat",
+        // 한국어
+        "인트로", "벌스", "후렴", "브릿지", "간주", "아웃트로", "랩", "훅",
+        "프리코러스", "포스트코러스", "코러스", "절", "다리", "전주", "후주",
+        "애드립", "간주중", "반복",
+    ];
+    let normalized = inner.trim().to_lowercase();
+    let base = normalized
+        .trim_end_matches(|c: char| c.is_ascii_digit() || c.is_whitespace());
+    LABELS.contains(&base)
+}
+
 fn clean_lyrics(text: &str) -> String {
-    // 괄호 안의 메타데이터 제거 (e.g. [Chorus], (Intro))
-    let re_brackets = Regex::new(r"\[.*?\]|\(.*?\)|<.*?>").unwrap();
-    let cleaned = re_brackets.replace_all(text, "");
-    
+    // 괄호/브래킷 처리: 안에 있는 게 "곡 구조 지시어"(예: [Chorus], (Intro))면
+    // 통째로 제거하지만, 그게 아니면(예: "사랑해 (사랑해)"의 코러스 가사)
+    // 괄호 표시만 벗기고 안의 가사는 남긴다.
+    //
+    // 이유: forced_align은 곡 전체를 한 번에 순차 정렬하는데, 오디오엔 실제로
+    // 불린 코러스가 있는데 정렬 대상 텍스트에서 그 부분이 통째로 사라지면
+    // 프레임-토큰 대응이 어긋나 그 이후 모든 줄이 밀린다(복구 불가능한 드리프트).
+    // 실제 가사는 지우지 않고 남겨야 정렬이 오디오와 계속 맞는다.
+    let re_brackets = Regex::new(r"[\[({<]([^\[\](){}<>]*)[\])}>]").unwrap();
+    let cleaned = re_brackets.replace_all(text, |caps: &regex::Captures| {
+        let inner = &caps[1];
+        if is_structure_directive(inner) {
+            String::new()
+        } else {
+            format!(" {} ", inner.trim())
+        }
+    });
+
     // 단순 특수문자 제거 (정렬에 방해되는 기호들)
     let re_symbols = Regex::new(r"[\?!\.,\-\+_~]").unwrap();
     let cleaned = re_symbols.replace_all(&cleaned, " ");
-    
+
     cleaned.to_string()
 }
 
@@ -170,6 +213,112 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
     Ok(tracks)
 }
 
+/// Downloadable forced-alignment model registry (separate from the vocal
+/// separation models in `state.rs::MODELS`, since these carry two files —
+/// the ONNX acoustic model and its `tokens.txt` vocab — instead of one, and
+/// are hosted on a dedicated GitHub Release rather than Hugging Face.
+pub struct AlignmentModelSpec {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub model_url: &'static str,
+    pub tokens_url: &'static str,
+}
+
+pub const ALIGNMENT_MODELS: &[AlignmentModelSpec] = &[
+    AlignmentModelSpec {
+        id: "wav2vec2-korean-lyrics",
+        display_name: "한국어 가사 정렬 모델 (실험적, 약 1.2GB)",
+        // kresnik/wav2vec2-large-xlsr-korean (Apache-2.0) exported to ONNX
+        // (single-file, weights merged) + vocab.json converted to tokens.txt.
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/tokens.txt",
+    },
+    AlignmentModelSpec {
+        id: "wav2vec2-english-lyrics",
+        display_name: "영어 가사 정렬 모델 (팝송, 약 360MB)",
+        // facebook/wav2vec2-base-960h (Apache-2.0) exported to ONNX.
+        // 라틴 char-level vocab (대문자 A–Z, |, <pad>/<unk>).
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/tokens.txt",
+    },
+];
+
+fn find_alignment_model_spec(model_id: &str) -> Option<&'static AlignmentModelSpec> {
+    ALIGNMENT_MODELS.iter().find(|m| m.id == model_id)
+}
+
+#[command]
+pub async fn list_downloadable_alignment_models() -> Vec<(String, String)> {
+    ALIGNMENT_MODELS
+        .iter()
+        .map(|m| (m.id.to_string(), m.display_name.to_string()))
+        .collect()
+}
+
+async fn download_file_with_progress(
+    handle: &AppHandle,
+    url: &str,
+    dest: &Path,
+    event_name: &str,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("HTTP 클라이언트 생성 실패: {}", e))?;
+
+    let response = client.get(url).send().await.map_err(|e| format!("요청 실패: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("다운로드 실패: HTTP {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let mut file = fs::File::create(dest).map_err(|e| format!("파일 생성 실패: {}", e))?;
+    let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        if total_size > 0 {
+            let percentage = (downloaded as f32 / total_size as f32) * 100.0;
+            let _ = handle.emit(event_name, percentage);
+        }
+    }
+    Ok(())
+}
+
+/// Downloads a forced-alignment model (ONNX + tokens.txt) into
+/// `AppPaths.models/<model_id>/`, where `get_model_list` will pick it up.
+/// Emits `alignment-model-download-progress` (0-100, model file only — the
+/// small tokens.txt isn't worth its own progress phase) while downloading.
+#[command]
+pub async fn download_alignment_model(handle: AppHandle, model_id: String) -> Result<(), String> {
+    let spec = find_alignment_model_spec(&model_id)
+        .ok_or_else(|| format!("알 수 없는 정렬 모델: {}", model_id))?;
+
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    let target_dir = paths.models.join(spec.id);
+    fs::create_dir_all(&target_dir).map_err(|e| format!("폴더 생성 실패: {}", e))?;
+
+    sys_log(&format!("[Alignment] Downloading model '{}' from {}", spec.id, spec.model_url));
+    download_file_with_progress(
+        &handle,
+        spec.model_url,
+        &target_dir.join("model.onnx"),
+        "alignment-model-download-progress",
+    ).await?;
+
+    sys_log(&format!("[Alignment] Downloading tokens for '{}' from {}", spec.id, spec.tokens_url));
+    download_file_with_progress(&handle, spec.tokens_url, &target_dir.join("tokens.txt"), "alignment-model-download-progress").await?;
+
+    sys_log(&format!("[Alignment] Model '{}' ready at {:?}", spec.id, target_dir));
+    Ok(())
+}
+
 #[command]
 pub async fn get_model_list(handle: AppHandle) -> Result<Vec<String>, String> {
     let paths = crate::state::AppPaths::from_handle(&handle);
@@ -235,6 +384,9 @@ pub async fn run_forced_alignment(
     rep_penalty: Option<f32>,
     _use_vad: Option<bool>
 ) -> Result<AlignmentResult, String> {
+    // -1 sentinel: waiting for a previous alignment to finish (queued).
+    let _ = handle.emit("alignment-progress", -1);
+    let _permit = ALIGNMENT_QUEUE_LOCK.lock().await;
     CANCEL_ALIGNMENT.store(false, Ordering::SeqCst);
     sys_log(&format!("[Alignment] Starting new CTC alignment path: {}", audio_path));
 
@@ -255,16 +407,35 @@ pub async fn run_forced_alignment(
 
     let is_whisper = model_path.to_string_lossy().contains("whisper-base");
     let processor = AudioProcessor::new();
-    
+
+    // Prefer the isolated vocal stem when this track has been AI-separated —
+    // singing-voice ASR accuracy drops sharply with instrumental bleed, and
+    // this is the same resolution `get_waveform_summary` already uses.
+    let resolved_audio_path = resolve_audio_path(&handle, &audio_path)
+        .await
+        .unwrap_or_else(|_| PathBuf::from(&audio_path));
+    // 정렬 전용 디리버브: 켜져 있고 모델이 있으면 잔향을 걷어낸 보컬로 정렬한다
+    // (없거나 실패하면 원본 보컬로 폴백 — 재생에는 영향 없음).
+    let resolved_audio_path = crate::dereverb::resolve_alignment_vocal(resolved_audio_path).await;
+    sys_log(&format!(
+        "[Alignment] Resolved alignment input: {:?} (requested: {})",
+        resolved_audio_path, audio_path
+    ));
+
+    // -2 sentinel: 오디오 전처리 + 모델 로드(ONNX 세션 생성) 준비 단계.
+    // 이 구간은 수 초 걸릴 수 있는데 진행률이 없어서, 프론트가 0%가 아니라
+    // "준비 중"으로 표시하도록 별도 신호를 보낸다. (-1은 대기열 대기)
+    let _ = handle.emit("alignment-progress", -2);
+
     let emission_probs = if is_whisper {
         sys_log("[Alignment] Engine B (Whisper) Preprocessing: Extracting Mel-spectrogram...");
-        let raw_samples = processor.load_and_preprocess(&audio_path)?;
+        let raw_samples = processor.load_and_preprocess(&resolved_audio_path)?;
         let mel_data = processor.get_mel_spectrogram(raw_samples.as_slice().unwrap());
-        
+
         sys_log(&format!("[Alignment] Engine B: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine B: Running Whisper Inference...");
         engine.run_inference(&mel_data, true, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -275,12 +446,12 @@ pub async fn run_forced_alignment(
         })?
     } else {
         sys_log("[Alignment] Engine A (Wav2Vec2) Preprocessing: Raw audio PCM...");
-        let audio_data = processor.load_and_preprocess(&audio_path)?;
-        
+        let audio_data = processor.load_and_preprocess(&resolved_audio_path)?;
+
         sys_log(&format!("[Alignment] Engine A: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine A: Running Wav2Vec2 Inference...");
         engine.run_inference(audio_data.as_slice().unwrap(), false, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -330,6 +501,217 @@ pub async fn apply_alignment_tuning(penalty: f32, blank_penalty: Option<f32>, re
     }
 }
 
+/// 한 줄이 차지하는 타깃 토큰 범위. 줄별 단어 수를 누적해 만든다.
+/// 0폭 단어(타 언어·기호)만 있는 줄은 tok_from == tok_to로 비어 있다.
+struct LineTokenSpan {
+    tok_from: usize,
+    tok_to: usize,
+}
+
+/// 줄별로 word_spans/타깃 토큰 상의 범위를 계산한다.
+fn line_token_spans(
+    lyric_lines: &[String],
+    word_spans: &[(usize, usize, String)],
+) -> Vec<LineTokenSpan> {
+    let mut out = Vec::with_capacity(lyric_lines.len());
+    let mut wi = 0usize;
+    for line in lyric_lines {
+        let n_words = line.split_whitespace().count();
+        let word_from = wi;
+        let word_to = (wi + n_words).min(word_spans.len());
+        // 이 줄이 실제로 소비하는 토큰 구간 = 줄 안 단어 span들의 최소~최대
+        let mut tok_from = usize::MAX;
+        let mut tok_to = 0usize;
+        for w in word_from..word_to {
+            let (s, e, _) = &word_spans[w];
+            if e > s {
+                tok_from = tok_from.min(*s);
+                tok_to = tok_to.max(*e);
+            }
+        }
+        if tok_from == usize::MAX { tok_from = tok_to; }
+        out.push(LineTokenSpan { tok_from, tok_to });
+        wi = word_to;
+    }
+    out
+}
+
+/// 앵커 사이 구간을 독립적으로 재정렬해 전역 정렬의 밀림 전파를 끊는다.
+///
+/// 배경: 지금 정렬은 곡 전체를 한 번의 순차 CTC로 맞춘다. 그래서 중간에 한 번
+/// 어긋나면 복구 지점이 없어 그 뒤 모든 줄이 계속 밀린다(한/영 혼합, 코러스,
+/// 간주에서 반복적으로 겪은 실패 모드).
+///
+/// 대책: 전역 경로에서 **음향적으로 확신이 높은 줄을 앵커로 삼고**, 앵커 사이
+/// 구간만 그 시간 범위 안에서 다시 정렬한다. 구간이 좁아지면 그 안의 토큰이
+/// 해당 시간에 갇히므로, 한 번의 실수가 뒤로 전파되지 않는다.
+///
+/// 앵커 판정은 그 줄에 배정된 프레임에서의 평균 emission 확률(로그)로 한다 —
+/// 모델이 "여기서 이 글자를 들었다"고 강하게 말한 줄만 신뢰한다.
+fn refine_with_anchors(
+    aligner: &Aligner,
+    emission_probs: &Array2<f32>,
+    target_tokens: &[usize],
+    line_spans: &[LineTokenSpan],
+    path: &[usize],
+    trans_p: f32,
+    blank_p: f32,
+    rep_p: f32,
+) -> Option<Vec<usize>> {
+    let n_frames = path.len();
+    if n_frames == 0 || line_spans.len() < 3 {
+        return None;
+    }
+
+    // 1. 줄별로 배정된 프레임 구간과 평균 확신도를 구한다.
+    struct LineInfo { idx: usize, first: usize, last: usize, conf: f32 }
+    let mut infos: Vec<LineInfo> = Vec::new();
+    for (li, ls) in line_spans.iter().enumerate() {
+        if ls.tok_to <= ls.tok_from { continue; } // 토큰 없는 줄(타 언어 등)은 앵커 후보 아님
+        let mut first = usize::MAX;
+        let mut last = 0usize;
+        let mut sum = 0f32;
+        let mut cnt = 0usize;
+        for (f, &tok_idx) in path.iter().enumerate() {
+            if tok_idx == usize::MAX { continue; }
+            if tok_idx >= ls.tok_from && tok_idx < ls.tok_to {
+                if first == usize::MAX { first = f; }
+                last = f;
+                sum += emission_probs[[f, target_tokens[tok_idx]]];
+                cnt += 1;
+            }
+        }
+        if cnt == 0 || first == usize::MAX { continue; }
+        infos.push(LineInfo { idx: li, first, last, conf: sum / cnt as f32 });
+    }
+    if infos.len() < 3 { return None; }
+
+    // 2. 확신도 상위 줄을 앵커로 (중앙값 이상). 너무 촘촘하면 재정렬 효과가
+    //    없으므로 간격도 확보한다.
+    let mut confs: Vec<f32> = infos.iter().map(|i| i.conf).collect();
+    confs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_conf = confs[confs.len() / 2];
+
+    let mut anchors: Vec<&LineInfo> = Vec::new();
+    for info in &infos {
+        if info.conf < median_conf { continue; }
+        // 단조 증가하는 앵커만 채택(순서가 뒤집힌 건 이미 잘못된 정렬).
+        if let Some(prev) = anchors.last() {
+            if info.first <= prev.last { continue; }
+        }
+        anchors.push(info);
+    }
+    if anchors.len() < 2 { return None; }
+
+    // 3. 앵커 사이 구간을 각각 재정렬해 새 경로를 만든다.
+    let mut new_path = path.to_vec();
+    let mut changed = false;
+    for pair in anchors.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        // 두 앵커 사이에 있는 줄들의 토큰 구간
+        let tok_from = line_spans[a.idx].tok_to;
+        let tok_to = line_spans[b.idx].tok_from;
+        if tok_to <= tok_from { continue; }
+        // 그 사이 시간 구간 (앵커의 끝 ~ 다음 앵커의 시작)
+        let f_from = a.last + 1;
+        let f_to = b.first;
+        if f_to <= f_from { continue; }
+        // 토큰이 들어갈 최소 프레임도 안 되면 건드리지 않는다.
+        if (f_to - f_from) < (tok_to - tok_from) { continue; }
+
+        let sub_tokens = &target_tokens[tok_from..tok_to];
+        let sub = aligner.forced_align_range(
+            emission_probs, sub_tokens, f_from, f_to, trans_p, blank_p, rep_p,
+        );
+        if sub.len() != f_to - f_from { continue; }
+        // 로컬 토큰 인덱스를 전역 인덱스로 되돌려 경로에 반영.
+        for (k, &local) in sub.iter().enumerate() {
+            new_path[f_from + k] = if local == usize::MAX { usize::MAX } else { local + tok_from };
+        }
+        changed = true;
+    }
+
+    if changed {
+        sys_log(&format!(
+            "[Alignment] 앵커 {}개 기준으로 구간 재정렬 (총 {}줄)",
+            anchors.len(),
+            line_spans.len()
+        ));
+        Some(new_path)
+    } else {
+        None
+    }
+}
+
+/// 노래 가능한 글자 수 — 길이 타당성의 기준이 되는 줄 "무게".
+/// 공백·문장부호를 빼고 실제 발음되는 글자만 센다(최소 1).
+fn singable_len(text: &str) -> usize {
+    text.chars()
+        .filter(|c| c.is_alphanumeric())
+        .count()
+        .max(1)
+}
+
+/// 한 줄에 허용할 최대 길이 = 이 곡의 통상 속도 × 글자 수 × 이 배수.
+/// 늘여 부르기·멜리스마를 감안해 넉넉히 잡는다(오탐이 정탐보다 해롭다).
+const DURATION_SANITY_FACTOR: f64 = 3.5;
+/// 통상 속도와 무관하게 한 줄이 이보다 길면 신뢰하지 않는다.
+const DURATION_ABSOLUTE_CAP_MS: i64 = 15_000;
+
+/// 정렬 결과의 길이 타당성 검사·보정.
+///
+/// CTC 정렬은 음향적 근거가 약한 구간(간주·다른 언어 블록·잔향)에서 한 줄에
+/// 프레임을 과도하게 몰아줄 수 있다. 실제로 "한 줄인데 20초짜리 블럭"이 나왔다.
+///
+/// 곡 전체의 글자당 시간(중앙값)을 통상 속도로 보고, 그 배수를 크게 벗어난 줄은
+/// **시작 시각만 남기고 타당한 길이로 잘라낸다**. 시작은 보통 맞고(노래가 그때
+/// 시작된 건 음향적으로 잡힘) 끝이 흘러넘치는 형태라, 끝만 조정하는 게 안전하다.
+/// 잘라낸 뒤 생기는 빈 구간은 간주·타 언어 구간이므로 그대로 두면 된다.
+///
+/// 중앙값을 쓰는 이유: 평균은 문제의 20초 줄 자신에게 끌려가므로 기준이 오염된다.
+fn repair_implausible_durations(lines: &mut [LineAlignment]) -> usize {
+    if lines.len() < 4 {
+        return 0; // 표본이 너무 적어 통상 속도를 신뢰할 수 없음
+    }
+
+    // 글자당 ms 비율의 중앙값 = 이 곡의 통상 발화 속도
+    let mut rates: Vec<f64> = lines
+        .iter()
+        .filter_map(|l| {
+            let dur = (l.end_ms - l.start_ms) as f64;
+            if dur <= 0.0 { return None; }
+            Some(dur / singable_len(&l.text) as f64)
+        })
+        .collect();
+    if rates.len() < 4 {
+        return 0;
+    }
+    rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_rate = rates[rates.len() / 2];
+    if !(median_rate > 0.0) {
+        return 0;
+    }
+
+    let mut repaired = 0;
+    for line in lines.iter_mut() {
+        let dur = line.end_ms - line.start_ms;
+        if dur <= 0 { continue; }
+        let allowed = ((median_rate * DURATION_SANITY_FACTOR) * singable_len(&line.text) as f64) as i64;
+        let cap = allowed.min(DURATION_ABSOLUTE_CAP_MS).max(300);
+        if dur > cap {
+            let new_end = line.start_ms + cap;
+            line.end_ms = new_end;
+            // 줄 안의 단어 타임스탬프도 새 끝을 넘지 않게 맞춘다.
+            for w in line.words.iter_mut() {
+                if w.start_ms > new_end { w.start_ms = new_end; }
+                if w.end_ms > new_end { w.end_ms = new_end; }
+            }
+            repaired += 1;
+        }
+    }
+    repaired
+}
+
 fn perform_alignment_internal(
     emission_probs: Array2<f32>,
     tokens_path: &Path,
@@ -346,6 +728,16 @@ fn perform_alignment_internal(
     if target_tokens.is_empty() { return Err("유효한 가사 토큰이 없습니다.".to_string()); }
 
     let path = aligner.forced_align(&emission_probs, &target_tokens, trans_p, blank_p, rep_p);
+
+    // 확신도 높은 줄을 앵커로 잡고 그 사이 구간을 재정렬한다 — 전역 1회 정렬은
+    // 중간에 한 번 어긋나면 끝까지 밀리므로, 구간을 나눠 실수를 가둔다.
+    let line_spans = line_token_spans(&lyric_lines, &word_spans);
+    let path = refine_with_anchors(
+        &aligner, &emission_probs, &target_tokens, &line_spans,
+        &path, trans_p, blank_p, rep_p,
+    )
+    .unwrap_or(path);
+
     let frame_duration_ms = 20.0;
     let timestamps = aligner.get_word_timestamps(&path, &word_spans, frame_duration_ms);
 
@@ -386,6 +778,15 @@ fn perform_alignment_internal(
                 words: line_words,
             });
         }
+    }
+
+    // 음향 근거가 약한 구간에서 한 줄이 과도하게 늘어나는 것을 잡아낸다.
+    let repaired = repair_implausible_durations(&mut all_line_alignments);
+    if repaired > 0 {
+        sys_log(&format!(
+            "[Alignment] 길이 타당성 보정: {}줄이 통상 속도를 크게 벗어나 잘라냄",
+            repaired
+        ));
     }
 
     Ok(AlignmentResult {
@@ -543,6 +944,11 @@ pub struct Aligner {
     space_id: Option<usize>,
     unk_id: usize,
     is_syllable_based: bool,
+    /// vocab이 라틴 문자(대문자 A–Z) 기반인지 — 영어 wav2vec2 CTC 모델.
+    /// 이 경우 토크나이즈는 글자 단위(대문자화), 디코딩은 직결합.
+    is_latin_based: bool,
+    /// vocab에 아포스트로피(`'`)가 있는지 — 영어 축약형(don't) 유지 여부.
+    has_apostrophe: bool,
 }
 
 impl Aligner {
@@ -551,7 +957,8 @@ impl Aligner {
         let reader = BufReader::new(file);
         let mut token_to_id = HashMap::new();
         let mut has_syllables = false;
-        
+        let mut has_latin = false;
+
         for line in reader.lines() {
             let line = line.map_err(|e| e.to_string())?;
             let line = line.trim_end();
@@ -561,14 +968,16 @@ impl Aligner {
                 let id_str = &line[idx + 1..];
                 if let Ok(id) = id_str.parse::<usize>() {
                     token_to_id.insert(token.to_string(), id);
-                    
-                    // 완성형 글자(AC00-D7AF)가 포함되어 있는지 확인
-                    if !has_syllables {
-                        if let Some(c) = token.chars().next() {
-                            let cp = c as u32;
-                            if cp >= 0xAC00 && cp <= 0xD7AF {
-                                has_syllables = true;
-                            }
+
+                    if let Some(c) = token.chars().next() {
+                        let cp = c as u32;
+                        // 완성형 한글(AC00-D7AF) → 음절 기반
+                        if (0xAC00..=0xD7AF).contains(&cp) {
+                            has_syllables = true;
+                        }
+                        // 단일 라틴 대문자 토큰 → 영어 char-level 모델
+                        if token.chars().count() == 1 && c.is_ascii_uppercase() {
+                            has_latin = true;
                         }
                     }
                 }
@@ -583,40 +992,95 @@ impl Aligner {
         let unk_id = token_to_id.get("[UNK]").copied()
             .or_else(|| token_to_id.get("<unk>").copied())
             .unwrap_or(blank_id);
-            
-        Ok(Self { 
-            token_to_id, 
-            blank_id, 
-            space_id, 
-            unk_id, 
-            is_syllable_based: has_syllables 
+        // 라틴 기반은 한글 vocab이 아닐 때만(혼동 방지).
+        let is_latin_based = has_latin && !has_syllables;
+        let has_apostrophe = token_to_id.contains_key("'");
+
+        Ok(Self {
+            token_to_id,
+            blank_id,
+            space_id,
+            unk_id,
+            is_syllable_based: has_syllables,
+            is_latin_based,
+            has_apostrophe,
         })
     }
+
+    /// Whether `c` falls in any Hangul Unicode block (syllables, jamo, or
+    /// compatibility jamo) — i.e. something a Korean acoustic model could
+    /// plausibly have a real token for.
+    fn is_hangul_char(c: char) -> bool {
+        let cp = c as u32;
+        (0xAC00..=0xD7A3).contains(&cp)   // Hangul syllables
+            || (0x1100..=0x11FF).contains(&cp) // Hangul jamo
+            || (0x3130..=0x318F).contains(&cp) // Hangul compatibility jamo
+    }
+
+    /// 이 vocab(모델)이 음향적으로 표현할 수 있는 "글자"인지.
+    /// 라틴 모델 → 라틴 문자(+아포스트로피), 한글 모델 → 한글. 숫자·문장부호·
+    /// 특수기호·이모지·타 스크립트 문자는 전부 false → tokenize에서 걸러진다.
+    fn is_representable_char(&self, c: char) -> bool {
+        if self.is_latin_based {
+            c.is_ascii_alphabetic() || (self.has_apostrophe && (c == '\'' || c == '\u{2019}'))
+        } else {
+            Self::is_hangul_char(c)
+        }
+    }
+
 
     pub fn tokenize(&self, text: &str) -> (Vec<usize>, Vec<(usize, usize, String)>) {
         let mut ids = Vec::new();
         let mut word_spans = Vec::new();
         let words: Vec<&str> = text.split_whitespace().collect();
-        
+
         for (wi, word) in words.iter().enumerate() {
             let start_idx = ids.len();
-            let cleaned_word = word.trim_matches(|c: char| !c.is_alphanumeric());
-            
-            if self.is_syllable_based {
-                // 음절 기반: 이미 완성형 한글이 Vocab에 있는 경우
-                for c in cleaned_word.chars() {
-                    let s = c.to_string();
+
+            // 글자 이외 문자 필터: 모델이 표현할 수 있는 글자만 남긴다(양끝뿐
+            // 아니라 단어 중간의 숫자·문장부호·특수기호·타 언어 문자도 제거).
+            // 컬 아포스트로피(’)는 straight(')로 정규화해 vocab과 맞춘다.
+            let filtered: String = word
+                .chars()
+                .filter(|&c| self.is_representable_char(c))
+                .map(|c| if c == '\u{2019}' { '\'' } else { c })
+                .collect();
+
+            // 남는 글자가 없으면(순수 기호/숫자/타 언어 단어) 정렬 대상에서
+            // 제외 — zero-width span으로 두고 get_word_timestamps가 이웃 사이
+            // 시간을 나눠 보간한다. word_spans엔 원문 그대로 보존.
+            //
+            // 다른 언어로만 된 줄(랩/혼합 곡의 영어 블록 등)도 여기서 0폭이
+            // 된다. 그 구간의 실제 노래 시간은 **CTC blank가 공짜로 흡수**하므로
+            // 별도 조치가 필요 없다. 예전에 "시간이 든다"고 알리려 UNK 토큰으로
+            // 채운 적이 있는데, UNK는 음향적 근거가 없어 Viterbi가 프레임을
+            // 임의로 빨아들여 한 줄이 수십 초짜리 블럭이 되는 역효과만 났다.
+            if filtered.is_empty() {
+                word_spans.push((start_idx, start_idx, word.to_string()));
+                if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
+                continue;
+            }
+
+            if self.is_latin_based {
+                // 영어 char-level: 대문자화 후 글자마다 매핑(vocab이 대문자 A–Z).
+                for c in filtered.chars() {
+                    let s = c.to_ascii_uppercase().to_string();
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
+            } else if self.is_syllable_based {
+                // 음절 기반: 완성형 한글이 vocab에 있는 경우
+                for c in filtered.chars() {
+                    ids.push(*self.token_to_id.get(&c.to_string()).unwrap_or(&self.unk_id));
+                }
             } else {
-                // 자모 기반: 이전과 동일하게 분해
-                let decomposed = cleaned_word.nfd().collect::<String>();
+                // 자모 기반: NFD 분해 후 호환 자모로 매핑
+                let decomposed = filtered.nfd().collect::<String>();
                 for c in decomposed.chars() {
                     let s = self.to_compatibility_jamo(c);
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
             }
-            
+
             if ids.len() == start_idx { ids.push(self.unk_id); }
             word_spans.push((start_idx, ids.len(), word.to_string()));
             if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
@@ -642,29 +1106,52 @@ impl Aligner {
     }
 
     pub fn forced_align(&self, emission_probs: &Array2<f32>, target_tokens: &[usize], trans_penalty: f32, blank_penalty: f32, rep_penalty: f32) -> Vec<usize> {
+        self.forced_align_range(emission_probs, target_tokens, 0, emission_probs.nrows(), trans_penalty, blank_penalty, rep_penalty)
+    }
+
+    /// `forced_align`을 프레임 구간 `[frame_start, frame_end)` 에만 적용한다.
+    /// 앵커 사이 구간을 독립적으로 재정렬할 때 쓴다 — 구간을 좁히면 그 안의
+    /// 토큰들이 그 시간 범위 안에 갇히므로, 전역 정렬에서 한 번 밀린 결과가
+    /// 뒤까지 전파되지 않는다.
+    ///
+    /// 반환 길이는 `frame_end - frame_start`이고, 값은 `target_tokens` 기준의
+    /// **로컬** 인덱스(또는 blank는 `usize::MAX`)다.
+    pub fn forced_align_range(
+        &self,
+        emission_probs: &Array2<f32>,
+        target_tokens: &[usize],
+        frame_start: usize,
+        frame_end: usize,
+        trans_penalty: f32,
+        blank_penalty: f32,
+        rep_penalty: f32,
+    ) -> Vec<usize> {
         let mut extended = Vec::with_capacity(target_tokens.len() * 2 + 1);
         for &t in target_tokens { extended.push(self.blank_id); extended.push(t); }
         extended.push(self.blank_id);
-        let n_frames = emission_probs.nrows();
+        let total_frames = emission_probs.nrows();
+        let frame_end = frame_end.min(total_frames);
+        let n_frames = frame_end.saturating_sub(frame_start);
         let n_states = extended.len();
         if n_frames == 0 || n_states == 0 { return vec![]; }
+        let at = |t: usize, tok: usize| emission_probs[[frame_start + t, tok]];
         let mut dp = vec![vec![f32::NEG_INFINITY; n_states]; n_frames];
         let mut bp = vec![vec![0usize; n_states]; n_frames];
-        dp[0][0] = emission_probs[[0, extended[0]]];
-        if n_states > 1 { dp[0][1] = emission_probs[[0, extended[1]]]; }
+        dp[0][0] = at(0, extended[0]);
+        if n_states > 1 { dp[0][1] = at(0, extended[1]); }
         for t in 1..n_frames {
             if t % 50 == 0 && CANCEL_ALIGNMENT.load(Ordering::SeqCst) { break; } // Early exit for inner loops
             for s in 0..n_states {
-                let mut emit = emission_probs[[t, extended[s]]];
+                let mut emit = at(t, extended[s]);
                 if extended[s] == self.blank_id {
                     emit += blank_penalty;
                 }
-                
+
                 let mut best = dp[t - 1][s];
                 if extended[s] != self.blank_id {
                     best += rep_penalty;
                 }
-                
+
                 let mut best_from = s;
                 if s > 0 {
                     let val = dp[t - 1][s - 1] + trans_penalty;
@@ -686,8 +1173,17 @@ impl Aligner {
     }
 
     pub fn get_word_timestamps(&self, path: &[usize], word_spans: &[(usize, usize, String)], frame_duration_ms: f32) -> Vec<WordTimestamp> {
-        let mut result = Vec::new();
+        // Zero-width spans (non-Hangul words skipped by `tokenize`, or a word
+        // whose acoustic states the Viterbi path never visited) have no timing
+        // of their own — filled in below by interpolating between whichever
+        // aligned words bracket them, so every word still gets a timestamp
+        // instead of silently vanishing from the result.
+        let mut result: Vec<Option<WordTimestamp>> = Vec::with_capacity(word_spans.len());
         for (token_start, token_end, word) in word_spans {
+            if token_start == token_end {
+                result.push(None);
+                continue;
+            }
             let mut first_frame = None; let mut last_frame = None;
             for (frame_idx, &token_idx) in path.iter().enumerate() {
                 if token_idx != usize::MAX && token_idx >= *token_start && token_idx < *token_end {
@@ -695,11 +1191,42 @@ impl Aligner {
                     last_frame = Some(frame_idx);
                 }
             }
-            if let (Some(start), Some(end)) = (first_frame, last_frame) {
-                result.push(WordTimestamp { word: word.clone(), start_ms: (start as f32 * frame_duration_ms) as u32, end_ms: ((end + 1) as f32 * frame_duration_ms) as u32 });
-            }
+            result.push(first_frame.zip(last_frame).map(|(start, end)| WordTimestamp {
+                word: word.clone(),
+                start_ms: (start as f32 * frame_duration_ms) as u32,
+                end_ms: ((end + 1) as f32 * frame_duration_ms) as u32,
+            }));
         }
-        result
+
+        const FALLBACK_WORD_MS: u32 = 400;
+        let mut i = 0;
+        while i < result.len() {
+            if result[i].is_some() { i += 1; continue; }
+            let gap_start = i;
+            let mut gap_end = i;
+            while gap_end < result.len() && result[gap_end].is_none() { gap_end += 1; }
+            let n = (gap_end - gap_start) as u32;
+
+            let prev_end_ms = if gap_start > 0 { result[gap_start - 1].as_ref().map(|w| w.end_ms) } else { None };
+            let next_start_ms = if gap_end < result.len() { result[gap_end].as_ref().map(|w| w.start_ms) } else { None };
+
+            let (range_start, range_end) = match (prev_end_ms, next_start_ms) {
+                (Some(s), Some(e)) if e > s => (s, e),
+                (Some(s), _) => (s, s + FALLBACK_WORD_MS * n),
+                (None, Some(e)) => (e.saturating_sub(FALLBACK_WORD_MS * n), e),
+                (None, None) => (0, FALLBACK_WORD_MS * n),
+            };
+
+            let span = (range_end - range_start) / n;
+            for (k, idx) in (gap_start..gap_end).enumerate() {
+                let s = range_start + span * k as u32;
+                let e = if k as u32 + 1 == n { range_end } else { s + span };
+                result[idx] = Some(WordTimestamp { word: word_spans[idx].2.clone(), start_ms: s, end_ms: e.max(s + 1) });
+            }
+            i = gap_end;
+        }
+
+        result.into_iter().flatten().collect()
     }
 
     pub fn greedy_decode(&self, emission_probs: &Array2<f32>) -> Vec<usize> {
@@ -727,9 +1254,11 @@ impl Aligner {
             } 
         }
         
-        if self.is_syllable_based {
+        if self.is_syllable_based || self.is_latin_based {
+            // 음절-한글 또는 라틴(영어): 토큰을 그대로 직결합(| → 공백).
             parts.join("").replace("|", " ").trim().to_string()
         } else {
+            // 자모-한글: 분해된 자모를 음절로 조립.
             self.assemble_hangul(&parts)
         }
     }
@@ -852,6 +1381,370 @@ impl Aligner {
     }
 }
 
+#[cfg(test)]
+mod aligner_tests {
+    use super::*;
+
+    #[test]
+    fn clean_lyrics_strips_structure_directives_only() {
+        // 곡 구조 지시어는 통째로 제거.
+        assert_eq!(clean_lyrics("[Chorus]\n사랑해").trim(), "사랑해");
+        assert_eq!(clean_lyrics("(Verse 2) 오늘도 걸어").trim(), "오늘도 걸어");
+        assert_eq!(clean_lyrics("[후렴]\n너를 사랑해").trim(), "너를 사랑해");
+        assert_eq!(clean_lyrics("<Instrumental>").trim(), "");
+    }
+
+    #[test]
+    fn clean_lyrics_keeps_real_chorus_lyrics() {
+        // 괄호 안이 실제 가사(코러스/에코)면 표시만 벗기고 텍스트는 남긴다 —
+        // 이게 없으면 forced_align이 곡 전체 순차 정렬에서 오디오에 있는
+        // 코러스와 텍스트가 어긋나 그 이후 줄이 전부 밀린다.
+        let cleaned = clean_lyrics("사랑해 (사랑해) 널");
+        assert!(cleaned.contains("사랑해"));
+        // 괄호로 감싸졌던 "사랑해"도 남아 있어야 하므로, "사랑해"가 최소 2번 등장.
+        assert_eq!(cleaned.matches("사랑해").count(), 2);
+
+        let cleaned_en = clean_lyrics("You're the one (the only one)");
+        assert!(cleaned_en.contains("the only one"));
+    }
+
+    #[test]
+    fn clean_lyrics_directive_match_is_whole_content_only() {
+        // "Chorus"는 지시어지만 "Chorus of angels"는 실제 가사 문구이므로 유지.
+        let cleaned = clean_lyrics("(Chorus of angels) sings");
+        assert!(cleaned.contains("Chorus of angels"));
+    }
+
+    #[test]
+    fn lrc_sync_status_detects_real_timestamps() {
+        // 실제(0이 아닌) 타임스탬프가 하나라도 있으면 synced
+        let synced = "[00:00.00]첫 줄\n[00:12.34]둘째 줄";
+        assert_eq!(lrc_sync_status(synced), "synced");
+        // 전부 00:00.00 (Meloming 시드/미타이밍) → unsynced
+        let unsynced = "[00:00.00]첫 줄\n[00:00.00]둘째 줄";
+        assert_eq!(lrc_sync_status(unsynced), "unsynced");
+        // 타임스탬프가 아예 없음 → unsynced
+        assert_eq!(lrc_sync_status("가사만 있고 태그 없음"), "unsynced");
+        // 트리플렛 태그가 붙어도 시간만 보면 됨
+        let triplet = "[00:00.00][orig]原文\n[00:05.00][pron]발음";
+        assert_eq!(lrc_sync_status(triplet), "synced");
+    }
+
+    /// Writes a minimal syllable-based tokens.txt covering just the characters
+    /// these tests need, returns its path. Caller is responsible for cleanup.
+    fn write_test_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_test_vocab_{}_{}.txt", name, std::process::id()));
+        let vocab = "[PAD] 0\n[UNK] 1\n  2\n나 3\n는 4\n가 5\n수 6\n다 7\n안 8\n녕 9\n";
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    /// 영어 wav2vec2 char-level vocab을 모방한 tokens.txt (대문자 A–Z, |, ').
+    fn write_english_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_en_vocab_{}_{}.txt", name, std::process::id()));
+        let mut vocab = String::from("<pad> 0\n<s> 1\n</s> 2\n<unk> 3\n| 4\n");
+        let mut id = 5;
+        for c in 'A'..='Z' {
+            vocab.push_str(&format!("{} {}\n", c, id));
+            id += 1;
+        }
+        vocab.push_str(&format!("' {}\n", id));
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    #[test]
+    fn detects_latin_vocab_and_tokenizes_english() {
+        let vocab_path = write_english_vocab("detect");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert!(aligner.is_latin_based, "대문자 A–Z vocab은 라틴으로 인식돼야 함");
+        assert!(!aligner.is_syllable_based);
+        assert!(aligner.has_apostrophe);
+
+        // 소문자 입력이 대문자로 매핑되고 아포스트로피가 유지되는지
+        let (ids, spans) = aligner.tokenize("don't stop");
+        assert_eq!(spans.len(), 2);
+        // 두 단어 모두 실제 토큰을 생성(zero-width 아님)
+        assert!(spans[0].1 > spans[0].0);
+        assert!(spans[1].1 > spans[1].0);
+        // UNK가 섞이지 않아야 함(전부 vocab에 있는 글자)
+        assert!(!ids.contains(&aligner.unk_id), "표현 가능한 영어 단어에 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn filters_digits_and_symbols_from_words() {
+        let vocab_path = write_english_vocab("filter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // "2", "♪…", 숫자 섞인 단어 → 글자 외 문자가 걸러짐
+        let (ids, spans) = aligner.tokenize("I have 2 cats ♪");
+        // 단어 4개: I / have / 2 / cats / ♪ → split_whitespace 기준 5개
+        assert_eq!(spans.len(), 5);
+        // "2"와 "♪"는 남는 글자가 없어 zero-width 스킵
+        let two = spans.iter().find(|s| s.2 == "2").unwrap();
+        assert_eq!(two.0, two.1, "순수 숫자 단어는 zero-width");
+        let note = spans.iter().find(|s| s.2 == "♪").unwrap();
+        assert_eq!(note.0, note.1, "순수 특수기호 단어는 zero-width");
+        // "have"/"cats"는 정상 토큰화, UNK 없음
+        assert!(!ids.contains(&aligner.unk_id));
+
+        // 단어 중간 숫자도 제거되는지: "l0ve" → "lve"(전부 vocab에 있어 UNK 없음)
+        let (ids2, spans2) = aligner.tokenize("l0ve");
+        assert!(spans2[0].1 > spans2[0].0);
+        assert!(!ids2.contains(&aligner.unk_id), "단어 중간 숫자가 제거돼 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn korean_char_filter_still_works() {
+        let vocab_path = write_test_vocab("kofilter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // 한글 모드에서도 숫자·기호가 걸러지고, 순수 기호 단어는 zero-width
+        let (_ids, spans) = aligner.tokenize("나는 123 가수 !!");
+        assert_eq!(spans.len(), 4);
+        let num = spans.iter().find(|s| s.2 == "123").unwrap();
+        assert_eq!(num.0, num.1);
+        let bang = spans.iter().find(|s| s.2 == "!!").unwrap();
+        assert_eq!(bang.0, bang.1);
+    }
+
+    #[test]
+    fn is_hangul_char_classifies_korean_vs_latin() {
+        assert!(Aligner::is_hangul_char('가'));
+        assert!(Aligner::is_hangul_char('\u{1100}')); // Hangul jamo block
+        assert!(Aligner::is_hangul_char('ㄱ')); // compatibility jamo
+        assert!(!Aligner::is_hangul_char('a'));
+        assert!(!Aligner::is_hangul_char('Z'));
+        assert!(!Aligner::is_hangul_char('!'));
+    }
+
+    #[test]
+    fn tokenize_skips_non_hangul_words_as_zero_width_spans() {
+        let vocab_path = write_test_vocab("skip");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+
+        let (ids, spans) = aligner.tokenize("나는 hater 다");
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert_eq!(spans.len(), 3, "every word should still get a span entry");
+        // "나는" — real Hangul, non-empty width.
+        assert_ne!(spans[0].0, spans[0].1);
+        // "hater" — pure Latin, must be zero-width (excluded from forced-align targets).
+        assert_eq!(spans[1].0, spans[1].1, "English word must not consume CTC target tokens");
+        assert_eq!(spans[1].2, "hater");
+        // "다" — real Hangul again.
+        assert_ne!(spans[2].0, spans[2].1);
+
+        // No [UNK] ids should have been emitted for "hater" at all — its
+        // characters must be completely absent from the target sequence,
+        // not merely mapped to unk_id.
+        let unk_count = ids.iter().filter(|&&id| id == aligner.unk_id).count();
+        assert_eq!(unk_count, 0, "skipped word must not contribute any UNK ids");
+    }
+
+    #[test]
+    fn word_timestamps_interpolates_gaps_between_aligned_neighbors() {
+        let vocab_path = write_test_vocab("interp");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // Two real words (token index ranges [0,2) and [2,4)) with a
+        // zero-width word in between (simulating a skipped English word),
+        // followed by a frame path that only ever visits the two real words.
+        let word_spans = vec![
+            (0usize, 2usize, "안녕".to_string()),
+            (2, 2, "hey".to_string()),
+            (2, 4, "나".to_string()),
+        ];
+        // 10 frames: first half assigned to token-index 0/1 range (word 0),
+        // second half to token-index 2/3 range (word 2). MAX = blank.
+        let path = vec![0, 0, 1, 1, usize::MAX, usize::MAX, 2, 2, 3, 3];
+
+        let timestamps = aligner.get_word_timestamps(&path, &word_spans, 20.0);
+
+        assert_eq!(timestamps.len(), 3, "the interpolated word must not be dropped");
+        assert_eq!(timestamps[0].word, "안녕");
+        assert_eq!(timestamps[2].word, "나");
+        let gap_word = &timestamps[1];
+        assert_eq!(gap_word.word, "hey");
+        // Interpolated word must sit chronologically between its neighbors.
+        assert!(gap_word.start_ms >= timestamps[0].end_ms);
+        assert!(gap_word.end_ms <= timestamps[2].start_ms);
+        assert!(gap_word.end_ms > gap_word.start_ms);
+    }
+
+    #[test]
+    fn line_token_spans_maps_lines_to_token_ranges() {
+        let vocab_path = write_test_vocab("spans");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // 2번째 줄은 영어 전용 → 토큰을 소비하지 않아 빈 구간이어야 한다.
+        let text = "나는 가수\nonly english\n안녕 다";
+        let (_tokens, word_spans) = aligner.tokenize(text);
+        let lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+        let spans = line_token_spans(&lines, &word_spans);
+
+        assert_eq!(spans.len(), 3);
+        assert!(spans[0].tok_to > spans[0].tok_from, "한국어 줄은 토큰 소비");
+        assert_eq!(spans[1].tok_from, spans[1].tok_to, "영어 전용 줄은 토큰 없음");
+        assert!(spans[2].tok_to > spans[2].tok_from, "한국어 줄은 토큰 소비");
+        // 줄 순서대로 토큰 구간이 증가해야 한다.
+        assert!(spans[2].tok_from >= spans[0].tok_to);
+    }
+
+    /// 앵커 재정렬이 "구간을 가두는" 핵심 동작을 하는지: 뒤쪽 구간을 다시
+    /// 정렬해도 앵커가 잡아둔 시간 범위를 벗어나지 않아야 한다.
+    #[test]
+    fn anchor_refinement_keeps_tokens_inside_their_frame_window() {
+        let vocab_path = write_test_vocab("anchor");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        let tokens = vec![
+            *aligner.token_to_id.get("나").unwrap(),
+            *aligner.token_to_id.get("는").unwrap(),
+        ];
+        // 40프레임 중 20~30 구간에서만 해당 토큰 확률이 높은 emission을 만든다.
+        let vocab = 10;
+        let mut e = Array2::<f32>::from_elem((40, vocab), -8.0);
+        for f in 0..40 { e[[f, aligner.blank_id]] = -0.2; }
+        for f in 20..25 { e[[f, tokens[0]]] = 5.0; }
+        for f in 25..30 { e[[f, tokens[1]]] = 5.0; }
+
+        // 구간 [20,30)으로 제한해 정렬하면 두 토큰이 그 안에만 배치돼야 한다.
+        let sub = aligner.forced_align_range(&e, &tokens, 20, 30, -0.05, 0.0, 0.0);
+        assert_eq!(sub.len(), 10, "반환 길이는 구간 길이와 같아야 함");
+        let visited: Vec<usize> = sub.iter().copied().filter(|&t| t != usize::MAX).collect();
+        assert!(!visited.is_empty(), "구간 안에서 토큰이 배치돼야 함");
+        assert!(visited.iter().all(|&t| t < tokens.len()), "로컬 인덱스 범위 유지");
+
+        // 전체 구간 정렬과 비교 — 구간 제한이 실제로 다른 결과를 만들 수 있어야
+        // 의미가 있다(같은 함수로 전체를 돌린 것과 길이가 다름).
+        let full = aligner.forced_align(&e, &tokens, -0.05, 0.0, 0.0);
+        assert_eq!(full.len(), 40);
+    }
+
+    fn mk_line(text: &str, start_ms: i64, end_ms: i64) -> LineAlignment {
+        LineAlignment {
+            text: text.to_string(),
+            extracted_text: String::new(),
+            start_ms,
+            end_ms,
+            words: vec![WordAlignment { word: text.to_string(), start_ms, end_ms }],
+        }
+    }
+
+    #[test]
+    fn repairs_line_that_swallowed_a_foreign_or_instrumental_section() {
+        // 통상 6글자에 ~1.2초인 곡에서, 한 줄만 20초를 삼킨 상황.
+        let mut lines = vec![
+            mk_line("아무도안믿었던", 1_000, 2_200),
+            mk_line("사랑의종말론", 2_200, 3_400),
+            mk_line("왔다네정말로", 3_400, 23_400), // ← 20초, 비정상
+            mk_line("멸종위기사랑", 23_400, 24_600),
+            mk_line("내일이면인류가", 24_600, 25_800),
+        ];
+        let n = repair_implausible_durations(&mut lines);
+        assert_eq!(n, 1, "비정상 줄 1개만 보정돼야 함");
+
+        // 시작은 유지, 끝만 타당한 길이로 잘림.
+        assert_eq!(lines[2].start_ms, 3_400, "시작 시각은 건드리지 않음");
+        let dur = lines[2].end_ms - lines[2].start_ms;
+        assert!(dur < 5_000, "20초가 타당한 길이로 잘려야 함: {}ms", dur);
+        assert!(dur > 0);
+        // 단어 타임스탬프도 새 끝을 넘지 않아야 함.
+        assert!(lines[2].words[0].end_ms <= lines[2].end_ms);
+
+        // 정상 줄들은 그대로.
+        assert_eq!(lines[0].end_ms, 2_200);
+        assert_eq!(lines[4].end_ms, 25_800);
+    }
+
+    #[test]
+    fn repair_leaves_normal_alignment_untouched() {
+        // 길이가 글자 수에 비례해 자연스러운 경우 — 아무것도 건드리면 안 됨.
+        let mut lines = vec![
+            mk_line("가나다", 0, 600),
+            mk_line("가나다라마바", 600, 1_800),
+            mk_line("가나", 1_800, 2_200),
+            mk_line("가나다라", 2_200, 3_000),
+            mk_line("가나다라마", 3_000, 4_000),
+        ];
+        let before: Vec<_> = lines.iter().map(|l| (l.start_ms, l.end_ms)).collect();
+        let n = repair_implausible_durations(&mut lines);
+        assert_eq!(n, 0, "정상 정렬은 보정하지 않아야 함");
+        let after: Vec<_> = lines.iter().map(|l| (l.start_ms, l.end_ms)).collect();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn repair_skips_when_too_few_lines_to_judge() {
+        // 표본이 적으면 통상 속도를 신뢰할 수 없으므로 손대지 않는다.
+        let mut lines = vec![mk_line("가", 0, 30_000), mk_line("나", 30_000, 30_500)];
+        assert_eq!(repair_implausible_durations(&mut lines), 0);
+        assert_eq!(lines[0].end_ms, 30_000, "표본 부족 시 원본 유지");
+    }
+
+    /// 다른 언어 줄이 낀 혼합 곡에서, 그 구간을 CTC blank가 흡수해 자기 언어
+    /// 줄의 타이밍이 정확히 유지되는지. (UNK 토큰으로 채우면 UNK는 음향적 근거가
+    /// 없어 프레임을 임의로 빨아들여 한 줄이 수십 초로 늘어난다 — 그 회귀 방지.)
+    #[test]
+    fn foreign_section_is_absorbed_by_blank_not_stretched() {
+        let vocab_path = write_test_vocab("mixed");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // "나는" / "It's over tonight"(영어 줄 전체) / "가수다"
+        let text = "나는\nIt's over tonight\n가수다";
+        let (tokens, spans) = aligner.tokenize(text);
+
+        // 영어 줄 단어들은 정렬 대상 토큰을 소비하지 않아야 한다(0폭).
+        // 그래야 그 구간을 blank가 흡수한다.
+        let en: Vec<_> = spans.iter().filter(|s| s.2.chars().all(|c| !Aligner::is_hangul_char(c))).collect();
+        assert!(!en.is_empty(), "영어 단어 span이 있어야 함");
+        for s in &en {
+            assert_eq!(s.0, s.1, "영어 줄 단어 '{}'는 0폭이어야 함(blank가 흡수)", s.2);
+        }
+        // UNK가 타깃 시퀀스에 섞이면 안 된다.
+        assert!(
+            !tokens.contains(&aligner.unk_id),
+            "낯선 줄을 UNK로 채우면 프레임을 임의 흡수해 블럭이 수십 초로 늘어난다"
+        );
+
+        // 40프레임(=0.8초/프레임 20ms) 중 앞 8프레임 "나는", 가운데 24프레임은
+        // 영어 구간(blank), 마지막 8프레임 "가수다"인 경로를 만든다.
+        let ko: Vec<_> = spans.iter().filter(|s| s.0 != s.1).collect();
+        assert_eq!(ko.len(), 2, "한국어 단어 2개");
+        let mut path = Vec::new();
+        for _ in 0..8 { path.push(ko[0].0); }            // 나는
+        for _ in 0..24 { path.push(usize::MAX); }        // 영어 구간 = blank
+        for _ in 0..8 { path.push(ko[1].0); }            // 가수다
+
+        let ts = aligner.get_word_timestamps(&path, &spans, 20.0);
+        let first = ts.iter().find(|t| t.word == "나는").unwrap();
+        let last = ts.iter().find(|t| t.word == "가수다").unwrap();
+
+        // 한국어 줄이 영어 구간에 끌려가 늘어나지 않아야 한다.
+        let first_dur = first.end_ms - first.start_ms;
+        assert!(
+            first_dur <= 200,
+            "'나는'이 영어 구간까지 삼켜 늘어남: {}ms",
+            first_dur
+        );
+        // 마지막 줄은 영어 구간 뒤(≥ 640ms)에서 시작 — 밀리지 않고 제자리.
+        assert!(
+            last.start_ms >= 600,
+            "'가수다'가 영어 구간 앞으로 당겨짐: {}ms",
+            last.start_ms
+        );
+    }
+}
+
 #[command]
 pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<String, String> {
     sys_log(&format!(
@@ -862,51 +1755,7 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
     ));
     let lrc_path = if audio_path.starts_with("http") {
         let paths = crate::state::AppPaths::from_handle(&handle);
-        let cache_key = urlencoding::encode(&audio_path).to_string();
-        let base_dir = paths.separated.join(&cache_key);
-        sys_log(&format!(
-            "[Alignment] Saving URL LRC to cache. key={}, dir={}",
-            cache_key,
-            base_dir.to_string_lossy()
-        ));
-        if !base_dir.exists() {
-            fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
-        }
-        let primary = base_dir.join("lyric.lrc");
-        fs::write(&primary, &content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-
-        // Mirror save to common URL variants so future loads find legacy/alternate forms too.
-        for variant in youtube_url_variants(&audio_path) {
-            let mirror_key = urlencoding::encode(&variant).to_string();
-            let mirror_dir = paths.separated.join(&mirror_key);
-            if mirror_dir != base_dir {
-                if !mirror_dir.exists() {
-                    if let Err(e) = fs::create_dir_all(&mirror_dir) {
-                        sys_log(&format!(
-                            "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
-                            mirror_key,
-                            mirror_dir.to_string_lossy(),
-                            e
-                        ));
-                    }
-                }
-                if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), &content) {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy(),
-                        e
-                    ));
-                } else {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write ok. key={}, dir={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy()
-                    ));
-                }
-            }
-        }
-        primary
+        write_lrc_to_url_cache(&paths, &audio_path, &content)?
     } else {
         let audio_file = PathBuf::from(&audio_path);
         if !audio_file.exists() {
@@ -915,48 +1764,128 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
         if !audio_file.is_file() {
             return Err(format!("오디오 경로가 파일이 아닙니다: {}", audio_path));
         }
-        audio_file.with_extension("lrc")
+        let lrc_path = audio_file.with_extension("lrc");
+        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+        lrc_path
     };
 
-    if !audio_path.starts_with("http") {
-        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-    }
     let saved_path = lrc_path.to_string_lossy().to_string();
     sys_log(&format!("[Alignment] LRC saved to {}", saved_path));
     Ok(saved_path)
 }
 
-#[command]
-pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
-    let paths = crate::state::AppPaths::from_handle(&handle);
-    let mut search_paths = Vec::new();
+/// Writes LRC content to the URL-keyed cache dir (`<separated>/<urlencoded url>/lyric.lrc`)
+/// and mirrors it to all `youtube_url_variants()` cache-key forms, so future
+/// lookups find it regardless of which URL form was used to reference the
+/// track. Returns the primary path written.
+fn write_lrc_to_url_cache(paths: &crate::state::AppPaths, url: &str, content: &str) -> Result<PathBuf, String> {
+    let cache_key = urlencoding::encode(url).to_string();
+    let base_dir = paths.separated.join(&cache_key);
     sys_log(&format!(
-        "[Alignment] load_lrc_file requested. is_url={}, path={}",
-        audio_path.starts_with("http"),
-        audio_path
+        "[Alignment] Saving URL LRC to cache. key={}, dir={}",
+        cache_key,
+        base_dir.to_string_lossy()
     ));
+    if !base_dir.exists() {
+        fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
+    }
+    let primary = base_dir.join("lyric.lrc");
+    fs::write(&primary, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
 
-    // 1. If it's a URL, prioritize the cache folder
+    // Mirror save to common URL variants so future loads find legacy/alternate forms too.
+    for variant in youtube_url_variants(url) {
+        let mirror_key = urlencoding::encode(&variant).to_string();
+        let mirror_dir = paths.separated.join(&mirror_key);
+        if mirror_dir != base_dir {
+            if !mirror_dir.exists() {
+                if let Err(e) = fs::create_dir_all(&mirror_dir) {
+                    sys_log(&format!(
+                        "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
+                        mirror_key,
+                        mirror_dir.to_string_lossy(),
+                        e
+                    ));
+                }
+            }
+            if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), content) {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy(),
+                    e
+                ));
+            } else {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write ok. key={}, dir={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(primary)
+}
+
+/// Returns true if an LRC already exists for this URL under any of the same
+/// search paths `load_lrc_file` checks (URL branch only).
+fn url_lrc_exists(paths: &crate::state::AppPaths, url: &str) -> bool {
+    for key_src in youtube_url_variants(url) {
+        let cache_key = urlencoding::encode(&key_src).to_string();
+        let cache_dir = paths.separated.join(&cache_key);
+        if cache_dir.join("lyric.lrc").is_file() || cache_dir.join("vocal.lrc").is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Seeds a local `.lrc` from raw lyric text (e.g. pulled from Meloming) when no
+/// LRC exists yet for this URL. Each non-blank input line becomes an
+/// unsynced placeholder line (`start: 0`), matching the shape `parseLrc`
+/// already treats as "text without a timestamp". Never overwrites existing
+/// sync data — a no-op if any LRC is already found for this URL.
+pub fn seed_lrc_if_missing(paths: &crate::state::AppPaths, url: &str, lyrics_text: &str) -> Result<(), String> {
+    if url_lrc_exists(paths, url) {
+        return Ok(());
+    }
+    let content: String = lyrics_text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|l| format!("[00:00.00]{}", l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.is_empty() {
+        return Ok(());
+    }
+    write_lrc_to_url_cache(paths, url, &content)?;
+    sys_log(&format!("[Alignment] Seeded LRC from Meloming lyrics_text for url={}", url));
+    Ok(())
+}
+
+/// Builds the ordered list of candidate LRC file paths for an audio path
+/// (URL cache variants for http:// sources, sibling/cache/legacy paths for
+/// local files). Shared by `load_lrc_file` and `read_lrc_content` so the
+/// resolution scheme stays in one place.
+fn lrc_search_paths(paths: &crate::state::AppPaths, audio_path: &str) -> Vec<PathBuf> {
+    let mut search_paths = Vec::new();
     if audio_path.starts_with("http") {
-        for key_src in youtube_url_variants(&audio_path) {
+        for key_src in youtube_url_variants(audio_path) {
             let cache_key = urlencoding::encode(&key_src).to_string();
             let cache_dir = paths.separated.join(&cache_key);
             search_paths.push(cache_dir.join("lyric.lrc"));
             search_paths.push(cache_dir.join("vocal.lrc"));
         }
     } else {
-        // 2. For local files, check next to original file
-        let original_file = PathBuf::from(&audio_path);
+        let original_file = PathBuf::from(audio_path);
         search_paths.push(original_file.with_extension("lrc"));
 
-        // 3. Also check if there's a cached version for this local file
-        let cache_key = urlencoding::encode(&audio_path).to_string();
+        let cache_key = urlencoding::encode(audio_path).to_string();
         let cache_dir = paths.separated.join(&cache_key);
         search_paths.push(cache_dir.join("lyric.lrc"));
         search_paths.push(cache_dir.join("vocal.lrc"));
 
-        // Local path normalization fallback for legacy entries with different slash/case.
-        let normalized = normalize_path_key(&audio_path);
+        let normalized = normalize_path_key(audio_path);
         if normalized != audio_path {
             let norm_key = urlencoding::encode(&normalized).to_string();
             let norm_cache_dir = paths.separated.join(&norm_key);
@@ -964,14 +1893,54 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
             search_paths.push(norm_cache_dir.join("vocal.lrc"));
         }
 
-        // 4. If current path is already inside a separated folder (e.g. vocal.wav)
         if let Some(parent) = original_file.parent() {
             search_paths.push(parent.join("lyric.lrc"));
             search_paths.push(parent.join("vocal.lrc"));
         }
     }
-    
-    for p in search_paths {
+    search_paths
+}
+
+/// Reads an audio path's LRC content if any candidate file exists. Synchronous
+/// and lightweight — used both by `load_lrc_file` and the library's per-song
+/// sync-status classification.
+pub fn read_lrc_content(paths: &crate::state::AppPaths, audio_path: &str) -> Option<String> {
+    for p in lrc_search_paths(paths, audio_path) {
+        if p.is_file() {
+            if let Ok(content) = fs::read_to_string(&p) {
+                return Some(content);
+            }
+        }
+    }
+    None
+}
+
+/// Classifies an LRC's sync state: `"synced"` if any line carries a real
+/// (non-zero) `[mm:ss.xx]` timestamp, else `"unsynced"` (lyrics present but
+/// all lines sit at 00:00.00, e.g. a Meloming seed or pasted-but-untimed
+/// lyrics). Callers treat missing/blank content as `"none"`.
+pub fn lrc_sync_status(content: &str) -> &'static str {
+    let re = regex::Regex::new(r"\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]").unwrap();
+    for cap in re.captures_iter(content) {
+        let min: f64 = cap[1].parse().unwrap_or(0.0);
+        let sec: f64 = cap[2].parse().unwrap_or(0.0);
+        if min * 60.0 + sec > 0.0 {
+            return "synced"; // 첫 non-zero 타임스탬프에서 조기 종료
+        }
+    }
+    "unsynced"
+}
+
+#[command]
+pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    sys_log(&format!(
+        "[Alignment] load_lrc_file requested. is_url={}, path={}",
+        audio_path.starts_with("http"),
+        audio_path
+    ));
+
+    for p in lrc_search_paths(&paths, &audio_path) {
         if p.exists() && p.is_file() {
             sys_log(&format!("[Alignment] Found LRC file at: {:?}", p));
             return fs::read_to_string(&p).map_err(|e| format!("LRC 읽기 실패: {}", e));

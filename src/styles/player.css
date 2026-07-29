@@ -24,7 +24,8 @@
   width: 100%;
   padding: 0 32px;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  /* 마지막 auto 열: 현재 곡 빠른 작업 메뉴(⋮) */
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 20px;
 }
@@ -554,6 +555,65 @@ input:checked + .slider:before {
   font-weight: 800;
   color: var(--text-dim);
   letter-spacing: 1px;
+}
+
+/* 현재 곡 빠른 작업 메뉴 (컨트롤바 ⋮ 버튼 → 숨김 팝오버) */
+.dock-more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+.dock-more-popover {
+  position: absolute;
+  bottom: calc(100% + 15px);
+  right: -6px;
+  width: 180px;
+  background: var(--menu-bg);
+  backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dock-more-popover.active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.dock-more-title {
+  padding: 6px 10px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 4px;
+}
+.dock-menu-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: var(--text-main, #e2e8f0);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+.dock-menu-item:hover {
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+.dock-menu-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 #vocal-balance-val {
   color: var(--accent-primary);

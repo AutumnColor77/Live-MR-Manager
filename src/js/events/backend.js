@@ -31,6 +31,81 @@ function pathMatches(a, b) {
   return youtubePathsMatch(a, b);
 }
 
+// ── 다운로드 실패 자동 재시도 ────────────────────────────────────────
+// 유튜브 403(Forbidden) 등은 대개 일시적이라(잠시 후 같은 URL이 정상 동작)
+// 곧바로 실패로 끝내지 말고 점점 간격을 늘려가며 다시 시도한다. 재시도는
+// start_mr_separation을 다시 부르는 방식이라 자연히 대기열 맨 뒤로 밀리고,
+// 다른 곡이 없으면 그 곡만 백오프 간격으로 재시도된다.
+const RETRY_DELAYS_MS = [30_000, 120_000, 300_000, 900_000]; // 30초 → 2분 → 5분 → 15분
+const retryTimers = new Map(); // path -> timeout id
+const retryAttempts = new Map(); // path -> 지금까지 시도 횟수
+
+/** 재시도로 풀릴 가능성이 있는(일시적) 실패인지 — 주로 유튜브 다운로드 문제. */
+function isRetryableSeparationError(statusText) {
+  const s = String(statusText || "");
+  return s.includes("YouTube 오디오")
+    || s.includes("403")
+    || s.includes("Forbidden")
+    || s.includes("unable to download")
+    || s.includes("Unable to download")
+    || s.includes("timed out")
+    || s.includes("Temporary failure")
+    || s.includes("Connection");
+}
+
+export function clearSeparationRetry(path) {
+  const t = retryTimers.get(path);
+  if (t) clearTimeout(t);
+  retryTimers.delete(path);
+  retryAttempts.delete(path);
+}
+
+/** 실패한 분리를 백오프 후 다시 큐에 넣는다. 재시도를 예약했으면 true. */
+function scheduleSeparationRetry(path, statusText) {
+  const attempt = retryAttempts.get(path) || 0;
+  if (attempt >= RETRY_DELAYS_MS.length) return false;
+
+  const delay = RETRY_DELAYS_MS[attempt];
+  const nextAttempt = attempt + 1;
+  retryAttempts.set(path, nextAttempt);
+
+  const song = state.songLibrary.find((s) => pathMatches(s.path, path));
+  const prev = state.activeTasks[path] || {};
+  // 대기 중임을 카드로 계속 보여준다(사라졌다가 나중에 튀어나오면 혼란).
+  state.activeTasks[path] = {
+    ...prev,
+    percentage: 0,
+    status: "RetryWaiting",
+    retryAttempt: nextAttempt,
+    retryMax: RETRY_DELAYS_MS.length,
+    retryDelayMs: delay,
+    title: prev.title || song?.title || "",
+    thumbnail: prev.thumbnail || song?.thumbnail || ""
+  };
+
+  const timer = setTimeout(async () => {
+    retryTimers.delete(path);
+    // 사용자가 그 사이 취소했거나 이미 분리됐으면 재시도하지 않는다.
+    if (!state.activeTasks[path] || state.activeTasks[path].status !== "RetryWaiting") return;
+    try {
+      const done = await invoke("check_mr_separated", { path });
+      if (done) { delete state.activeTasks[path]; scheduleTaskUiUpdate(); return; }
+    } catch (_) {}
+    const { startMrSeparation } = await import('../audio.js');
+    startMrSeparation(path, state.activeTasks[path]?.modelId || null)
+      .catch((err) => console.warn("[Retry] resume failed:", path, err));
+  }, delay);
+  retryTimers.set(path, timer);
+
+  const mins = Math.round(delay / 60000);
+  const when = delay < 60000 ? `${Math.round(delay / 1000)}초` : `${mins}분`;
+  showNotification(
+    `${formatSeparationFailure(statusText)} — ${when} 후 자동으로 다시 시도합니다 (${nextAttempt}/${RETRY_DELAYS_MS.length}).`,
+    "warning"
+  );
+  return true;
+}
+
 function scheduleTaskUiUpdate() {
   if (taskUiUpdateScheduled) return;
   taskUiUpdateScheduled = true;
@@ -40,6 +115,11 @@ function scheduleTaskUiUpdate() {
   });
 }
 
+// 분리 대기열 스냅샷 — 앱을 껐다 켜도(또는 F5) 걸어둔 분리가 남아 있게 한다.
+// 분리는 곡당 수 분씩 걸려 도중에 앱을 끄거나 PC를 재시작하는 일이 흔하다.
+// (이 상수가 없어 저장/복원이 조용히 실패하고 있었다 — try/catch가 삼킴.)
+const ACTIVE_TASKS_SNAPSHOT_KEY = 'separationQueueV1';
+
 function persistActiveTasksSnapshot() {
   try {
     const snapshot = {};
@@ -48,11 +128,19 @@ function persistActiveTasksSnapshot() {
         percentage: Number(task?.percentage || 0),
         status: String(task?.status || "Processing"),
         provider: String(task?.provider || "UNKNOWN"),
-        model: String(task?.model || "")
+        model: String(task?.model || ""),
+        // 재시작 후 같은 모델로 다시 걸기 위해 요청 시점의 모델 id를 함께 저장
+        // (model은 백엔드가 보내는 표시용 파일명이라 재요청에 쓸 수 없다.)
+        modelId: task?.modelId || null,
+        title: String(task?.title || ""),
+        thumbnail: String(task?.thumbnail || "")
       };
     });
-    localStorage.setItem(ACTIVE_TASKS_SNAPSHOT_KEY, JSON.stringify(snapshot));
-  } catch (_) {}
+    if (Object.keys(snapshot).length === 0) localStorage.removeItem(ACTIVE_TASKS_SNAPSHOT_KEY);
+    else localStorage.setItem(ACTIVE_TASKS_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch (err) {
+    console.warn("[Backend] persist separation snapshot failed:", err);
+  }
 }
 
 function readActiveTasksSnapshot() {
@@ -105,7 +193,9 @@ export async function setupBackendListeners() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: true
+        isPlaying: true,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       }).catch(() => {});
       const { updateProgressBar } = await import('../player.js');
       if (!state.rafId) {
@@ -147,7 +237,9 @@ export async function setupBackendListeners() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: false
+        isPlaying: false,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       }).catch(err => console.error("Overlay sync failed:", err));
     }
 
@@ -170,7 +262,19 @@ export async function setupBackendListeners() {
     const isCancelled = s === "cancelled" || s.includes("cancel");
     const isError = s === "error" || s.startsWith("error:");
 
+    // 일시적 다운로드 실패는 끝으로 보지 않고 백오프 후 다시 큐에 넣는다.
+    if (isError && isRetryableSeparationError(status)) {
+      if (scheduleSeparationRetry(path, status)) {
+        persistActiveTasksSnapshot();
+        scheduleTaskUiUpdate();
+        updateCardStatusBadge(path);
+        return;
+      }
+      // 재시도 횟수를 모두 소진 — 아래 일반 오류 처리로 진행
+    }
+
     if (isFinished || isCancelled || isError) {
+      clearSeparationRetry(path);
       delete state.activeTasks[path];
 
       if (isFinished) {
@@ -183,6 +287,22 @@ export async function setupBackendListeners() {
           song.isMr = true;
           song.is_mr = true;
         });
+
+        // 분리 완료 후 키/BPM 자동 분석 — 분석은 분리된 반주(inst)를 쓰므로
+        // 이 시점이 가장 정확. 이미 값이 있으면 건드리지 않는다.
+        const analyzed = state.songLibrary.find((song) => pathMatches(song.path, path));
+        if (analyzed && !(analyzed.songKey || analyzed.song_key) && !analyzed.bpm) {
+          invoke('analyze_key_bpm', { path: analyzed.path }).then(async (res) => {
+            if (!res) return;
+            if (res.key) { analyzed.songKey = res.key; analyzed.song_key = res.key; }
+            if (res.bpm != null && Number.isFinite(res.bpm)) analyzed.bpm = Math.round(res.bpm);
+            if (res.key || res.bpm) {
+              const { saveLibrary } = await import('../audio.js');
+              await saveLibrary(state.songLibrary);
+              renderLibrary();
+            }
+          }).catch((err) => console.warn('[KeyBpm] auto analyze failed:', err));
+        }
         if (state.currentTrack && pathMatches(state.currentTrack.path, path)) {
           state.currentTrack.isSeparated = true;
           state.currentTrack.is_separated = true;
@@ -193,6 +313,13 @@ export async function setupBackendListeners() {
       } else if (isError) {
         showNotification(formatSeparationFailure(status), "error");
       }
+
+      // 노래 추가에서 "분리 후 정렬"로 미뤄둔 곡이면 이제 정렬 대기열에 등록
+      // (완료뿐 아니라 오류/취소로 끝나도 — 가사는 저장돼 있고 원본으로도
+      // 정렬은 가능하므로 요청을 버리지 않는다).
+      import('../alignment-queue.js')
+        .then((m) => m.onSeparationTerminated(path, pathMatches))
+        .catch(() => {});
 
       // Refresh library badges for all termination states (finished, cancelled, error)
       renderLibrary();
@@ -236,65 +363,78 @@ export async function setupBackendListeners() {
     }
   });
 
-  // File Drag & Drop support
+  // File Drag & Drop support — 즉시 추가 대신 "노래 추가" 원스톱 모달을
+  // 파일이 미리 채워진 상태로 연다(곡 정보/MR 분리/가사 정렬까지 한 번에).
   await listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
-    if (paths && paths.length > 0) {
-      const { getAudioMetadata, saveLibrary } = await import('../audio.js');
-      const { renderLibrary } = await import('../ui/library.js');
-
-      let addedCount = 0;
-      for (const path of paths) {
-        const ext = path.split('.').pop().toLowerCase();
-        if (["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(ext)) {
-          try {
-            const metadata = await getAudioMetadata(path);
-            metadata.source = "local";
-            state.songLibrary.push(metadata);
-            addedCount++;
-          } catch (err) {
-            console.error("Drop add failed for:", path, err);
-          }
-        }
-      }
-
-      if (addedCount > 0) {
-        await saveLibrary(state.songLibrary);
-        showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");
-        const { refreshFilterDropdowns } = await import('../ui/core.js');
-        await refreshFilterDropdowns();
-        renderLibrary();
-      }
-    }
+    if (!paths || paths.length === 0) return;
+    const audioPaths = paths.filter((path) =>
+      ["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(path.split('.').pop().toLowerCase())
+    );
+    if (audioPaths.length === 0) return;
+    const { openAddSongModal } = await import('../ui/add-song-modal.js');
+    openAddSongModal(audioPaths);
   });
 
-  // Recover active separation queue after frontend reload (F5).
+  // 분리 대기열 복원 — 두 경우를 모두 다룬다:
+  //  1) F5 새로고침: 백엔드는 살아 있어 get_active_separations가 경로를 준다
+  //     → 카드만 복원(진행률은 곧 오는 이벤트가 채움).
+  //  2) 앱 재시작: 백엔드 메모리가 비어 있어 목록이 없다 → 저장해둔 항목을
+  //     같은 모델로 다시 큐에 넣어 이어서 처리한다(이미 분리된 곡은 건너뜀).
   try {
     const activePaths = await invoke("get_active_separations");
-    if (Array.isArray(activePaths)) {
-      const snapshot = readActiveTasksSnapshot();
-      activePaths.forEach((path) => {
-        if (!path) return;
-        if (!state.activeTasks[path]) {
-          const song = state.songLibrary.find((s) => s.path === path);
-          const saved = snapshot[path] || {};
-          state.activeTasks[path] = {
-            percentage: Number(saved.percentage || 0),
-            status: String(saved.status || "Processing"),
-            provider: String(saved.provider || "UNKNOWN"),
-            model: String(saved.model || ""),
-            title: song?.title || "알 수 없는 곡",
-            thumbnail: song?.thumbnail || ""
-          };
-        }
+    const running = Array.isArray(activePaths) ? activePaths.filter(Boolean) : [];
+    const snapshot = readActiveTasksSnapshot();
+
+    running.forEach((path) => {
+      if (state.activeTasks[path]) return;
+      const song = state.songLibrary.find((s) => s.path === path);
+      const saved = snapshot[path] || {};
+      state.activeTasks[path] = {
+        percentage: Number(saved.percentage || 0),
+        status: String(saved.status || "Processing"),
+        provider: String(saved.provider || "UNKNOWN"),
+        model: String(saved.model || ""),
+        modelId: saved.modelId || null,
+        title: song?.title || saved.title || "알 수 없는 곡",
+        thumbnail: song?.thumbnail || saved.thumbnail || ""
+      };
+    });
+
+    // 저장돼 있는데 백엔드가 돌고 있지 않은 항목 = 지난 실행에서 끊긴 작업
+    const leftovers = Object.keys(snapshot).filter((p) => p && !running.includes(p));
+    for (const path of leftovers) {
+      try {
+        const alreadyDone = await invoke("check_mr_separated", { path });
+        if (alreadyDone) continue; // 끊기기 전에 완료된 곡 — 다시 돌릴 필요 없음
+      } catch (_) { /* 확인 실패 시엔 아래에서 재시도 */ }
+      const saved = snapshot[path] || {};
+      const { startMrSeparation } = await import('../audio.js');
+      startMrSeparation(path, saved.modelId || null).catch((err) => {
+        console.warn("[Backend] Failed to resume separation:", path, err);
       });
-      if (activePaths.length > 0) {
-        persistActiveTasksSnapshot();
-        scheduleTaskUiUpdate();
-        activePaths.forEach((path) => updateCardStatusBadge(path));
+    }
+
+    if (running.length > 0 || leftovers.length > 0) {
+      persistActiveTasksSnapshot();
+      scheduleTaskUiUpdate();
+      running.forEach((path) => updateCardStatusBadge(path));
+      if (leftovers.length > 0) {
+        showNotification(`이전에 진행 중이던 MR 분리 ${leftovers.length}곡을 이어서 처리합니다.`, "info");
       }
     }
   } catch (err) {
-    console.warn("[Backend] Failed to recover active separation queue:", err);
+    console.warn("[Backend] Failed to recover separation queue:", err);
+  }
+
+  // 정렬 대기열도 같은 이유로 복원 + 이어서 처리
+  try {
+    const { restoreAlignmentQueue } = await import('../alignment-queue.js');
+    const restored = restoreAlignmentQueue();
+    if (restored > 0) {
+      showNotification(`이전에 대기 중이던 AI 가사 정렬 ${restored}곡을 이어서 처리합니다.`, "info");
+    }
+  } catch (err) {
+    console.warn("[Backend] Failed to restore alignment queue:", err);
   }
 }

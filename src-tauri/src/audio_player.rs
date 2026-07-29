@@ -162,6 +162,135 @@ impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
     }
 }
 
+/// 임계값 이하는 그대로 통과, 이상은 부드럽게 포화시켜 |출력|이 1.0을 넘지
+/// 않게 한다(무상태·룩어헤드 없음 → RT-safe). 여러 소스를 합산할 때 생기는
+/// 클리핑(디지털 오버플로 왜곡)을 막는 안전 리미터.
+pub fn soft_clip(x: f32, threshold: f32) -> f32 {
+    let a = x.abs();
+    if a <= threshold {
+        x
+    } else {
+        let over = (a - threshold) / (1.0 - threshold);
+        x.signum() * (threshold + (1.0 - threshold) * over.tanh())
+    }
+}
+
+/// 버스 출력 끝단 소프트 리미터. `enabled`(0/1 atomic)로 켜고 끌 수 있다.
+pub struct SoftClipSource<S> where S: Source<Item = f32> {
+    pub input: S,
+    pub threshold: f32,
+    pub enabled: Arc<AtomicU32>, // 1 = on, 0 = bypass
+}
+
+impl<S> SoftClipSource<S> where S: Source<Item = f32> {
+    pub fn new(input: S, threshold: f32, enabled: Arc<AtomicU32>) -> Self {
+        Self { input, threshold, enabled }
+    }
+}
+
+impl<S> Iterator for SoftClipSource<S> where S: Source<Item = f32> {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        let s = self.input.next()?;
+        if self.enabled.load(Ordering::Relaxed) == 0 {
+            Some(s)
+        } else {
+            Some(soft_clip(s, self.threshold))
+        }
+    }
+}
+
+impl<S> Source for SoftClipSource<S> where S: Source<Item = f32> {
+    fn current_span_len(&self) -> Option<usize> { self.input.current_span_len() }
+    fn channels(&self) -> NonZeroU16 { self.input.channels() }
+    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
+    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.input.try_seek(pos)
+    }
+}
+
+/// 메트로놈 클릭 소스. 공유 atomic에서 BPM을 **매 박자 읽어** 클릭 간격을
+/// 실시간 반영한다(재생 중 BPM을 바꿔도 다음 박자부터 즉시 적용, 위상 연속).
+/// 4박마다 다운비트를 조금 높은 음으로 강조한다. 재생 위치(프레임)에서
+/// 시작하도록 start_frame을 받는다. (무한 스트림이라 사용 측에서 take_duration으로
+/// 곡 길이만큼 잘라 쓴다.)
+pub struct MetronomeSource {
+    sample_rate: u32,
+    channels: u16,
+    bpm_bits: Arc<AtomicU32>, // f32 bits, 0 이하면 120으로 처리
+    click_len: u64,           // 프레임 단위
+    frame_in_beat: u64,       // 현재 박자 시작 이후 프레임 수
+    samples_per_beat: u64,    // 현재 박자 길이(박자 시작 시 BPM으로 확정)
+    beat_index: u64,          // 다운비트 강조용
+    ch_i: u16,
+}
+
+impl MetronomeSource {
+    fn resolve_bpm(bits: &Arc<AtomicU32>) -> f32 {
+        let b = f32::from_bits(bits.load(Ordering::Relaxed));
+        if b <= 0.0 { 120.0 } else { b }
+    }
+
+    fn spb_for(bpm: f32, sample_rate: u32) -> u64 {
+        (((60.0 / bpm) * sample_rate as f32) as u64).max(1)
+    }
+
+    pub fn new(bpm_bits: Arc<AtomicU32>, sample_rate: u32, channels: u16, start_frame: u64) -> Self {
+        // 시작 위치를 현재 BPM 기준 박자 위상으로 환산.
+        let bpm0 = Self::resolve_bpm(&bpm_bits);
+        let spb0 = Self::spb_for(bpm0, sample_rate);
+        Self {
+            sample_rate,
+            channels: channels.max(1),
+            bpm_bits,
+            click_len: ((sample_rate as f32) * 0.03) as u64, // 30ms
+            frame_in_beat: start_frame % spb0,
+            samples_per_beat: spb0,
+            beat_index: start_frame / spb0,
+            ch_i: 0,
+        }
+    }
+}
+
+impl Iterator for MetronomeSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        let sample = if self.frame_in_beat < self.click_len {
+            let t = self.frame_in_beat as f32 / self.sample_rate as f32;
+            // 선형 감쇠 엔벨로프.
+            let env = 1.0 - (self.frame_in_beat as f32 / self.click_len as f32);
+            // 4박마다 다운비트 강조(높은 음).
+            let freq = if self.beat_index % 4 == 0 { 1500.0 } else { 1000.0 };
+            (2.0 * std::f32::consts::PI * freq * t).sin() * env * 0.4
+        } else {
+            0.0
+        };
+        // 모든 채널에 동일 값. 채널 인덱스가 한 바퀴 돌면 프레임 전진.
+        self.ch_i += 1;
+        if self.ch_i >= self.channels {
+            self.ch_i = 0;
+            self.frame_in_beat += 1;
+            // 박자 경계 도달 시 다음 박자 길이를 현재 BPM으로 다시 확정(실시간 반영).
+            if self.frame_in_beat >= self.samples_per_beat {
+                self.frame_in_beat = 0;
+                self.beat_index = self.beat_index.wrapping_add(1);
+                let bpm = Self::resolve_bpm(&self.bpm_bits);
+                self.samples_per_beat = Self::spb_for(bpm, self.sample_rate);
+            }
+        }
+        Some(sample)
+    }
+}
+
+impl Source for MetronomeSource {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> NonZeroU16 { NonZeroU16::new(self.channels).unwrap_or(NonZeroU16::new(2).unwrap()) }
+    fn sample_rate(&self) -> NonZeroU32 { NonZeroU32::new(self.sample_rate).unwrap_or(NonZeroU32::new(44100).unwrap()) }
+    fn total_duration(&self) -> Option<Duration> { None }
+    fn try_seek(&mut self, _pos: Duration) -> Result<(), rodio::source::SeekError> { Ok(()) }
+}
+
 /// Source for real-time pitch and tempo shifting.
 pub struct StretchedSource<S> where S: Source<Item = f32> {
     pub input: S,
@@ -318,63 +447,264 @@ pub struct SeekToArgs {
 
 // --- AppState is in types.rs ---
 
+/// 출력 버스의 역할. 정렬 기준·기본값·UI 분기에 쓰인다.
+/// Monitor = 내가 듣는 저지연 경로, Capture = 방송/녹음으로 나가는 정렬 경로.
+/// (미래: InputBus 등 형제 개념이 같은 지연 모델로 들어온다.)
+#[derive(Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BusRole {
+    Monitor,
+    Capture,
+}
+
+/// 하나의 출력 버스 설정. 트랜스포트(sink/player)는 AudioHandler가 별도로 들고
+/// 있고, 여기서는 **버스별 설정/상태**(장치·레이트·채널·지연 보정·추정 지연)만
+/// 다룬다. 지연 보정과 미래 버스 확장이 이 타입을 중심으로 이뤄진다.
+pub struct OutputBus {
+    pub role: BusRole,
+    /// 선택된 장치 이름(빈 문자열: Monitor=시스템 기본 / Capture=꺼짐).
+    pub device_name: Mutex<String>,
+    /// 현재 열린 장치의 실제 설정(리샘플 타깃).
+    pub sample_rate: Arc<AtomicU32>,
+    pub channels: Arc<AtomicU32>, // u16 값을 u32로 보관
+    /// 사용자 지연 보정(ms, f32 bits, ≥0). 이 버스 믹스를 그만큼 늦춰 정렬.
+    pub delay_ms: Arc<AtomicU32>,
+    /// 장치 버퍼 기반 추정 지연(ms, f32 bits). 보정 시작값 안내용(읽기전용).
+    pub est_latency_ms: Arc<AtomicU32>,
+}
+
+impl OutputBus {
+    pub fn new(role: BusRole, rate: u32, channels: u32) -> Self {
+        Self {
+            role,
+            device_name: Mutex::new(String::new()),
+            sample_rate: Arc::new(AtomicU32::new(rate)),
+            channels: Arc::new(AtomicU32::new(channels)),
+            delay_ms: Arc::new(AtomicU32::new(0f32.to_bits())),
+            est_latency_ms: Arc::new(AtomicU32::new(0f32.to_bits())),
+        }
+    }
+    pub fn delay_ms_val(&self) -> f32 {
+        f32::from_bits(self.delay_ms.load(Ordering::Relaxed)).max(0.0)
+    }
+    pub fn est_latency_val(&self) -> f32 {
+        f32::from_bits(self.est_latency_ms.load(Ordering::Relaxed))
+    }
+}
+
 pub struct AudioHandler {
-    pub _stream: MixerDeviceSink, // Keep alive
-    pub controller: Mutex<Player>,
+    // 출력 장치는 런타임에 교체될 수 있으므로 sink와 player를 함께 잠그고 바꾼다.
+    // (device 전환 시 새 sink에 새 player를 연결해 통째로 교체)
+    pub _stream: Mutex<MixerDeviceSink>, // Keep alive (모니터 트랜스포트)
+    pub controller: Mutex<Player>,       // 모니터 트랜스포트
+    /// 모니터 버스 설정(항상 켜져 있는 주 출력).
+    pub monitor: OutputBus,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
     pub current_pos_samples: Arc<AtomicU64>,
     pub total_duration_ms: Arc<AtomicU64>,
-    pub active_sample_rate: u32,
-    pub active_channels: u16,
     pub track_sample_rate: Arc<AtomicU32>,
-    pub vocal_volume: Arc<AtomicU32>, // f32 bits
-    pub instrumental_volume: Arc<AtomicU32>, // f32 bits
+    pub vocal_volume: Arc<AtomicU32>, // 모니터 채널 보컬 게인, f32 bits
+    pub instrumental_volume: Arc<AtomicU32>, // 모니터 채널 인스트 게인, f32 bits
+    pub mon_metro_volume: Arc<AtomicU32>, // 모니터 채널 메트로놈 게인
+    pub mr_vocal_volume: Arc<AtomicU32>,  // MR 채널 보컬 게인
+    pub mr_inst_volume: Arc<AtomicU32>,   // MR 채널 인스트 게인
+    pub mr_metro_volume: Arc<AtomicU32>,  // MR 채널 메트로놈 게인
+    /// 메트로놈 BPM(f32 bits). 재생 중 변경을 클릭에 실시간 반영하기 위해 공유.
+    /// 0 이하면 소스가 120으로 처리.
+    pub metro_bpm: Arc<AtomicU32>,
+    /// 출력 소프트 리미터 on/off (1/0). 기본 켜짐(합산 클리핑 방지). 재생 중 즉시 반영.
+    pub limiter_enabled: Arc<AtomicU32>,
+    /// 마스터 게인(Player.set_volume에 넣는 최종값, f32 bits). 장치 전환 시 새
+    /// player에 다시 적용하기 위해 보관한다(마스터 볼륨은 player에만 있으므로).
+    pub master_gain: Arc<AtomicU32>,
+    // MR(캡처) 채널 트랜스포트(2번째 출력, 선택). 버스 설정은 `mr`에.
+    pub mr_stream: Mutex<Option<MixerDeviceSink>>,
+    pub mr_controller: Mutex<Option<Player>>,
+    /// MR(캡처) 버스 설정. device_name이 비면 채널 꺼짐(모니터만 재생).
+    pub mr: OutputBus,
     pub playback_cv: parking_lot::Condvar,
 }
 
-pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
-    let stream = match DeviceSinkBuilder::open_default_sink() {
-        Ok(s) => s,
-        Err(e) => return Err(format!("오디오 출력을 열지 못했습니다: {}", e)),
-    };
-    
+/// 지정한 이름의 출력 장치를 열어 (sink, sample_rate, channels, 실제 장치 이름,
+/// 추정 지연 ms)을 돌려준다. None이거나 매칭 실패면 시스템 기본 장치로 폴백한다.
+pub fn open_output_sink(
+    device_name: Option<&str>,
+) -> Result<(MixerDeviceSink, u32, u16, String, f32), String> {
     let host = cpal::default_host();
-    let device = host.default_output_device();
-    let device_name = match device.as_ref() {
-        #[allow(deprecated)]
-        Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".into()),
-        None => "Unknown Device".to_string(),
+
+    // 요청한 이름과 일치하는 장치를 먼저 찾는다.
+    let picked: Option<cpal::Device> = device_name.filter(|s| !s.is_empty()).and_then(|want| {
+        host.output_devices().ok().and_then(|devs| {
+            devs.into_iter()
+                .find(|d| d.description().map(|desc| desc.name() == want).unwrap_or(false))
+        })
+    });
+
+    let (stream, resolved) = if let Some(dev) = picked {
+        let name = dev
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "Unknown Device".into());
+        let s = DeviceSinkBuilder::from_device(dev)
+            .map_err(|e| e.to_string())?
+            .open_stream()
+            .map_err(|e| e.to_string())?;
+        (s, name)
+    } else {
+        // 기본 장치. (요청 이름이 없거나 그 장치가 사라진 경우)
+        let s = DeviceSinkBuilder::open_default_sink().map_err(|e| e.to_string())?;
+        let name = host
+            .default_output_device()
+            .and_then(|d| d.description().ok().map(|x| x.name().to_string()))
+            .unwrap_or_else(|| "기본 장치".into());
+        (s, name)
     };
-    
-    let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
-        let config_res = d.default_output_config();
-        if let Ok(config) = config_res {
-            (u32::from(config.sample_rate()), config.channels() as u16)
-        } else { (44100, 2) }
-    } else { (44100, 2) };
+
+    let cfg = stream.config();
+    let rate = u32::from(cfg.sample_rate()).max(1);
+    let channels = u16::from(cfg.channel_count()).max(1);
+    let est_latency_ms = estimate_latency_ms(cfg.buffer_size(), rate);
+    Ok((stream, rate, channels, resolved, est_latency_ms))
+}
+
+/// 장치 버퍼 크기로 출력 지연을 대략 추정한다(보정 시작값 안내용).
+/// 고정 버퍼면 buffer/rate, 아니면 rodio 빌더가 목표로 하는 ~50ms를 쓴다.
+/// 드라이버 지연은 알 수 없으므로 어디까지나 baseline이다.
+fn estimate_latency_ms(buffer: &cpal::BufferSize, rate: u32) -> f32 {
+    match buffer {
+        cpal::BufferSize::Fixed(frames) => (*frames as f32) / (rate as f32) * 1000.0,
+        cpal::BufferSize::Default => 50.0,
+    }
+}
+
+/// Settings DB에 저장된 출력 장치 이름(없으면 None → 기본 장치).
+fn saved_output_device() -> Option<String> {
+    saved_setting("output_device")
+}
+
+fn saved_setting(key: &str) -> Option<String> {
+    let db = crate::state::DB.lock();
+    db.query_row(
+        "SELECT value FROM Settings WHERE key = ?",
+        [key],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .filter(|s| !s.is_empty())
+}
+
+pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
+    // 저장된 장치를 우선 열되, 실패하면 기본 장치로 폴백.
+    let saved = saved_output_device();
+    let (stream, mut device_rate, mut device_channels, device_name, mon_est) =
+        match open_output_sink(saved.as_deref()) {
+            Ok(v) => v,
+            Err(e) => match open_output_sink(None) {
+                Ok(v) => v,
+                Err(_) => return Err(format!("오디오 출력을 열지 못했습니다: {}", e)),
+            },
+        };
 
     if device_rate == 0 { device_rate = 44100; }
     if device_channels == 0 { device_channels = 2; }
 
-    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
-    
+    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch, ~{:.0}ms)", device_name, device_rate, device_channels, mon_est));
+
     let player = Player::connect_new(&stream.mixer());
 
+    let monitor = OutputBus::new(BusRole::Monitor, device_rate, device_channels as u32);
+    *monitor.device_name.lock() = device_name;
+    monitor.est_latency_ms.store(mon_est.to_bits(), Ordering::Relaxed);
+    if let Some(d) = saved_setting("output_delay_ms").and_then(|s| s.parse::<f32>().ok()) {
+        monitor.delay_ms.store(d.max(0.0).to_bits(), Ordering::Relaxed);
+    }
+
+    let mr = OutputBus::new(BusRole::Capture, device_rate, device_channels as u32);
+    if let Some(d) = saved_setting("mr_delay_ms").and_then(|s| s.parse::<f32>().ok()) {
+        mr.delay_ms.store(d.max(0.0).to_bits(), Ordering::Relaxed);
+    }
+
+    // MR 채널(2번째 출력) 복원 — 저장된 장치가 있으면 best-effort로 연다.
+    let (mr_stream_opt, mr_player_opt) =
+        match saved_setting("mr_output_device").and_then(|n| open_output_sink(Some(&n)).ok()) {
+            Some((s, r, c, name, est)) => {
+                let p = Player::connect_new(&s.mixer());
+                sys_log(&format!("[AUDIO] MR channel restored: {} ({}Hz, {}ch, ~{:.0}ms)", name, r, c, est));
+                mr.sample_rate.store(r, Ordering::Relaxed);
+                mr.channels.store(c as u32, Ordering::Relaxed);
+                mr.est_latency_ms.store(est.to_bits(), Ordering::Relaxed);
+                *mr.device_name.lock() = name;
+                (Some(s), Some(p))
+            }
+            None => (None, None),
+        };
+
     Ok(Arc::new(AudioHandler {
-        _stream: stream,
+        _stream: Mutex::new(stream),
         controller: Mutex::new(player),
+        monitor,
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
         active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         current_pos_samples: Arc::new(AtomicU64::new(0)),
         total_duration_ms: Arc::new(AtomicU64::new(0)),
-        active_sample_rate: device_rate,
-        active_channels: device_channels,
         track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
         vocal_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
+        mon_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_vocal_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_inst_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        metro_bpm: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        limiter_enabled: Arc::new(AtomicU32::new(1)), // 기본 켜짐
+        master_gain: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+        mr_stream: Mutex::new(mr_stream_opt),
+        mr_controller: Mutex::new(mr_player_opt),
+        mr,
         playback_cv: parking_lot::Condvar::new(),
     }))
 });
+
+#[cfg(test)]
+mod metro_tests {
+    use super::*;
+
+    #[test]
+    fn soft_clip_transparent_below_and_bounded_above() {
+        // 임계값 이하는 그대로.
+        assert!((soft_clip(0.5, 0.8) - 0.5).abs() < 1e-6);
+        assert!((soft_clip(-0.5, 0.8) + 0.5).abs() < 1e-6);
+        assert!((soft_clip(0.8, 0.8) - 0.8).abs() < 1e-6);
+        // 임계값 이상은 1.0을 절대 넘지 않음(양·음 모두).
+        for x in [0.9f32, 1.0, 1.5, 3.0, 100.0] {
+            let y = soft_clip(x, 0.8);
+            assert!(y <= 1.0 && y > 0.8, "x={x} → y={y} (0.8<y<=1.0)");
+            assert!((soft_clip(-x, 0.8) + y).abs() < 1e-6, "대칭성");
+        }
+    }
+
+    #[test]
+    fn spb_and_resolve_math() {
+        assert_eq!(MetronomeSource::spb_for(120.0, 44100), 22050);
+        assert_eq!(MetronomeSource::spb_for(240.0, 44100), 11025);
+        let z = Arc::new(AtomicU32::new(0f32.to_bits()));
+        assert_eq!(MetronomeSource::resolve_bpm(&z), 120.0, "0이면 120으로 처리");
+    }
+
+    // 재생 중 BPM 변경이 클릭 간격에 실시간 반영되는지: 120→240으로 바꾸면
+    // 같은 시간에 박자가 약 2배로 진행돼야 한다.
+    #[test]
+    fn bpm_change_applies_live() {
+        let bpm = Arc::new(AtomicU32::new(120f32.to_bits()));
+        let mut m = MetronomeSource::new(bpm.clone(), 44100, 1, 0);
+        for _ in 0..44100 { m.next(); } // 1초 @120 → 2박
+        let beats_120 = m.beat_index;
+        bpm.store(240f32.to_bits(), Ordering::Relaxed);
+        for _ in 0..44100 { m.next(); } // 1초 @240 → 약 4박
+        let added = m.beat_index - beats_120;
+        assert_eq!(beats_120, 2, "120 BPM 1초 = 2박");
+        assert!(added >= 3, "240 BPM 1초 ≈ 4박(실시간 반영), got {}", added);
+    }
+}

@@ -4,6 +4,7 @@
 import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
 import { registerAppHandler, callAppHandler } from './app-context.js';
+import { getDisplayLines } from './lrc-parser.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
@@ -196,6 +197,12 @@ export function updateLyrics(segments) {
     container.scrollTop = 0;
     state.currentLyricIndex = -1;
 
+    // 가사 뷰 페이지(/lyrics-view, OBS 독)용 전체 가사 목록 푸시.
+    // 인앱 표시 설정('app' 스코프)을 따라 원문/차음/번역 노출을 결정.
+    invoke('update_overlay_lyrics_full', {
+        lines: (segments || []).map((seg) => displayText(seg, 'app')),
+    }).catch(() => {});
+
     if (!segments || segments.length === 0) {
         lastOverlayCurrent = null;
         lastOverlayNext = null;
@@ -224,9 +231,25 @@ export function updateLyrics(segments) {
 
     container.innerHTML = segments.map((s, i) => `
         <div class="lyric-line-item drawer-lyric-item" data-index="${i}">
-            <span class="lyric-text">${s.text}</span>
+            <span class="lyric-text">${displayText(s, 'app')}</span>
         </div>
     `).join('');
+}
+
+/**
+ * 설정된 표시 항목(원문/차음/번역)을 합친 텍스트. 일반 가사는 text 그대로.
+ * 두 번째 줄부터는 살짝 작게 — 오버레이/드로어 모두 innerHTML로 렌더링하고
+ * white-space: normal이라 `\n`은 그냥 공백으로 뭉개지므로 `<br>`로 조인.
+ * `scope`는 'app'(인앱 드로어) 또는 'overlay'(OBS 오버레이) — 서로 독립적으로
+ * 설정 가능하다(lrc-parser.js의 getLineVisibility).
+ */
+function displayText(seg, scope = 'app') {
+    const lines = getDisplayLines(seg, scope).filter(Boolean);
+    if (lines.length === 0) return '';
+    if (lines.length === 1) return lines[0];
+    const [first, ...rest] = lines;
+    const restHtml = rest.map((l) => `<span style="font-size:0.7em;opacity:0.85;">${l}</span>`).join('<br>');
+    return `${first}<br>${restHtml}`;
 }
 
 /**
@@ -237,7 +260,7 @@ function syncLyricsWithTime(currentTime) {
     const lyrics = state.currentLyrics;
     if (!lyrics || lyrics.length === 0) {
         // [추가] 가사가 없는 곡이라면 오버레이의 가사 영역을 확실히 비움
-        invoke('update_overlay_lyrics', { current: "", next: "" }).catch(err => console.error(err));
+        invoke('update_overlay_lyrics', { current: "", next: "", index: -1 }).catch(err => console.error(err));
         return;
     }
 
@@ -249,16 +272,17 @@ function syncLyricsWithTime(currentTime) {
         }
     }
 
-    const current = (playingIndex !== -1) ? lyrics[playingIndex].text : "";
+    const current = (playingIndex !== -1) ? displayText(lyrics[playingIndex], 'overlay') : "";
     const next = (playingIndex !== -1)
-        ? ((playingIndex + 1 < lyrics.length) ? lyrics[playingIndex + 1].text : "")
-        : ((lyrics.length > 0) ? lyrics[0].text : "");
+        ? ((playingIndex + 1 < lyrics.length) ? displayText(lyrics[playingIndex + 1], 'overlay') : "")
+        : ((lyrics.length > 0) ? displayText(lyrics[0], 'overlay') : "");
 
     // IMPORTANT: Don't skip overlay update only because index didn't change.
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".
     const overlayPayloadChanged = current !== lastOverlayCurrent || next !== lastOverlayNext;
     if (overlayPayloadChanged) {
-        invoke('update_overlay_lyrics', { current, next }).catch(err => console.error(err));
+        // index는 가사 뷰 페이지(/lyrics-view)의 현재 줄 하이라이트용
+        invoke('update_overlay_lyrics', { current, next, index: playingIndex }).catch(err => console.error(err));
         lastOverlayCurrent = current;
         lastOverlayNext = next;
     }
