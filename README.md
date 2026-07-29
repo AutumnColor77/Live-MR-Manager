@@ -298,4 +298,24 @@ Redirect URI: `https://lmrm.vercel.app/oauth/callback`
 
 ## 📄 라이선스 및 협약
 
-본 시스템은 기획/설계 단계(Phase 0-1)의 설계서를 기반으로 구현 중입니다. 모든 기술적 권한은 설계서의 법적 준수 사항을 따릅니다.
+- **프로젝트 코드**: [MIT License](LICENSE) — Copyright (c) 2026 AutumnColor77
+- **제3자 구성요소·런타임 도구·AI 모델**: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- **AI 모델 채택 기준** (상업 방송 사용자 허용 목표): [docs/MODEL_LICENSING.md](docs/MODEL_LICENSING.md)
+- **기여**: [CONTRIBUTING.md](CONTRIBUTING.md) — PR 제출 시 MIT로 기여하는 것에 동의
+
+### 요약
+
+| 구분 | 상태 |
+| --- | --- |
+| 앱 소스·Companion 웹 코드 | MIT |
+| ONNX Runtime, Signalsmith 등 | 각 구성요소 라이선스 (대부분 MIT/Apache-2.0) |
+| FFmpeg (BtbN LGPL), yt-dlp.exe | 원 배포처에서 실행 시 별도 다운로드 · LGPL-2.1-or-later / GPLv3+ 고지 |
+| 기본 MR 모델 (Kim Vocal 2, Inst HQ 3) | UVR 생태계 · **잠정 MIT + 필수 크레딧** ([상세](docs/MODEL_LICENSING.md)) |
+
+Companion 이용약관·개인정보 처리방침은 서비스 운영 문서이며, MIT가 부여한 소프트웨어 사용·재배포 권리를 축소하지 않습니다.
+→ [이용약관](https://lmrm.vercel.app/terms) · [개인정보 처리방침](https://lmrm.vercel.app/privacy)
+
+### UVR 크레딧
+
+기본 분리 모델은 [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) 생태계 가중치를 사용합니다.
+크레딧: Anjok07, aufr33 및 UVR 기여자.

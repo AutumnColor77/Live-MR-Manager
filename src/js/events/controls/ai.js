@@ -15,8 +15,8 @@ import {
 } from '../../model-api.js';
 
 const modelDescMap = {
-  kim: "일반적인 보컬·MR 분리에 적합합니다.",
-  inst_hq_3: "MR(반주) 품질이 더 중요할 때 추천합니다.",
+  kim: "일반적인 보컬·MR 분리에 적합합니다. UVR 모델(잠정 MIT + 크레딧: Anjok07, aufr33).",
+  inst_hq_3: "MR(반주) 품질이 더 중요할 때 추천합니다. UVR 모델(잠정 MIT + 크레딧: Anjok07, aufr33).",
 };
 
 async function hasPendingSeparations() {

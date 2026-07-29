@@ -2,7 +2,8 @@
 name = "tauri-app"
 version = "0.5.1"
 description = "Live MR Manager"
-authors = ["you"]
+authors = ["AutumnColor77"]
+license = "MIT"
 edition = "2021"
 default-run = "tauri-app"
 

@@ -7,7 +7,10 @@ use std::path::PathBuf;
 use std::fs;
 
 use crate::vocal_remover::WaveformRemover;
-// AI Model Library Reference: https://huggingface.co/seanghay/uvr_models/tree/main
+// AI models: UVR ecosystem weights mirrored on Hugging Face.
+// License posture (provisional MIT + required credit): docs/MODEL_LICENSING.md, THIRD_PARTY_NOTICES.md
+// Upstream: https://github.com/Anjok07/ultimatevocalremovergui
+// Mirror: https://huggingface.co/seanghay/uvr_models/tree/main
 
 use crate::audio_player::sys_log;
 use crate::types::SongMetadata;

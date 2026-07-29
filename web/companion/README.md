@@ -11,7 +11,7 @@
 | `/` | 연동 안내, 미니앱 등록용 랜딩 |
 | `/faq`, `/qa` | FAQ·문의 허브 (Discord, GitHub Issues) |
 | `/privacy` | 개인정보 처리방침 (앱·웹 통합) |
-| `/terms` | 이용약관 |
+| `/terms` | 이용약관 (MIT 소프트웨어 권리와 서비스 약관 분리) |
 | `/download` | GitHub Releases 링크 |
 | `/login` | (테스트) 웹 멜로밍 OAuth 시작 |
 | `/account` | (테스트) 웹 로그인 세션 확인 |
@@ -55,6 +55,11 @@ NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJnk3VJyf
 배포 앱 로그인: **Client Secret은 Vercel에만** 두고, 데스크톱 릴리스는 GitHub secret `MELOMING_CLIENT_ID`만 바이너리에 임베드합니다. 앱은 Secret이 없으면 Companion `/api/oauth/exchange`·`/api/oauth/refresh`로 토큰을 교환합니다.
 
 문의 채널·Discord 서버 설정: [`docs/DISCORD_SETUP.md`](../../docs/DISCORD_SETUP.md)
+
+## 라이선스
+
+Companion 웹 코드는 루트 저장소와 동일하게 **MIT**입니다. 이용약관은 Companion/OAuth 서비스 조건이며 MIT 재배포 권리를 축소하지 않습니다.
+제3자·모델: [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md), [`docs/MODEL_LICENSING.md`](../../docs/MODEL_LICENSING.md).
 
 ## GitHub Issues
 

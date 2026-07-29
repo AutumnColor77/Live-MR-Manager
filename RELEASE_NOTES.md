@@ -1,5 +1,27 @@
 # Release Notes
 
+## License & notices (docs, 2026-07-29)
+
+다음 정식 릴리스(v0.5.2+)에 포함될 라이선스 정비입니다. **앱 버전 번호는 아직 올리지 않았습니다.**
+
+- 루트 [LICENSE](LICENSE) (MIT) 복원 · `package.json` / `Cargo.toml` / Companion `package.json`에 `license: MIT` 선언
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — 링크·런타임 다운로드(FFmpeg LGPL, yt-dlp.exe GPLv3+)·AI 모델 구분
+- FFmpeg를 BtbN 월말 LGPL 고정 빌드로 전환하고 SHA-256 검증 추가 (`libmp3lame` 320kbps·yt-dlp 병합 확인)
+- [docs/MODEL_LICENSING.md](docs/MODEL_LICENSING.md) — 상업 방송 허용 목표, UVR 잠정 MIT+크레딧, PR#1 Apache 정렬 OK / CC-BY-NC Deux 공식 제외
+- Companion 이용약관: MIT 소프트웨어 권리를 축소하지 않도록 범위 정리 (시행일 2026-07-29)
+- 설정 > 법적 고지: MIT·제3자 고지 링크 추가
+
+### 릴리스 준수 체크리스트
+
+- [ ] GitHub가 저장소 라이선스를 MIT로 표시하는지 확인
+- [ ] 설치 파일(`*_setup.exe`)에 ffmpeg.exe / yt-dlp.exe / `.onnx`가 **포함되지 않음** (런타임 다운로드만). ONNX Runtime EP DLL(`resources/libs`)은 MIT로 번들 가능 — 고지 유지.
+- [ ] RELEASE 본문 또는 앱 내 링크에 THIRD_PARTY_NOTICES·UVR 크레딧 안내
+- [ ] FFmpeg 고정 자산 SHA-256 일치, 외부 도구 재호스팅·설치 패키지 번들 없음
+- [ ] Companion `/terms` 배포(Vercel)가 갱신된 약관을 반영
+- [ ] NC 모델(Deux 등)을 공식 추천/Release 자산에 올리지 않음
+
+---
+
 ## v0.5.1 (2026-07-13)
 
 멜로밍 OAuth **배포 로그인 핫픽스** — 설치본에서도 Client Secret 없이 로그인 가능.

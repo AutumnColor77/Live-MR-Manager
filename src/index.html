@@ -751,7 +751,8 @@
                     </div>
                   </div>
                   <div id="ai-model-desc" class="ai-model-desc">
-                    일반적인 보컬·MR 분리에 적합합니다.
+                    일반적인 보컬·MR 분리에 적합합니다. 기본 모델은 UVR(Anjok07, aufr33) 생태계 가중치이며
+                    라이선스는 잠정 MIT(크레딧 필수)입니다. 상세: 설정 → 법적 고지.
                   </div>
                 </div>
                 <div class="ai-actions-right">
@@ -802,14 +803,30 @@
               </div>
               <div class="ai-model-card">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">개인정보 처리방침 · 이용약관</h2>
+                  <h2 class="ai-title-large">개인정보 처리방침 · 이용약관 · 라이선스</h2>
                   <div class="ai-model-desc">
-                    Companion 웹(lmrm.vercel.app)에 게시된 문서입니다. 멜로밍 OAuth, 로컬 저장, Last.fm 연동 등을 확인할 수 있습니다.
+                    앱 소스는 MIT입니다. Companion 약관은 온라인 연동·브랜드에만 적용되며 MIT 권리를 축소하지 않습니다.
+                    AI 모델·FFmpeg·yt-dlp 등 제3자 고지는 GitHub 문서를 참고하세요.
                   </div>
                 </div>
-                <div class="ai-actions-right">
+                <div class="ai-actions-right support-actions-grid">
                   <button id="btn-open-privacy-policy" class="btn-ai-action secondary" type="button">개인정보 처리방침</button>
                   <button id="btn-open-terms-of-service" class="btn-ai-action secondary" type="button">이용약관</button>
+                  <button id="btn-open-license" class="btn-ai-action secondary" type="button">MIT 라이선스</button>
+                  <button id="btn-open-third-party-notices" class="btn-ai-action secondary" type="button">제3자 고지</button>
+                </div>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">런타임 외부 도구</h2>
+                  <div class="ai-model-desc">
+                    FFmpeg(LGPL-2.1-or-later)와 yt-dlp Windows 실행 파일(GPLv3+)은 설치 파일에 포함되지 않으며,
+                    필요할 때 원 배포처에서 %LOCALAPPDATA%\LiveMRManager\tools로 직접 다운로드되어 별도 프로세스로 실행됩니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right support-actions-grid">
+                  <button id="btn-open-ffmpeg-source" class="btn-ai-action secondary" type="button">FFmpeg 소스·빌드</button>
+                  <button id="btn-open-ytdlp-source" class="btn-ai-action secondary" type="button">yt-dlp 소스</button>
                 </div>
               </div>
             </section>
@@ -1171,7 +1188,7 @@
     <div class="modal-content download-box">
       <div class="download-icon">🤖</div>
       <h3>AI 엔진 초기설정 중...</h3>
-      <p>최초 1회 AI 모델 다운로드가 필요합니다. (약 67MB)</p>
+      <p>최초 1회 AI 모델 다운로드가 필요합니다. (약 67MB · UVR 모델, 잠정 MIT + 크레딧)</p>
       <div class="download-progress-container">
         <div class="download-progress-bar" id="model-download-bar"></div>
       </div>

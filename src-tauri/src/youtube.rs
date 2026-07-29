@@ -159,6 +159,9 @@ impl YoutubeManager {
             }
         }
 
+        // Windows PyInstaller build: combined work under GPLv3+ (yt-dlp source is Unlicense).
+        // Downloaded at runtime into tools cache — not shipped inside the app installer.
+        // See THIRD_PARTY_NOTICES.md.
         let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 
         let target = Self::managed_cache_dir().join(Self::managed_bin_name());

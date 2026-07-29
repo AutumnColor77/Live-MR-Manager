@@ -4,11 +4,17 @@
  */
 export const GITHUB_REPO = 'AutumnColor77/Live-MR-Manager';
 export const COMPANION_BASE = 'https://lmrm.vercel.app';
+export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`;
 
 export const FAQ_URL = `${COMPANION_BASE}/faq`;
 export const QA_URL = `${COMPANION_BASE}/qa`;
 export const PRIVACY_URL = `${COMPANION_BASE}/privacy`;
 export const TERMS_URL = `${COMPANION_BASE}/terms`;
+export const LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
+export const THIRD_PARTY_NOTICES_URL = `${GITHUB_REPO_URL}/blob/main/THIRD_PARTY_NOTICES.md`;
+export const MODEL_LICENSING_URL = `${GITHUB_REPO_URL}/blob/main/docs/MODEL_LICENSING.md`;
+export const FFMPEG_SOURCE_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-06-30-13-34';
+export const YTDLP_SOURCE_URL = 'https://github.com/yt-dlp/yt-dlp';
 
 /** Discord 초대 링크 — [LMRM] Live MR Manager */
 export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';

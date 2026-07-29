@@ -7,10 +7,14 @@ import { loadLibrary } from '../../audio.js';
 import { getAppHandler } from '../../app-context.js';
 import {
   FAQ_URL,
+  FFMPEG_SOURCE_URL,
   GITHUB_ISSUES_BUG_URL,
+  LICENSE_URL,
   PRIVACY_URL,
   QA_URL,
   TERMS_URL,
+  THIRD_PARTY_NOTICES_URL,
+  YTDLP_SOURCE_URL,
   resolveDiscordUrl,
 } from '../../companion-links.js';
 import {
@@ -290,6 +294,10 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
   const appVersionDesc = document.getElementById("app-version-desc");
   const btnOpenPrivacyPolicy = document.getElementById("btn-open-privacy-policy");
   const btnOpenTermsOfService = document.getElementById("btn-open-terms-of-service");
+  const btnOpenLicense = document.getElementById("btn-open-license");
+  const btnOpenThirdPartyNotices = document.getElementById("btn-open-third-party-notices");
+  const btnOpenFfmpegSource = document.getElementById("btn-open-ffmpeg-source");
+  const btnOpenYtdlpSource = document.getElementById("btn-open-ytdlp-source");
   const btnOpenFaq = document.getElementById("btn-open-faq");
   const btnOpenQa = document.getElementById("btn-open-qa");
   const btnOpenDiscord = document.getElementById("btn-open-discord");
@@ -307,6 +315,10 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
 
   if (btnOpenPrivacyPolicy) btnOpenPrivacyPolicy.onclick = () => openCompanionPage(PRIVACY_URL);
   if (btnOpenTermsOfService) btnOpenTermsOfService.onclick = () => openCompanionPage(TERMS_URL);
+  if (btnOpenLicense) btnOpenLicense.onclick = () => openCompanionPage(LICENSE_URL);
+  if (btnOpenThirdPartyNotices) btnOpenThirdPartyNotices.onclick = () => openCompanionPage(THIRD_PARTY_NOTICES_URL);
+  if (btnOpenFfmpegSource) btnOpenFfmpegSource.onclick = () => openCompanionPage(FFMPEG_SOURCE_URL);
+  if (btnOpenYtdlpSource) btnOpenYtdlpSource.onclick = () => openCompanionPage(YTDLP_SOURCE_URL);
   if (btnOpenFaq) btnOpenFaq.onclick = () => openCompanionPage(FAQ_URL);
   if (btnOpenQa) btnOpenQa.onclick = () => openCompanionPage(QA_URL);
   if (btnOpenDiscord) btnOpenDiscord.onclick = () => openCompanionPage(resolveDiscordUrl());

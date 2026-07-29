@@ -8,7 +8,7 @@ import {
 export const metadata = {
   title: "이용약관",
   description:
-    "Live MR Manager 및 Companion 웹 이용약관 — 베타 안내, 멜로밍 연동, 저작권·면책",
+    "Live MR Manager 및 Companion 웹 이용약관 — MIT와 서비스 약관 관계, 멜로밍 연동, 저작권·면책",
 };
 
 export default function TermsPage() {
