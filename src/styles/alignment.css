@@ -1068,7 +1068,7 @@ canvas#waveform-canvas {
 /* 마커 버튼 4개가 카드 폭을 균등하게 채운다 */
 .marker-controls-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     margin-top: 8px;
     padding-top: 8px;

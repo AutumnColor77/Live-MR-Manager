@@ -61,7 +61,7 @@
 | 오류 | 태그 목록을 불러오지 못했습니다. | `src/js/ui/manager.js` |
 | 오류 | 편집 중인 곡을 찾을 수 없습니다. | `src/js/events/modals.js` |
 | 오류 | AI 정렬 준비 실패: {err} | `src/js/alignment-viewer.js` |
-| 오류 | BPM 그리드 배치 실패: {err} | `src/js/alignment-viewer.js` |
+| 오류 | BPM 그리드 배치 실패: {err} | `src/js/alignment-viewer.js`<br>UI 버튼은 숨김(`#bpm-grid-btn` `hidden`), 코드 경로 유지 |
 | 오류 | BPM을 분석하지 못했습니다. | `src/js/alignment-viewer.js` |
 | 오류 | CSV 보내기 중 오류: {err} | `src/js/events/controls/settings.js` |
 | 오류 | LAN 설정 변경 실패: {err} | `src/js/events/controls/overlay.js` |
@@ -128,7 +128,7 @@
 | 성공 | AI 가사 정렬 모델 다운로드가 완료되었습니다. | `src/js/events/controls/alignment-model.js` (notify()) |
 | 성공 | AI 자동 정렬을 시작했습니다. 완료되면 자동으로 결과가 반영돼요.[ (랩/혼합: …)] | `src/js/alignment-viewer.js` |
 | 성공 | AI 정렬 결과 {n}줄이 반영되었습니다. 결과는 AI 초안이니 필요한 부분만 검토해 다듬어 주세요. | `src/js/alignment-viewer.js` |
-| 성공 | BPM {bpm} 그리드로 {n}줄 대략 배치했습니다. 필요한 부분만 수동 보정하세요. | `src/js/alignment-viewer.js` |
+| 성공 | BPM {bpm} 그리드로 {n}줄 대략 배치했습니다. 필요한 부분만 수동 보정하세요. | `src/js/alignment-viewer.js`<br>UI 버튼 숨김·코드 유지 |
 | 성공 | KEY/BPM 분석을 반영했습니다. | `src/js/events/modals.js` |
 | 성공 | MR 분리가 완료되었습니다. | `src/js/events/backend.js` |
 | 성공 | MR 캐시 저장 위치를 저장했습니다. 앱을 다시 시작하면 적용됩니다. | `src/js/events/controls/settings.js` |

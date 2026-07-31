@@ -163,7 +163,9 @@ export class ForcedAlignmentViewer {
                                 <button id="mark-vocalstart-btn" class="marker-btn" title="현재 재생 위치를 보컬 시작 지점으로 지정 (V)">보컬 시작 지정 (V)</button>
                                 <button id="mark-ilstart-btn" class="marker-btn" title="현재 재생 위치를 간주 시작으로 지정 (M)">간주 시작 (M)</button>
                                 <button id="mark-ilend-btn" class="marker-btn" title="현재 재생 위치를 간주 종료로 지정 (열린 간주가 있을 때 M)">간주 종료</button>
-                                <button id="bpm-grid-btn" class="marker-btn" title="미싱크 가사를 BPM 박자 간격으로 대략 배치합니다. 라이브러리에 BPM이 있으면 분석을 건너뛰고, 없으면 먼저 분석합니다. 이미 싱크된 줄과 간주 구간은 건드리지 않습니다.">BPM 그리드 배치</button>
+                                <!-- BPM 그리드 배치는 UI에서만 숨긴 상태다. hidden을 지우고
+                                     .marker-controls-row 열 수를 4로 되돌리면 다시 노출된다. -->
+                                <button id="bpm-grid-btn" class="marker-btn" hidden title="미싱크 가사를 BPM 박자 간격으로 대략 배치합니다. 라이브러리에 BPM이 있으면 분석을 건너뛰고, 없으면 먼저 분석합니다. 이미 싱크된 줄과 간주 구간은 건드리지 않습니다.">BPM 그리드 배치</button>
                             </div>
                             <div id="vocal-start-suggestion" class="vocal-start-suggestion" hidden>
                                 <span id="vocal-start-suggestion-label" class="vocal-start-suggestion-label"></span>
