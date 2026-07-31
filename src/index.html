@@ -701,52 +701,52 @@
                 <h3>AI 분리 엔진</h3>
               </div>
 
-              <!-- 방송 보호 모드 -->
-              <div class="ai-model-card broadcast-mode-card">
-                <div class="ai-info-left">
-                  <h2 class="ai-title-large">방송 제원 보호 모드</h2>
-                  <div class="ai-model-desc">
-                    방송 중 끊김을 줄이기 위해 AI 분리 속도를 낮춥니다. 처리 시간은 다소 길어집니다.
+              <!-- 동작 토글 (방송 보호 · 인트로 스킵 · 분리 방식 묻기) -->
+              <div class="ai-model-card settings-toggle-stack">
+                <div class="settings-toggle-row">
+                  <div class="ai-info-left">
+                    <h2 class="ai-title-large">방송 제원 보호 모드</h2>
+                    <div class="ai-model-desc">
+                      방송 중 끊김을 줄이기 위해 AI 분리 속도를 낮춥니다. 처리 시간은 다소 길어집니다.
+                    </div>
+                  </div>
+                  <div class="ai-actions-right settings-toggle-actions">
+                    <label class="switch settings-toggle-switch">
+                      <input type="checkbox" id="toggle-broadcast-mode">
+                      <span class="slider round"></span>
+                    </label>
                   </div>
                 </div>
-                <div class="ai-actions-right broadcast-mode-card-actions">
-                  <label class="switch broadcast-mode-card-switch">
-                    <input type="checkbox" id="toggle-broadcast-mode">
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-              </div>
 
-              <!-- 인트로 자동 건너뛰기 -->
-              <div class="ai-model-card auto-skip-intro-card">
-                <div class="ai-info-left">
-                  <h2 class="ai-title-large">인트로 자동 건너뛰기</h2>
-                  <div class="ai-model-desc">
-                    보컬 시작이 지정된 곡은 재생 시 인트로를 자동으로 건너뜁니다.
+                <div class="settings-toggle-row">
+                  <div class="ai-info-left">
+                    <h2 class="ai-title-large">인트로 자동 건너뛰기</h2>
+                    <div class="ai-model-desc">
+                      보컬 시작이 지정된 곡은 재생 시 인트로를 자동으로 건너뜁니다.
+                    </div>
+                  </div>
+                  <div class="ai-actions-right settings-toggle-actions">
+                    <label class="switch settings-toggle-switch">
+                      <input type="checkbox" id="toggle-auto-skip-intro" checked>
+                      <span class="slider round"></span>
+                    </label>
                   </div>
                 </div>
-                <div class="ai-actions-right auto-skip-intro-card-actions">
-                  <label class="switch auto-skip-intro-card-switch">
-                    <input type="checkbox" id="toggle-auto-skip-intro" checked>
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-              </div>
 
-              <!-- MR 분리 방식 매번 묻기 -->
-              <div class="ai-model-card ask-separation-mode-card">
-                <div class="ai-info-left">
-                  <h2 class="ai-title-large">MR 분리 방식 매번 묻기</h2>
-                  <div class="ai-model-desc">
-                    MR 분리를 시작할 때 빠른 분리 / 고품질 분리 선택 창을 띄웁니다.
-                    끄면 기본 모델로 바로 분리합니다.
+                <div class="settings-toggle-row">
+                  <div class="ai-info-left">
+                    <h2 class="ai-title-large">MR 분리 방식 매번 묻기</h2>
+                    <div class="ai-model-desc">
+                      MR 분리를 시작할 때 빠른 분리 / 고품질 분리 선택 창을 띄웁니다.
+                      끄면 기본 모델로 바로 분리합니다.
+                    </div>
                   </div>
-                </div>
-                <div class="ai-actions-right ask-separation-mode-card-actions">
-                  <label class="switch ask-separation-mode-card-switch">
-                    <input type="checkbox" id="toggle-ask-separation-mode" checked>
-                    <span class="slider round"></span>
-                  </label>
+                  <div class="ai-actions-right settings-toggle-actions">
+                    <label class="switch settings-toggle-switch">
+                      <input type="checkbox" id="toggle-ask-separation-mode" checked>
+                      <span class="slider round"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
 

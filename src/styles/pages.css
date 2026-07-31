@@ -519,15 +519,48 @@ html[data-theme="sky"] .task-progress-container {
 }
 
 .broadcast-mode-card-actions,
-.auto-skip-intro-card-actions {
+.auto-skip-intro-card-actions,
+.settings-toggle-actions {
   align-items: flex-end;
   justify-content: center;
 }
 
 .broadcast-mode-card-switch,
-.auto-skip-intro-card-switch {
+.auto-skip-intro-card-switch,
+.settings-toggle-switch {
   transform: scale(1.2);
   transform-origin: right center;
+}
+
+/* AI 분리 엔진: 동작 토글 3개를 한 카드에 행으로 묶음 */
+.settings-container .ai-model-card.settings-toggle-stack {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: none;
+  align-items: stretch;
+  gap: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.settings-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--settings-actions-width);
+  align-items: center;
+  column-gap: 28px;
+  padding: 14px 0;
+}
+
+.settings-toggle-row + .settings-toggle-row {
+  border-top: 1px solid var(--glass-border);
+}
+
+.settings-toggle-stack .ai-title-large {
+  font-size: 1.05rem;
+}
+
+.settings-toggle-stack .ai-model-desc {
+  font-size: 0.8rem;
 }
 
 .ai-recommend-card {
