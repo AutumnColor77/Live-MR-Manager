@@ -14,6 +14,15 @@ describe('filterSongLibrary', () => {
     expect(youtubeOnly[0].title).toBe('Alpha');
   });
 
+  it('filters by sourceFilter chip (overrides library tab)', () => {
+    const localOnly = filterSongLibrary(sampleSongs, {
+      currentTab: 'library',
+      sourceFilter: 'local',
+    });
+    expect(localOnly).toHaveLength(1);
+    expect(localOnly[0].title).toBe('Beta');
+  });
+
   it('filters by search query', () => {
     const result = filterSongLibrary(sampleSongs, { query: 'beta' });
     expect(result).toHaveLength(1);

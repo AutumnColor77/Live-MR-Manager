@@ -212,7 +212,7 @@ async function runMelomingPush(pullBtn, pushBtn) {
       }
     }
     await refreshAccountWidget();
-    await reloadLibrary('meloming');
+    await reloadLibrary('library');
   } catch (err) {
     setStatus(String(err), true);
     showNotification(String(err), 'error');

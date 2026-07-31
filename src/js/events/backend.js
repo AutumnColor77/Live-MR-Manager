@@ -190,6 +190,21 @@ export async function setupBackendListeners() {
           state.currentTrack.is_mr = true;
           updateAiTogglesState(state.currentTrack);
         }
+
+        // 노래 추가 모달에서 "분리 후 정렬"을 켠 경우
+        let alignPath = null;
+        for (const pending of state.pendingAlignAfterSep) {
+          if (pathMatches(pending, path)) {
+            alignPath = pending;
+            break;
+          }
+        }
+        if (alignPath) {
+          state.pendingAlignAfterSep.delete(alignPath);
+          import('../alignment-queue.js').then(({ enqueueAlignment }) => {
+            enqueueAlignment([alignPath]);
+          }).catch((err) => console.error('[Backend] Post-sep align failed:', err));
+        }
       } else if (isError) {
         showNotification(formatSeparationFailure(status), "error");
       }
@@ -236,36 +251,17 @@ export async function setupBackendListeners() {
     }
   });
 
-  // File Drag & Drop support
+  // File Drag & Drop → 노래 추가 모달 (즉시 라이브러리 push 하지 않음)
   await listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
-    if (paths && paths.length > 0) {
-      const { getAudioMetadata, saveLibrary } = await import('../audio.js');
-      const { renderLibrary } = await import('../ui/library.js');
-
-      let addedCount = 0;
-      for (const path of paths) {
-        const ext = path.split('.').pop().toLowerCase();
-        if (["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(ext)) {
-          try {
-            const metadata = await getAudioMetadata(path);
-            metadata.source = "local";
-            state.songLibrary.push(metadata);
-            addedCount++;
-          } catch (err) {
-            console.error("Drop add failed for:", path, err);
-          }
-        }
-      }
-
-      if (addedCount > 0) {
-        await saveLibrary(state.songLibrary);
-        showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");
-        const { refreshFilterDropdowns } = await import('../ui/core.js');
-        await refreshFilterDropdowns();
-        renderLibrary();
-      }
-    }
+    if (!paths || paths.length === 0) return;
+    const audioPaths = paths.filter((path) => {
+      const ext = String(path).split(".").pop()?.toLowerCase();
+      return ["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(ext);
+    });
+    if (audioPaths.length === 0) return;
+    const { openAddSongModal } = await import("../add-song-modal.js");
+    openAddSongModal({ paths: audioPaths, preferFileTab: true });
   });
 
   // Recover active separation queue after frontend reload (F5).

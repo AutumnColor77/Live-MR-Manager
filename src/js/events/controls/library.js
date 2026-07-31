@@ -41,6 +41,10 @@ export function createViewModeUpdater() {
 }
 
 export function initLibraryListeners(updateViewMode) {
+  import('../../ui/library.js').then(({ initLibrarySelectionControls }) => {
+    if (initLibrarySelectionControls) initLibrarySelectionControls();
+  });
+
   document.addEventListener("click", (e) => {
     if (elements.contextMenu && (elements.contextMenu.classList.contains("active") || elements.contextMenu.style.display === 'flex')) {
       if (!e.target.closest("#context-menu")) {
@@ -101,6 +105,11 @@ export function initLibraryListeners(updateViewMode) {
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      const addSong = document.getElementById("add-song-modal");
+      if (addSong?.classList.contains("active")) {
+        import("../../add-song-modal.js").then(({ closeAddSongModal }) => closeAddSongModal());
+        return;
+      }
       const activeModal = document.querySelector(".modal-overlay.active");
       if (activeModal) activeModal.classList.remove("active");
 
@@ -130,6 +139,17 @@ export function initLibraryListeners(updateViewMode) {
   if (elements.libSortSelect) {
     elements.libSortSelect.addEventListener("change", renderLibraryDeferred);
   }
+
+  document.querySelectorAll(".source-filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const source = chip.dataset.source || "all";
+      state.sourceFilter = source;
+      localStorage.setItem("librarySourceFilter", source);
+      import("../navigation.js").then(({ syncSourceFilterChips }) => syncSourceFilterChips());
+      renderLibraryDeferred();
+    });
+  });
+  import("../navigation.js").then(({ syncSourceFilterChips }) => syncSourceFilterChips());
 
   if (updateViewMode) {
     updateViewMode(state.viewMode || "grid");

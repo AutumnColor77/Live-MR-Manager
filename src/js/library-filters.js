@@ -40,12 +40,20 @@ export function filterSongLibrary(songs, {
   syncFilter = "all",
   sortBy = "dateNew",
   currentTab = "library",
+  sourceFilter = "all",
 } = {}) {
   let filtered = songs.map((s, i) => ({ ...s, originalIndex: i }));
 
-  if (currentTab === "youtube") filtered = filtered.filter(s => s.source === "youtube");
-  else if (currentTab === "local") filtered = filtered.filter(s => s.source === "local");
-  else if (currentTab === "meloming") filtered = filtered.filter(isMelomingLinkedSong);
+  // sourceFilter (library chips) takes precedence; currentTab kept for legacy callers/tests.
+  const source = sourceFilter && sourceFilter !== "all"
+    ? sourceFilter
+    : (currentTab === "youtube" || currentTab === "local" || currentTab === "meloming"
+      ? currentTab
+      : "all");
+
+  if (source === "youtube") filtered = filtered.filter(s => s.source === "youtube");
+  else if (source === "local") filtered = filtered.filter(s => s.source === "local");
+  else if (source === "meloming") filtered = filtered.filter(isMelomingLinkedSong);
 
   if (syncFilter !== "all" && syncFilter !== "") {
     filtered = filtered.filter(s => getLyricSyncStatus(s) === syncFilter);

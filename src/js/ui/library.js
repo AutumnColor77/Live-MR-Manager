@@ -29,6 +29,7 @@ export function getFilteredSongs() {
     syncFilter: elements.libSyncFilter?.value || "all",
     sortBy: elements.libSortSelect?.value || "dateNew",
     currentTab: state.activeView || "library",
+    sourceFilter: state.sourceFilter || "all",
   });
   state.filteredTracks = filtered;
   return filtered;
@@ -43,9 +44,7 @@ export function renderLibrary() {
   elements.songGrid.innerHTML = "";
   
   if (filtered.length === 0) {
-    const emptyMessage = (state.activeView === "meloming")
-      ? "멜로밍 연동 곡이 없습니다. 설정에서 노래책을 가져오거나 보내 보세요."
-      : "검색 결과가 없습니다.";
+    const emptyMessage = "검색 결과가 없습니다.";
     elements.songGrid.innerHTML = `
       <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dim);">
         ${emptyMessage}
@@ -68,6 +67,9 @@ export function addSongCard(song, index) {
   card.className = `song-card ${state.viewMode === "list" ? "list-row" : ""} ${state.viewMode === "button" ? "button-row" : ""}`;
   card.dataset.path = song.path;
   card.dataset.index = index;
+  if (state.librarySelectMode && state.selectedLibraryPaths.has(song.path)) {
+    card.classList.add('selected');
+  }
   const isButton = state.viewMode === "button";
   const isList = state.viewMode === "list";
 
@@ -77,11 +79,15 @@ export function addSongCard(song, index) {
       <span class="lyric-sync-badge lyric-sync-${syncStatus}" title="가사 ${syncStatus === 'synced' ? '싱크 완료' : '미싱크'}">
         ${syncStatus === "synced" ? "♪" : "…"}
       </span>`;
+  const selectMark = state.librarySelectMode
+    ? `<span class="song-select-mark" aria-hidden="true">${state.selectedLibraryPaths.has(song.path) ? '✓' : ''}</span>`
+    : '';
 
   card.innerHTML = `
     <div class="thumbnail">
       <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
       ${syncBadge}
+      ${selectMark}
       <div class="thumb-overlay">
         <svg class="icon-loading" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3">
           <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
@@ -200,6 +206,13 @@ export function addSongCard(song, index) {
     }
 
     e.preventDefault();
+
+    // 선택 모드: 재생 대신 선택 토글
+    if (state.librarySelectMode) {
+      toggleLibrarySelection(song.path);
+      return;
+    }
+
     const { selectTrack } = await import('../player.js');
     selectTrack(index);
   };
@@ -251,4 +264,79 @@ export async function deleteSong(index) {
       showNotification("곡 삭제 중 오류가 발생했습니다.", "error");
     }
   });
+}
+
+export function setLibrarySelectMode(enabled) {
+  state.librarySelectMode = !!enabled;
+  if (!state.librarySelectMode) {
+    state.selectedLibraryPaths.clear();
+  }
+  const btn = document.getElementById('lib-select-mode-btn');
+  if (btn) btn.classList.toggle('active', state.librarySelectMode);
+  document.body.classList.toggle('library-select-mode', state.librarySelectMode);
+  updateLibrarySelectionBar();
+  renderLibrary();
+}
+
+export function toggleLibrarySelection(path) {
+  if (!path) return;
+  if (state.selectedLibraryPaths.has(path)) state.selectedLibraryPaths.delete(path);
+  else state.selectedLibraryPaths.add(path);
+  const card = elements.songGrid?.querySelector(`.song-card[data-path="${CSS.escape(path)}"]`);
+  if (card) {
+    const selected = state.selectedLibraryPaths.has(path);
+    card.classList.toggle('selected', selected);
+    const mark = card.querySelector('.song-select-mark');
+    if (mark) mark.textContent = selected ? '✓' : '';
+  }
+  updateLibrarySelectionBar();
+}
+
+export function updateLibrarySelectionBar() {
+  const bar = document.getElementById('library-selection-bar');
+  const countEl = document.getElementById('library-selection-count');
+  if (!bar) return;
+  const count = state.selectedLibraryPaths.size;
+  const show = state.librarySelectMode;
+  bar.hidden = !show;
+  if (countEl) countEl.textContent = `${count}곡 선택`;
+  const batchBtn = document.getElementById('btn-batch-align');
+  if (batchBtn) batchBtn.disabled = count === 0;
+}
+
+export async function requestBatchAlignment() {
+  const paths = Array.from(state.selectedLibraryPaths);
+  if (paths.length === 0) return;
+  const { enqueueAlignment } = await import('../alignment-queue.js');
+  const { showNotification } = await import('../utils.js');
+  const { switchTab } = await import('../events/navigation.js');
+  const added = enqueueAlignment(paths);
+  setLibrarySelectMode(false);
+  if (added > 0) {
+    showNotification(`${added}곡을 가사 정렬 대기열에 넣었습니다.`, 'success');
+    switchTab('tasks');
+  } else {
+    showNotification('이미 대기열이거나 추가할 곡이 없습니다.', 'info');
+  }
+}
+
+export function initLibrarySelectionControls() {
+  const modeBtn = document.getElementById('lib-select-mode-btn');
+  if (modeBtn && modeBtn.dataset.bound !== '1') {
+    modeBtn.dataset.bound = '1';
+    modeBtn.addEventListener('click', () => {
+      setLibrarySelectMode(!state.librarySelectMode);
+    });
+  }
+  const cancelBtn = document.getElementById('btn-selection-cancel');
+  if (cancelBtn && cancelBtn.dataset.bound !== '1') {
+    cancelBtn.dataset.bound = '1';
+    cancelBtn.addEventListener('click', () => setLibrarySelectMode(false));
+  }
+  const batchBtn = document.getElementById('btn-batch-align');
+  if (batchBtn && batchBtn.dataset.bound !== '1') {
+    batchBtn.dataset.bound = '1';
+    batchBtn.addEventListener('click', () => requestBatchAlignment());
+  }
+  updateLibrarySelectionBar();
 }

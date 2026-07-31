@@ -114,8 +114,8 @@ export function initDomReferences() {
   elements.libSyncFilter = document.getElementById("lib-sync-filter");
   elements.libSortSelect = document.getElementById("lib-sort-select");
   elements.libraryControls = document.getElementById("library-controls");
-  elements.youtubeSection = document.getElementById("youtube-search");
-  elements.localSection = document.getElementById("local-drop-section");
+  elements.youtubeSection = null;
+  elements.localSection = null;
 
   elements.dockTitle = document.getElementById("dock-title");
   elements.dockArtist = document.getElementById("dock-artist");
@@ -145,8 +145,8 @@ export function initDomReferences() {
   elements.viewGridBtn = document.getElementById("view-grid");
   elements.viewListBtn = document.getElementById("view-list");
   elements.viewButtonBtn = document.getElementById("view-button");
-  elements.ytFetchBtn = document.getElementById("yt-fetch-btn");
-  elements.ytUrlInput = document.getElementById("yt-url-input");
+  elements.ytFetchBtn = null;
+  elements.ytUrlInput = null;
   elements.btnPrev = document.getElementById("btn-prev");
   elements.btnNext = document.getElementById("btn-next");
   elements.aiModelStatus = document.getElementById("ai-model-status");

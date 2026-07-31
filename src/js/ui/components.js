@@ -13,11 +13,12 @@ export function updateBroadcastTasksControlVisibility() {
   if (!elements.broadcastTasksControl) return;
   const isVisibleTab =
     state.activeView === "library" ||
-    state.activeView === "youtube" ||
-    state.activeView === "local" ||
     state.activeView === "tasks";
   const hasActiveTasks = Object.keys(state.activeTasks || {}).length > 0;
-  elements.broadcastTasksControl.style.display = (isVisibleTab && hasActiveTasks) ? "block" : "none";
+  const hasAlignQueue = (state.alignmentQueue || []).some(
+    (i) => i.status === 'queued' || i.status === 'processing'
+  );
+  elements.broadcastTasksControl.style.display = (isVisibleTab && (hasActiveTasks || hasAlignQueue)) ? "block" : "none";
 }
 
 function isSeparatedSong(song) {
@@ -63,61 +64,115 @@ export function updateAiModelStatus(statusInput) {
   }
 }
 
-export function updateTaskUI() {
-  if (!elements.taskBadge || !elements.activeTasksList) return;
-  
-  const tasks = Object.entries(state.activeTasks).map(([path, data]) => {
-    const song = state.songLibrary.find((s) => s.path === path);
-    return {
-      ...data,
-      path,
-      // separation-progress payload may not include rich song metadata, so hydrate from library.
-      title: data.title || song?.title || "알 수 없는 곡",
-      thumbnail: data.thumbnail || song?.thumbnail || "",
+const TASK_SECTION_COLLAPSED_KEY = 'taskSectionCollapsed';
+
+function getTaskSectionCollapsed() {
+  try {
+    return JSON.parse(localStorage.getItem(TASK_SECTION_COLLAPSED_KEY) || '{}') || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function setTaskSectionCollapsed(map) {
+  localStorage.setItem(TASK_SECTION_COLLAPSED_KEY, JSON.stringify(map || {}));
+}
+
+function ensureTaskSectionToggles() {
+  const collapsed = getTaskSectionCollapsed();
+  [
+    { toggleId: 'task-section-sep-toggle', bodyId: 'task-section-sep-body', key: 'separation' },
+    { toggleId: 'task-section-align-toggle', bodyId: 'task-section-align-body', key: 'alignment' },
+  ].forEach(({ toggleId, bodyId, key }) => {
+    const toggle = document.getElementById(toggleId);
+    const body = document.getElementById(bodyId);
+    if (!toggle || !body || toggle.dataset.bound === '1') return;
+    toggle.dataset.bound = '1';
+    const apply = (isCollapsed) => {
+      body.hidden = !!isCollapsed;
+      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      const chevron = toggle.querySelector('.task-section-chevron');
+      if (chevron) chevron.textContent = isCollapsed ? '▸' : '▾';
     };
+    apply(!!collapsed[key]);
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      const next = getTaskSectionCollapsed();
+      next[key] = !next[key];
+      setTaskSectionCollapsed(next);
+      apply(!!next[key]);
+    });
   });
-  elements.taskBadge.textContent = tasks.length;
-  elements.taskBadge.style.display = tasks.length > 0 ? "flex" : "none";
-  
-  updateBroadcastTasksControlVisibility();
-  
-  if (tasks.length === 0) {
-    if (!elements.activeTasksList.querySelector('.no-tasks')) {
-      elements.activeTasksList.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
-    }
+
+  const clearAlignBtn = document.getElementById('btn-clear-alignment-queue');
+  if (clearAlignBtn && clearAlignBtn.dataset.bound !== '1') {
+    clearAlignBtn.dataset.bound = '1';
+    clearAlignBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const hasProcessing = (state.alignmentQueue || []).some((i) => i.status === 'processing');
+      const doClear = async () => {
+        const { clearAlignmentQueue } = await import('../alignment-queue.js');
+        await clearAlignmentQueue();
+      };
+      if (hasProcessing) {
+        const { openConfirmModal } = await import('./modals.js');
+        openConfirmModal(
+          '대기열 전체 지우기',
+          '진행 중인 정렬이 있습니다. 취소하고 대기열을 모두 지울까요?',
+          () => { doClear(); }
+        );
+      } else {
+        await doClear();
+      }
+    });
+  }
+
+  const clearSepBtn = document.getElementById('btn-clear-separation-queue');
+  if (clearSepBtn && clearSepBtn.dataset.bound !== '1') {
+    clearSepBtn.dataset.bound = '1';
+    clearSepBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const paths = Object.keys(state.activeTasks || {});
+      if (paths.length === 0) return;
+      const hasProcessing = paths.some((path) => {
+        const s = String(state.activeTasks[path]?.status || '').toLowerCase();
+        return s.includes('process') || s.includes('prepar') || s.includes('start');
+      });
+      const doClear = async () => {
+        const { clearSeparationQueue } = await import('../audio.js');
+        await clearSeparationQueue();
+      };
+      if (hasProcessing) {
+        const { openConfirmModal } = await import('./modals.js');
+        openConfirmModal(
+          '대기열 전체 지우기',
+          '진행 중인 분리가 있습니다. 취소하고 대기열을 모두 지울까요?',
+          () => { doClear(); }
+        );
+      } else {
+        await doClear();
+      }
+    });
+  }
+}
+
+function upsertTaskCards(listEl, tasks, { emptyText, onCancel, formatStatus, showProvider }) {
+  if (!listEl) return;
+
+  if (!tasks.length) {
+    listEl.innerHTML = `<div class="no-tasks">${emptyText}</div>`;
     return;
   }
 
-  const statusMap = {
-    "Queued": "대기 중",
-    "Preparing": "준비 중",
-    "Starting": "시작 중",
-    "Processing": "분리 중",
-    "Finished": "완료",
-    "Cancelled": "취소됨",
-    "Error": "오류"
-  };
-
-  const formatTaskViewModel = (task) => {
-    const percent = Math.floor(task.percentage || 0);
-    const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
-    const pStr = (task.provider || "").toUpperCase();
-    const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
-    const providerLabel = isGPU ? "GPU" : "CPU";
-    const displayStatus = statusMap[task.status] || task.status || '대기 중';
-    return { percent, thumbUrl, isGPU, providerLabel, displayStatus };
-  };
-
   const createTaskCard = (task) => {
-    const vm = formatTaskViewModel(task);
     const card = document.createElement('div');
     card.className = 'task-card';
     card.dataset.path = task.path;
     card.innerHTML = `
       <div class="task-header-info">
-        <div class="task-icon">
-          ${vm.thumbUrl ? `<img src="${vm.thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>'}
-        </div>
+        <div class="task-icon"></div>
         <div class="task-main-details">
           <div class="task-title"></div>
           <div class="task-status-row">
@@ -126,7 +181,7 @@ export function updateTaskUI() {
           </div>
         </div>
         <div class="task-actions">
-          <div class="task-provider-badge"></div>
+          <div class="task-provider-badge" ${showProvider ? '' : 'hidden'}></div>
           <button class="btn-task-cancel">취소</button>
         </div>
       </div>
@@ -134,29 +189,23 @@ export function updateTaskUI() {
         <div class="task-progress-bar"></div>
       </div>
     `;
-
     const cancelBtn = card.querySelector('.btn-task-cancel');
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => {
-        const cancelTask = getAppHandler('cancelTask');
-        if (typeof cancelTask === 'function') {
-          cancelTask(card.dataset.path);
-        }
-      });
+      cancelBtn.addEventListener('click', () => onCancel(card.dataset.path, task));
     }
-
     return card;
   };
 
   const updateTaskCard = (card, task) => {
-    const vm = formatTaskViewModel(task);
+    const vm = formatStatus(task);
     card.dataset.path = task.path;
-
     const icon = card.querySelector('.task-icon');
     if (icon) {
       const prevThumb = card.dataset.thumbUrl || '';
       if (prevThumb !== vm.thumbUrl) {
-        icon.innerHTML = vm.thumbUrl ? `<img src="${vm.thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-magic"></i>';
+        icon.innerHTML = vm.thumbUrl
+          ? `<img src="${vm.thumbUrl}" class="task-thumb-img">`
+          : '<i class="fas fa-magic"></i>';
         card.dataset.thumbUrl = vm.thumbUrl;
       }
     }
@@ -165,30 +214,37 @@ export function updateTaskUI() {
     const status = card.querySelector('.task-status-text');
     if (status) status.textContent = vm.displayStatus;
     const percentage = card.querySelector('.task-percentage');
-    if (percentage) percentage.textContent = `${vm.percent}%`;
-
+    if (percentage) {
+      percentage.textContent = vm.hidePercent ? '' : `${vm.percent}%`;
+      percentage.hidden = !!vm.hidePercent;
+    }
     const badge = card.querySelector('.task-provider-badge');
-    if (badge) {
+    if (badge && showProvider) {
+      badge.hidden = false;
       badge.textContent = vm.providerLabel;
       badge.classList.toggle('provider-gpu', vm.isGPU);
     }
-
     const progressBar = card.querySelector('.task-progress-bar');
     if (progressBar) {
-      progressBar.style.width = `${vm.percent}%`;
+      progressBar.classList.toggle('indeterminate', !!vm.indeterminate);
+      if (!vm.indeterminate) progressBar.style.width = `${vm.percent}%`;
+      else progressBar.style.width = '';
+    }
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      const terminal = !!vm.terminal;
+      cancelBtn.textContent = terminal ? '지우기' : '취소';
+      cancelBtn.disabled = !!vm.disableCancel;
     }
   };
 
   const existingCards = new Map(
-    Array.from(elements.activeTasksList.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+    Array.from(listEl.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
   );
   const nextPaths = new Set(tasks.map((t) => t.path));
-
-  // Remove empty placeholder if present.
-  const emptyState = elements.activeTasksList.querySelector('.no-tasks');
+  const emptyState = listEl.querySelector('.no-tasks');
   if (emptyState) emptyState.remove();
 
-  // Remove cards for tasks that no longer exist.
   existingCards.forEach((card, path) => {
     if (!nextPaths.has(path)) {
       card.remove();
@@ -196,7 +252,6 @@ export function updateTaskUI() {
     }
   });
 
-  // Upsert cards while preserving order from current task list.
   tasks.forEach((task, index) => {
     let card = existingCards.get(task.path);
     if (!card) {
@@ -204,10 +259,167 @@ export function updateTaskUI() {
       existingCards.set(task.path, card);
     }
     updateTaskCard(card, task);
-    const currentAtIndex = elements.activeTasksList.children[index];
+    const currentAtIndex = listEl.children[index];
     if (currentAtIndex !== card) {
-      elements.activeTasksList.insertBefore(card, currentAtIndex || null);
+      listEl.insertBefore(card, currentAtIndex || null);
     }
+  });
+}
+
+export function updateTaskUI() {
+  ensureTaskSectionToggles();
+
+  const sepList = elements.activeTasksList || document.getElementById('active-tasks-list');
+  const alignList = document.getElementById('alignment-tasks-list');
+  if (!elements.taskBadge && !sepList && !alignList) return;
+
+  const sepTasks = Object.entries(state.activeTasks || {}).map(([path, data]) => {
+    const song = state.songLibrary.find((s) => s.path === path);
+    return {
+      ...data,
+      path,
+      title: data.title || song?.title || '알 수 없는 곡',
+      thumbnail: data.thumbnail || song?.thumbnail || '',
+    };
+  });
+
+  const alignTasks = (state.alignmentQueue || []).map((item) => {
+    const song = state.songLibrary.find((s) => s.path === item.path);
+    return {
+      ...item,
+      title: item.title || song?.title || '알 수 없는 곡',
+      thumbnail: item.thumbnail || song?.thumbnail || '',
+    };
+  });
+
+  const activeSepCount = sepTasks.filter((t) => {
+    const s = (t.status || '').toLowerCase();
+    return s !== 'finished' && s !== 'cancelled' && s !== 'error';
+  }).length;
+  const activeAlignCount = alignTasks.filter((t) =>
+    t.status === 'queued' || t.status === 'processing'
+  ).length;
+  const badgeCount = activeSepCount + activeAlignCount;
+
+  if (elements.taskBadge) {
+    elements.taskBadge.textContent = badgeCount;
+    elements.taskBadge.style.display = badgeCount > 0 ? 'flex' : 'none';
+  }
+
+  const sepCountEl = document.getElementById('task-section-sep-count');
+  if (sepCountEl) sepCountEl.textContent = String(sepTasks.length);
+  const alignCountEl = document.getElementById('task-section-align-count');
+  if (alignCountEl) alignCountEl.textContent = String(alignTasks.length);
+
+  const clearAlignBtn = document.getElementById('btn-clear-alignment-queue');
+  if (clearAlignBtn) clearAlignBtn.hidden = alignTasks.length === 0;
+  const clearSepBtn = document.getElementById('btn-clear-separation-queue');
+  if (clearSepBtn) clearSepBtn.hidden = sepTasks.length === 0;
+
+  updateBroadcastTasksControlVisibility();
+
+  const sepStatusMap = {
+    Queued: '대기 중',
+    Preparing: '준비 중',
+    Starting: '시작 중',
+    Processing: '분리 중',
+    Finished: '완료',
+    Cancelled: '취소됨',
+    Error: '오류',
+  };
+
+  upsertTaskCards(sepList, sepTasks, {
+    emptyText: '현재 진행 중인 분리가 없습니다.',
+    showProvider: true,
+    onCancel: (path) => {
+      const cancelTask = getAppHandler('cancelTask');
+      if (typeof cancelTask === 'function') cancelTask(path);
+    },
+    formatStatus: (task) => {
+      const percent = Math.floor(task.percentage || 0);
+      const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
+      const pStr = (task.provider || '').toUpperCase();
+      const isGPU = pStr.includes('GPU') || pStr.includes('CUDA') || pStr.includes('DIRECTML');
+      const statusKey = task.status || '';
+      const displayStatus = sepStatusMap[statusKey] || statusKey || '대기 중';
+      const terminal = ['Finished', 'Cancelled', 'Error'].includes(statusKey);
+      return {
+        percent,
+        thumbUrl,
+        isGPU,
+        providerLabel: isGPU ? 'GPU' : 'CPU',
+        displayStatus,
+        hidePercent: terminal,
+        indeterminate: statusKey === 'Preparing' || statusKey === 'Starting',
+        terminal,
+        disableCancel: false,
+      };
+    },
+  });
+
+  upsertTaskCards(alignList, alignTasks, {
+    emptyText: '현재 진행 중인 정렬이 없습니다.',
+    showProvider: false,
+    onCancel: async (path, task) => {
+      const { cancelAlignmentQueueItem } = await import('../alignment-queue.js');
+      await cancelAlignmentQueueItem(path);
+      // 완료/오류 항목은 cancel이 목록에서 제거. processing은 상태 전환 대기.
+      if (task && task.status !== 'processing' && task.status !== 'queued') {
+        updateTaskUI();
+      }
+    },
+    formatStatus: (task) => {
+      const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
+      const percent = Math.floor(task.percentage || 0);
+      let displayStatus = '대기 중';
+      let hidePercent = true;
+      let indeterminate = false;
+      let terminal = false;
+      switch (task.status) {
+        case 'queued':
+          displayStatus = '대기 중';
+          break;
+        case 'processing':
+          if (task.phase === 'preparing') {
+            displayStatus = '준비 중 (모델 로드)';
+            indeterminate = true;
+          } else {
+            displayStatus = task.passLabel ? `정렬 중 (${task.passLabel})` : '정렬 중';
+            hidePercent = false;
+          }
+          break;
+        case 'done':
+          displayStatus = task.note ? `완료 (${task.note})` : '완료';
+          terminal = true;
+          break;
+        case 'error':
+        case 'awaiting-model':
+          displayStatus = task.error || '오류';
+          terminal = true;
+          break;
+        case 'cancelled':
+          displayStatus = '취소됨';
+          terminal = true;
+          break;
+        case 'no-lyrics':
+          displayStatus = '가사 없음';
+          terminal = true;
+          break;
+        default:
+          displayStatus = task.status || '대기 중';
+      }
+      return {
+        percent,
+        thumbUrl,
+        isGPU: false,
+        providerLabel: '',
+        displayStatus,
+        hidePercent,
+        indeterminate,
+        terminal,
+        disableCancel: false,
+      };
+    },
   });
 }
 

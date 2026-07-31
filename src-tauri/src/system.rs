@@ -151,6 +151,25 @@ pub async fn import_library_spreadsheet(
 }
 
 #[tauri::command]
+pub async fn pick_audio_files() -> Result<Vec<String>, String> {
+    if let Some(paths) = file_dialog_in_documents()
+        .add_filter(
+            "Audio",
+            &["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"],
+        )
+        .pick_files()
+        .await
+    {
+        Ok(paths
+            .into_iter()
+            .map(|p| p.path().to_string_lossy().to_string())
+            .collect())
+    } else {
+        Err("CANCELLED".into())
+    }
+}
+
+#[tauri::command]
 pub async fn remote_js_log(msg: String) {
     let _ = crate::audio_player::sys_log(&format!("[JS] {}", msg));
 }

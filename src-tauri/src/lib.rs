@@ -102,6 +102,7 @@ pub fn run() {
             app.manage(paths);
             crate::audio_player::sys_log("[App] Startup complete");
             let _ = &*crate::state::DB;
+            crate::mr_cache::load_persisted_format();
             
             crate::audio_commands::start_playback_progress_loop(app.handle().clone());
             
@@ -157,6 +158,7 @@ pub fn run() {
             system::import_backup,
             system::export_library_spreadsheet,
             system::import_library_spreadsheet,
+            system::pick_audio_files,
             rescue::run_cache_rescue,
             rescue::run_local_rescue,
             model_commands::get_active_separations,

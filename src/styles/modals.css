@@ -57,6 +57,83 @@
   max-width: 720px;
 }
 
+.add-song-modal-content {
+  max-width: 520px;
+}
+
+.add-song-source-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.add-song-tab {
+  flex: 1;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-song-tab.active {
+  color: var(--accent-primary);
+  border-color: rgb(var(--accent-rgb) / 0.45);
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+
+.add-song-file-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.add-song-file-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-song-hint,
+.add-song-extra-hint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.add-song-meta {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.add-song-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.add-song-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.add-song-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+}
+
 /* 단순 확인창은 본문이 한두 줄이라 더 작게 */
 .modal-content.confirm-box {
   max-width: 380px;
@@ -246,6 +323,33 @@
   letter-spacing: 1.5px;
   margin-bottom: 0px;
   padding-left: 8px;
+}
+
+/* MR 분리 기록 — 2열 그리드 아래 한 행을 통째로 쓰고,
+   라벨(왼쪽)과 기록 값(그 오른쪽)이 같은 줄에 놓이게 가로 배치한다.
+   그리드 gap(30px)의 절반 정도만 남기도록 끌어올린다. */
+.separation-info-group {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 0;
+  margin-top: -15px;
+}
+
+.separation-info-group label {
+  flex: 0 0 auto;
+}
+
+.separation-info-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .input-group input[type="text"] {
@@ -441,6 +545,9 @@
   flex-direction: column;
   gap: 5px;
   min-height: 66px;
+  /* player.css의 .control-group{flex:1}이 여기까지 적용되면 볼륨 블록이
+     컬럼의 남는 세로 공간을 전부 먹어 KEY/BPM이 아래로 밀린다. */
+  flex: 0 0 auto;
 }
 
 #metadata-modal .label-row {
@@ -450,12 +557,14 @@
   padding-left: 0;
 }
 
-#metadata-modal .meta-paired-group {
+#metadata-modal .meta-paired-group,
+#metadata-modal .meta-rating-pair-group {
   min-height: auto;
   gap: 0;
 }
 
-#metadata-modal .meta-paired-grid {
+#metadata-modal .meta-paired-grid,
+#metadata-modal .meta-rating-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 10px;
@@ -473,15 +582,13 @@
   height: 44px;
 }
 
-#metadata-modal .meta-paired-grid .meta-rating-inline {
+#metadata-modal .meta-rating-pair .meta-rating-inline {
   display: flex;
   flex-direction: row;
   align-items: center;
   flex-wrap: nowrap;
   gap: 8px;
   min-width: 0;
-  align-self: end;
-  padding-bottom: 2px;
 }
 
 #metadata-modal .meta-rating-inline > label {

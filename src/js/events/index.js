@@ -6,11 +6,13 @@ import { initControlListeners } from './controls/index.js';
 import { initModalListeners } from './modals.js';
 import { initMelomingListeners } from './meloming.js';
 import { setupBackendListeners } from './backend.js';
+import { initAddSongModal } from '../add-song-modal.js';
 
 export { switchTab };
 
 export async function initAllEvents() {
   initNavigation();
+  initAddSongModal();
   initControlListeners();
   initModalListeners();
   await initMelomingListeners();

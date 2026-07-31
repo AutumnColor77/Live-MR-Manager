@@ -24,7 +24,14 @@ export const state = {
   cancelledPaths: new Set(), // path blacklist for UI updates
   // AI 가사 정렬 배치 대기열 (분리된 activeTasks와 별개로 JS 주도 순차 처리,
   // alignment-queue.js가 소유). status: queued/processing/done/error/blocked
-  alignmentQueue: [], // [{ path, title, status, error? }]
+  alignmentQueue: [], // [{ path, title, status, error?, phase?, percentage? }]
+  // 라이브러리 선택 모드(여러 곡 AI 정렬 일괄 요청)
+  librarySelectMode: false,
+  selectedLibraryPaths: new Set(),
+  // 라이브러리 소스 필터 칩: all | youtube | local
+  sourceFilter: localStorage.getItem("librarySourceFilter") || "all",
+  // 노래 추가 모달에서 "분리 후 정렬" 선택한 경로
+  pendingAlignAfterSep: new Set(),
   playbackSequence: 0, // Latest playback request ID to handle race conditions
   
   // Interpolation / Progress State
@@ -44,6 +51,10 @@ export const state = {
   autoSkipIntro: localStorage.getItem("autoSkipIntro") === null
     ? true
     : localStorage.getItem("autoSkipIntro") === "true",
+  // MR 분리 시 방식 선택 모달을 띄울지. 모달에서 "다음부터 바로 분리"를 켜면 false.
+  askSeparationMode: localStorage.getItem("askSeparationMode") === null
+    ? true
+    : localStorage.getItem("askSeparationMode") === "true",
   mrCacheFormat: localStorage.getItem("mrCacheFormat") || "mp3",
   lastColumns: 0,
   
