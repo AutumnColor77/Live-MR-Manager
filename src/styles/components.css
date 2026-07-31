@@ -22,12 +22,14 @@
   box-shadow: 0 8px 25px var(--accent-glow);
 }
 
-.primary-btn.loading-btn {
+.primary-btn.loading-btn,
+.btn-ai-action.loading-btn {
   pointer-events: none;
   opacity: 0.92;
 }
 
-.primary-btn.loading-btn::before {
+.primary-btn.loading-btn::before,
+.btn-ai-action:not(.secondary).loading-btn::before {
   content: "";
   width: 14px;
   height: 14px;

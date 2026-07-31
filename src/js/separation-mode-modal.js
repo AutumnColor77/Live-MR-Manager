@@ -4,12 +4,14 @@
  * 컨텍스트 메뉴의 "MR 분리"가 바로 분리를 시작하는 대신 이 모달을 띄운다:
  * ⚡ 빠른 분리(Kim Vocal 2) / ✨ 고품질 분리(Inst HQ 3), 커스텀 모델이
  * 등록돼 있으면 드롭다운으로 추가 노출. 카드를 누르면 즉시 해당 모델로
- * start_mr_separation(path, modelId)이 호출된다(원탭 플로우). "기본값으로
- * 저장"을 켠 채 선택하면 전역 기본 모델(updateModelSettings)도 갱신.
+ * start_mr_separation(path, modelId)이 호출된다(원탭 플로우). "다음부터 바로
+ * 분리"를 켠 채 선택하면 전역 기본 모델(updateModelSettings)을 갱신하고
+ * 이후로는 모달 없이 그 모델로 바로 분리한다(설정 화면 토글로 되돌릴 수 있음).
  */
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
 import { getSeparationInfo } from './model-api.js';
+import { state } from './state.js';
 
 let initialized = false;
 let pendingSong = null;
@@ -20,6 +22,14 @@ function closeModal() {
     const m = modal();
     if (m) m.classList.remove('active');
     pendingSong = null;
+}
+
+/** 모달 표시 여부를 설정 화면 토글과 같은 값으로 유지한다. */
+function setAskSeparationMode(enabled) {
+    state.askSeparationMode = enabled;
+    localStorage.setItem('askSeparationMode', String(enabled));
+    const toggle = document.getElementById('toggle-ask-separation-mode');
+    if (toggle) toggle.checked = enabled;
 }
 
 async function startWithModel(modelId) {
@@ -35,8 +45,14 @@ async function startWithModel(modelId) {
             import('./events/controls/ai.js').then((m) => {
                 if (m.refreshModelDropdown) m.refreshModelDropdown();
             }).catch(() => {});
+            setAskSeparationMode(false);
+            showNotification(
+                '다음부터는 이 모델로 바로 분리합니다. 설정 > AI 분리 엔진에서 되돌릴 수 있어요.',
+                'info'
+            );
         } catch (err) {
             console.error('[SeparationMode] Failed to save default model:', err);
+            showNotification('기본 분리 모델 저장에 실패했습니다.', 'error');
         }
     }
 
@@ -113,6 +129,13 @@ function initOnce() {
 /** 분리 방식 선택 모달을 연다. song: { path, title } */
 export function openSeparationModeModal(song) {
     if (!song || !song.path) return;
+
+    // "다음부터 바로 분리"를 켜둔 경우 묻지 않고 기본 모델로 시작.
+    if (state.askSeparationMode === false) {
+        import('./audio.js').then(({ startMrSeparation }) => startMrSeparation(song.path));
+        return;
+    }
+
     initOnce();
     const m = modal();
     if (!m) {

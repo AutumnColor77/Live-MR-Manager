@@ -574,6 +574,8 @@ pub async fn run_forced_alignment(
     let _ = handle.emit("alignment-progress", -1);
     let _permit = ALIGNMENT_QUEUE_LOCK.lock().await;
     CANCEL_ALIGNMENT.store(false, Ordering::SeqCst);
+    // -2 sentinel: preprocessing / model load (UI shows "준비 중" instead of 0%).
+    let _ = handle.emit("alignment-progress", -2);
     sys_log(&format!("[Alignment] Starting new CTC alignment path: {}", audio_path));
 
     let _paths = crate::state::AppPaths::from_handle(&handle);

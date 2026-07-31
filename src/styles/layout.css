@@ -73,31 +73,44 @@
   margin-bottom: 28px;
 }
 
+/* 라이브러리 하위처럼 보이게: 버튼 폭은 유지하고 내용만 들여쓰기 */
 .sidebar-add-song-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 100%;
-  margin: 0 0 20px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 6px 12px 6px 28px;
+  margin-top: 8px;
+  margin-bottom: 2px;
+  border-radius: 8px;
   border: 1px solid rgb(var(--accent-rgb) / 0.35);
-  background: rgb(var(--accent-rgb) / 0.14);
+  background: rgb(var(--accent-rgb) / 0.12);
   color: var(--accent-primary);
-  font-size: 0.95rem;
+  font-family: inherit;
+  font-size: 0.875rem;
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.sidebar-add-song-btn i {
+  width: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sidebar-add-song-btn i svg {
+  width: 15px;
+  height: 15px;
 }
 
 .sidebar-add-song-btn:hover {
   background: rgb(var(--accent-rgb) / 0.22);
   border-color: rgb(var(--accent-rgb) / 0.55);
-}
-
-.sidebar-add-song-btn:active {
-  transform: scale(0.98);
 }
 
 .nav-label {

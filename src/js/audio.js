@@ -158,6 +158,25 @@ export async function cancelSeparation(path) {
   }
 }
 
+/** 분리 대기열 전체 지우기 — 진행/대기 중인 항목을 모두 취소하고 UI에서 제거. */
+export async function clearSeparationQueue() {
+  const { state } = await import('./state.js');
+  const paths = Object.keys(state.activeTasks || {});
+  await Promise.all(paths.map(async (path) => {
+    try {
+      state.cancelledPaths.add(path);
+      await invoke("cancel_separation", { path });
+    } catch (err) {
+      console.error("Cancel separation during clear failed:", path, err);
+    }
+    delete state.activeTasks[path];
+  }));
+  const { updateTaskUI } = await import('./ui/components.js');
+  const { renderLibrary } = await import('./ui/library.js');
+  updateTaskUI();
+  renderLibrary();
+}
+
 export async function toggleAiFeature(feature, enabled) {
   try {
     return await invoke("toggle_ai_feature", { feature, enabled });

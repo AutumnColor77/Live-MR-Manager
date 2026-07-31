@@ -190,21 +190,6 @@ export async function setupBackendListeners() {
           state.currentTrack.is_mr = true;
           updateAiTogglesState(state.currentTrack);
         }
-
-        // 노래 추가 모달에서 "분리 후 정렬"을 켠 경우
-        let alignPath = null;
-        for (const pending of state.pendingAlignAfterSep) {
-          if (pathMatches(pending, path)) {
-            alignPath = pending;
-            break;
-          }
-        }
-        if (alignPath) {
-          state.pendingAlignAfterSep.delete(alignPath);
-          import('../alignment-queue.js').then(({ enqueueAlignment }) => {
-            enqueueAlignment([alignPath]);
-          }).catch((err) => console.error('[Backend] Post-sep align failed:', err));
-        }
       } else if (isError) {
         showNotification(formatSeparationFailure(status), "error");
       }

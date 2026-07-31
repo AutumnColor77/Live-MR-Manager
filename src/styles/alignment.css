@@ -937,16 +937,27 @@ canvas#waveform-canvas {
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
     padding: 10px 4px 6px;
+    border: none;
+    background: transparent;
     font-size: 0.78rem;
     font-weight: 800;
     color: var(--align-text-soft);
     text-transform: uppercase;
     letter-spacing: 0.4px;
+    cursor: pointer;
+    text-align: left;
 }
 
 .track-group-header:first-child {
     padding-top: 2px;
+}
+
+.track-group-chevron {
+    display: inline-block;
+    width: 1em;
+    color: var(--text-dim);
 }
 
 .track-group-count {
@@ -956,6 +967,11 @@ canvas#waveform-canvas {
     background: var(--align-track-item-bg);
     border-radius: 999px;
     padding: 1px 7px;
+}
+
+.track-item.is-current {
+    outline: 1px solid var(--accent-blue);
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
 }
 
 /* Sync-status badge inside the track selection modal's list items */
@@ -1092,6 +1108,131 @@ canvas#waveform-canvas {
 
 .sync-controls-panel > .marker-summary {
     margin-top: 8px;
+}
+
+.waveform-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.waveform-card-header h3 {
+    margin: 0;
+}
+
+.vocal-start-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--warn-soft-bg, rgba(234, 179, 8, 0.12));
+    border: 1px solid color-mix(in srgb, var(--warn-strong, #eab308) 35%, transparent);
+}
+
+.vocal-start-suggestion[hidden] {
+    display: none !important;
+}
+
+.vocal-start-suggestion-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--warn-strong, #eab308);
+}
+
+.marker-btn-icon {
+    min-width: 32px;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.marker-list-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.marker-list-empty {
+    font-size: 0.75rem;
+    color: var(--align-text-soft);
+    padding: 2px 0;
+}
+
+.marker-list-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--align-btn-border);
+    background: var(--align-btn-bg, transparent);
+    cursor: pointer;
+}
+
+.marker-list-row:hover {
+    border-color: var(--accent-blue);
+}
+
+.marker-list-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--accent-blue);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.marker-list-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-main);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.marker-time-input {
+    width: 72px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--align-btn-border);
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-family: monospace;
+    font-size: 0.75rem;
+}
+
+.marker-time-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.marker-list-delete {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.marker-list-delete:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
 }
 
 /* 싱크 조작 박스 아래에 붙는 AI 자동 정렬 박스 */

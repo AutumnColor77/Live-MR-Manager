@@ -27,6 +27,9 @@ function initLyricLineVisibilityControls() {
 export function initOverlayListeners() {
   const overlayScale = document.getElementById('overlay-scale');
   const overlayScaleVal = document.getElementById('overlay-scale-val');
+  const overlayFontSize = document.getElementById('overlay-font-size');
+  const overlayFontSizeVal = document.getElementById('overlay-font-size-val');
+  const overlayFontSizeRow = document.getElementById('overlay-font-size-row');
   const overlayFont = document.getElementById('overlay-font');
   const overlayColor = document.getElementById('overlay-color');
   const overlayTextColor = document.getElementById('overlay-text-color');
@@ -126,6 +129,11 @@ export function initOverlayListeners() {
     const scale = parseFloat(overlayScale.value).toFixed(1);
     if (overlayScaleVal) overlayScaleVal.textContent = `${scale}x`;
 
+    // 가사 전용 글씨 크기 — 곡 정보 탭에서는 숨김.
+    if (overlayFontSizeRow) overlayFontSizeRow.style.display = currentTarget === 'lyrics' ? 'flex' : 'none';
+    const fontSize = overlayFontSize ? (parseInt(overlayFontSize.value, 10) || 22) : 22;
+    if (overlayFontSizeVal) overlayFontSizeVal.textContent = `${fontSize}px`;
+
     const font = overlayFont.value;
     const color = overlayColor.value.replace('#', '');
     const textColor = overlayTextColor.value.replace('#', '');
@@ -147,7 +155,7 @@ export function initOverlayListeners() {
       try { config = JSON.parse(saved) || {}; } catch(e) {}
 
       config[currentTarget] = {
-        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection
+        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize
       };
       config.isForceVisible = isForceVisible;
 
@@ -210,7 +218,8 @@ export function initOverlayListeners() {
         rounding,
         isForceVisible,
         animationDirection,
-        themeMode
+        themeMode,
+        fontSize: currentTarget === 'lyrics' ? fontSize : undefined
       });
     } catch (err) {
       console.error("Failed to update overlay style:", err);
@@ -262,11 +271,15 @@ export function initOverlayListeners() {
       rounding: 20,
       bgColor: '0f0f14',
       font: 'Inter',
-      animationDirection: 'left'
+      animationDirection: 'left',
+      fontSize: 22
     };
 
     const settings = config[currentTarget] || {};
     const final = { ...defaults, ...settings };
+
+    if (overlayFontSizeRow) overlayFontSizeRow.style.display = currentTarget === 'lyrics' ? 'flex' : 'none';
+    if (overlayFontSize) overlayFontSize.value = final.fontSize || 22;
 
     if (overlayScale) overlayScale.value = final.scale;
     if (overlayColor) {
@@ -347,7 +360,8 @@ export function initOverlayListeners() {
         rounding: 20,
         bgColor: '0f0f14',
         font: 'Inter',
-        animationDirection: 'left'
+        animationDirection: 'left',
+        fontSize: 22
       };
       const targetSettings = config[target] || {};
       const final = { ...defaults, ...targetSettings };
@@ -364,7 +378,8 @@ export function initOverlayListeners() {
           rounding: Number.isFinite(final.rounding) ? final.rounding : defaults.rounding,
           isForceVisible,
           animationDirection: final.animationDirection || 'left',
-          themeMode
+          themeMode,
+          fontSize: target === 'lyrics' ? (parseInt(final.fontSize, 10) || 22) : undefined
         });
       } catch (err) {
         console.error(`Failed to sync ${target} overlay style:`, err);
@@ -389,6 +404,17 @@ export function initOverlayListeners() {
       val = Math.max(parseFloat(overlayScale.min), Math.min(parseFloat(overlayScale.max), val));
       overlayScale.value = val.toFixed(1);
       overlayScale.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+  if (overlayFontSize) {
+    overlayFontSize.addEventListener('input', () => updateOverlaySettings());
+    overlayFontSize.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      let val = parseInt(overlayFontSize.value, 10);
+      if (e.deltaY < 0) val += 1; else val -= 1;
+      val = Math.max(parseInt(overlayFontSize.min, 10), Math.min(parseInt(overlayFontSize.max, 10), val));
+      overlayFontSize.value = val;
+      overlayFontSize.dispatchEvent(new Event("input"));
     }, { passive: false });
   }
   if (overlayFont) overlayFont.addEventListener('change', () => updateOverlaySettings());

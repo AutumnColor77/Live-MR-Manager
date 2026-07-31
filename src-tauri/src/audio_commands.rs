@@ -471,9 +471,12 @@ pub async fn set_tempo(ratio: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// `resume`가 false면 탐색만 하고 정지 상태를 유지한다(가사 싱크 파형에서
+/// 마커를 찍을 때 매번 재생이 시작되던 문제). 생략 시 기존대로 재생 재개.
 #[tauri::command]
-pub async fn seek_to(window: WebviewWindow, position_ms: u64) -> Result<(), String> {
+pub async fn seek_to(window: WebviewWindow, position_ms: u64, resume: Option<bool>) -> Result<(), String> {
     let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    let play_now = resume.unwrap_or(true);
     let (path, duration_ms) = {
         let state = handler.state.lock();
         (state.current_track.clone(), handler.total_duration_ms.load(Ordering::Relaxed))
@@ -493,7 +496,7 @@ pub async fn seek_to(window: WebviewWindow, position_ms: u64) -> Result<(), Stri
         handler.instrumental_volume.store(current_instrumental, Ordering::Relaxed);
         handler.vocal_volume.store(current_vocal, Ordering::Relaxed);
         
-        match play_track_internal(window.clone(), p.clone(), Some(duration_ms), Some(position_ms), true).await {
+        match play_track_internal(window.clone(), p.clone(), Some(duration_ms), Some(position_ms), play_now).await {
             Ok(_) => {},
             Err(e) => {
                 sys_log(&format!("[AUDIO] Seek-Play failed: {}", e));

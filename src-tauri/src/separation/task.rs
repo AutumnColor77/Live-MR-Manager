@@ -28,8 +28,10 @@ pub struct SeparationTask {
 }
 
 impl SeparationTask {
+    /// Raw-waveform models (Mel-Band RoFormer 계열)은 세션 생성만으로도 수 분이
+    /// 걸릴 수 있어 대형 모델 기준으로 잡는다.
     fn model_init_timeout_secs() -> u64 {
-        90
+        300
     }
 
     fn allow_fallback_after_timeout() -> bool {

@@ -12,6 +12,12 @@
       --accent-color: #3b82f6;
       --overlay-scale: 1;
       --overlay-font: 'Inter', 'Noto Sans KR', sans-serif;
+      /* 가사 글씨 크기 — 설정에서 조정 (update_overlay_style font_size).
+         다음 줄·멀티라인 크기는 비율로 따라가므로 한 곳만 바꿔도 균형 유지. */
+      --lyric-font-size: 22px;
+      --lyric-current-height: calc(var(--lyric-font-size) * 1.6);
+      --lyric-next-height: calc(var(--lyric-font-size) * 1.35);
+      --lyric-lines-gap: 4px;
       --overlay-rounding: 20px;
       --glass-bg: rgba(15, 15, 20, 0.6);
       --glass-border: rgba(255, 255, 255, 0.1);
@@ -20,9 +26,6 @@
       --text-shadow: rgba(0, 0, 0, 0.3);
       --enter-gap-x: 120px;
       --enter-gap-y: 80px;
-      --lyric-current-height: 34px;
-      --lyric-next-height: 26px;
-      --lyric-lines-gap: 4px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -121,7 +124,7 @@
 
     .lyric-line.current {
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       line-height: 1.35;
       font-weight: 700;
       text-shadow: 0 2px 4px var(--text-shadow);
@@ -133,13 +136,21 @@
 
     .lyric-line.next {
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       margin-top: 4px;
       line-height: 1.35;
       height: var(--lyric-next-height);
       min-height: var(--lyric-next-height);
       max-height: var(--lyric-next-height);
       overflow: hidden;
+    }
+
+    /* .lyric-line은 플렉스 컨테이너라 텍스트 노드/<br>/<span>을 그대로 넣으면
+       셋이 각각 플렉스 아이템이 되어 <br>이 무시되고 가로로 이어 붙는다.
+       내용 전체를 이 래퍼 하나에 담아 내부는 일반 인라인 흐름을 쓴다. */
+    .lyric-line-inner {
+      display: inline-block;
+      max-width: 100%;
     }
 
     /* 원문/차음/번역 등 두 번째 줄부터 살짝 작고 흐리게 */
@@ -149,11 +160,30 @@
       opacity: 0.85;
     }
 
+    /* 여러 줄이 한 큐로 묶여 표시될 때는 고정 높이 박스에 들어가도록 축소 */
+    .lyric-line.current.multi-line {
+      font-size: calc(var(--lyric-font-size) * 0.82);
+      line-height: 1.22;
+    }
+    .lyric-line.next.multi-line {
+      font-size: calc(var(--lyric-font-size) * 0.64);
+      line-height: 1.22;
+    }
+
+    .lyrics-container[data-max-lines="2"] {
+      --lyric-current-height: calc(var(--lyric-font-size) * 2.1);
+      --lyric-next-height: calc(var(--lyric-font-size) * 1.55);
+    }
+    .lyrics-container[data-max-lines="3"] {
+      --lyric-current-height: calc(var(--lyric-font-size) * 2.9);
+      --lyric-next-height: calc(var(--lyric-font-size) * 2.1);
+    }
+
     .lyrics-container.line-promoting #lyric-current {
       transform: translateY(-14px);
       opacity: 0.72;
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       font-weight: 500;
       transition-delay: 0ms;
     }
@@ -161,7 +191,7 @@
       transform: translateY(calc(-1 * (var(--lyric-next-height) + var(--lyric-lines-gap))));
       opacity: 1;
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       font-weight: 700;
       transition-delay: 0ms;
     }
@@ -230,26 +260,34 @@
       el.textContent = '';
       const trimmed = text && text.trim();
       if (!trimmed) {
+        el.classList.remove('multi-line');
         el.appendChild(document.createTextNode('\u00A0'));
-        return;
+        return 1;
       }
       const parts = text.split('\n');
+      const inner = document.createElement('span');
+      inner.className = 'lyric-line-inner';
       parts.forEach((part, i) => {
-        if (i > 0) el.appendChild(document.createElement('br'));
+        if (i > 0) inner.appendChild(document.createElement('br'));
         if (i === 0) {
-          el.appendChild(document.createTextNode(part));
+          inner.appendChild(document.createTextNode(part));
         } else {
           const sub = document.createElement('span');
           sub.className = 'lyric-subline';
           sub.textContent = part;
-          el.appendChild(sub);
+          inner.appendChild(sub);
         }
       });
+      el.appendChild(inner);
+      el.classList.toggle('multi-line', parts.length > 1);
+      return parts.length;
     }
 
     function setLineTexts(currentText, nextText) {
-      renderLineInto(lyricCurrent, currentText || "");
-      renderLineInto(lyricNext, nextText || "");
+      const currentLines = renderLineInto(lyricCurrent, currentText || "");
+      const nextLines = renderLineInto(lyricNext, nextText || "");
+      const maxLines = Math.min(3, Math.max(currentLines, nextLines));
+      lyricsArea.dataset.maxLines = String(maxLines);
       displayedCurrent = currentText || "";
       displayedNext = nextText || "";
     }
@@ -284,6 +322,8 @@
 
       document.documentElement.style.setProperty('--overlay-scale', scale);
       document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
+      const fontSize = Number(style.font_size ?? style.fontSize) || 0;
+      document.documentElement.style.setProperty('--lyric-font-size', `${fontSize > 0 ? fontSize : 22}px`);
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
       document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
       document.documentElement.style.setProperty('--accent-color', `#${color}`);

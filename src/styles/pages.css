@@ -192,6 +192,89 @@ html[data-theme="sky"] .task-progress-container {
   font-weight: 500;
 }
 
+.task-section {
+  margin-bottom: 48px;
+}
+
+.task-section-header-row.group-header {
+  margin-bottom: 16px;
+  color: var(--accent-primary);
+}
+
+.task-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.task-section-chevron {
+  width: 1em;
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  font-size: 0.95rem;
+}
+
+.task-section-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-main);
+}
+
+.task-section-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.task-section-clear {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.task-section-clear:hover {
+  background: #ef4444;
+  color: var(--text-inverse);
+}
+
+.task-section-clear[hidden] {
+  display: none !important;
+}
+
+.task-progress-bar.indeterminate {
+  width: 40% !important;
+  animation: task-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes task-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
 /* --- Settings Page Styles (Restored) --- */
 .settings-container {
   --settings-actions-width: 200px;

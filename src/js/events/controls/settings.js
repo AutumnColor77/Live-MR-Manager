@@ -239,6 +239,18 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
     };
   }
 
+  // MR 분리 방식 선택 모달 표시 여부 - 모달 안의 "다음부터 바로 분리"와 같은 값.
+  const toggleAskSeparationMode = document.getElementById("toggle-ask-separation-mode");
+  if (toggleAskSeparationMode) {
+    const stored = localStorage.getItem("askSeparationMode");
+    state.askSeparationMode = stored === null ? true : stored === "true";
+    toggleAskSeparationMode.checked = state.askSeparationMode;
+    toggleAskSeparationMode.onchange = (e) => {
+      state.askSeparationMode = !!e.target.checked;
+      localStorage.setItem("askSeparationMode", String(state.askSeparationMode));
+    };
+  }
+
   const syncMrCacheFormatToUi = (format) => {
     const normalized = format === "wav" ? "wav" : "mp3";
     const dropdown = document.getElementById("mr-cache-format-dropdown");
@@ -272,10 +284,12 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
   if (elements.mrCacheFormatSelect) {
     const initMrCacheFormat = async () => {
       let format = state.mrCacheFormat || "mp3";
+      let fromBackend = false;
       try {
         const backend = await getMrCacheFormat();
         if (backend === "mp3" || backend === "wav") {
           format = backend;
+          fromBackend = true;
         }
       } catch (_) {
         /* use localStorage fallback */
@@ -283,6 +297,8 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
       state.mrCacheFormat = format;
       localStorage.setItem("mrCacheFormat", format);
       syncMrCacheFormatToUi(format);
+      // 백엔드가 설정 DB에서 복원한 값이 진실의 원천이므로 되돌려 보내지 않는다.
+      if (fromBackend) return;
       try {
         await setMrCacheFormat(format);
       } catch (_) {

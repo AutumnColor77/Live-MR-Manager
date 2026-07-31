@@ -72,6 +72,11 @@ export function openEditModal(song, index) {
   setMetaStarRating("edit-difficulty-stars", "edit-difficulty-select", song.difficulty);
   setMetaStarRating("edit-proficiency-stars", "edit-proficiency-select", song.proficiency);
 
+  const lyricsLinkEl = document.getElementById("edit-lyrics-link");
+  if (lyricsLinkEl) {
+    lyricsLinkEl.value = song.lyricsLink || song.lyrics_link || "";
+  }
+
   // MR Checkbox initialization
   const mrCheckbox = document.getElementById("edit-is-mr");
   if (mrCheckbox) {

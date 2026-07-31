@@ -7,6 +7,8 @@ import { setPitch, setTempo, setMasterVolume, setVocalBalance, seekTo } from '..
 import { persistCurrentTrackAudioSettings, setupDirectInput } from './shared.js';
 
 export function initPlaybackListeners() {
+  initGlobalSpacePlayback();
+
   if (elements.togglePlayBtn) {
     elements.togglePlayBtn.onclick = async () => {
       const { handlePlaybackToggle } = await import('../../player.js');
@@ -184,6 +186,108 @@ export function initPlaybackListeners() {
         elements.tempoSlider.dispatchEvent(new Event("input"));
       }
       import('../../utils.js').then(m => m.showNotification("오디오 설정이 초기화되었습니다.", "info"));
+    };
+  }
+
+  initDockMoreMenu();
+}
+
+/** 전체 창에서 Space = 재생/일시정지.
+ *  입력란·편집 가능한 요소에 포커스가 있을 때는 무시한다. */
+function initGlobalSpacePlayback() {
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" && e.key !== " ") return;
+    if (e.repeat) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+    const t = e.target;
+    if (t instanceof HTMLElement) {
+      const tag = t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (t.isContentEditable) return;
+      // 커스텀 셀렉트·시간 입력 등 편집 중이면 무시
+      if (t.closest("[contenteditable='true'], .marker-time-input, .suggestion-dropdown")) return;
+    }
+
+    e.preventDefault();
+    import("../../player.js").then(({ handlePlaybackToggle }) => handlePlaybackToggle());
+  });
+}
+
+/** 하단 재생바 ⋯ — 지금 재생 중인 곡의 정보 수정 / MR 분리 / 가사 싱크. */
+function initDockMoreMenu() {
+  const btn = document.getElementById("dock-more-btn");
+  const popover = document.getElementById("dock-more-popover");
+  if (!btn || !popover) return;
+
+  const titleEl = document.getElementById("dock-more-title");
+  const itemEdit = document.getElementById("dock-menu-edit");
+  const itemSeparate = document.getElementById("dock-menu-separate");
+  const itemLyricSync = document.getElementById("dock-menu-lyric-sync");
+  const closeMenu = () => popover.classList.remove("active");
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    if (popover.classList.contains("active")) {
+      closeMenu();
+      return;
+    }
+    const song = state.currentTrack;
+    if (!song) {
+      import('../../utils.js').then((m) => m.showNotification("재생 중인 곡이 없습니다.", "info"));
+      return;
+    }
+    if (titleEl) titleEl.textContent = song.title || "현재 곡";
+    const inLib = state.songLibrary.find((s) => s.path === song.path) || song;
+    const isSeparated = !!(inLib.isSeparated || inLib.is_separated);
+    if (itemSeparate) {
+      const isManualMr = !!(inLib.isMr || inLib.is_mr);
+      const busy = !!state.activeTasks[song.path];
+      itemSeparate.classList.toggle("disabled", isSeparated || isManualMr || busy);
+      itemSeparate.textContent = busy ? "분리 진행 중…" : (isSeparated ? "MR 분리됨" : "MR 분리");
+    }
+    popover.classList.add("active");
+  };
+
+  document.addEventListener("click", (e) => {
+    if (!popover.classList.contains("active")) return;
+    if (e.target.closest("#dock-more")) return;
+    closeMenu();
+  });
+
+  if (itemEdit) {
+    itemEdit.onclick = async () => {
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const idx = state.songLibrary.findIndex((s) => s.path === song.path);
+      if (idx === -1) {
+        import('../../utils.js').then((m) => m.showNotification("라이브러리에서 곡을 찾을 수 없습니다.", "error"));
+        return;
+      }
+      const { openEditModal } = await import('../../ui/modals.js');
+      openEditModal(state.songLibrary[idx], idx);
+    };
+  }
+
+  if (itemSeparate) {
+    itemSeparate.onclick = async () => {
+      if (itemSeparate.classList.contains("disabled")) return;
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const { openSeparationModeModal } = await import('../../separation-mode-modal.js');
+      openSeparationModeModal(state.songLibrary.find((s) => s.path === song.path) || song);
+    };
+  }
+
+  if (itemLyricSync) {
+    itemLyricSync.onclick = async () => {
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const { openAlignmentForTrack } = await import('../navigation.js');
+      openAlignmentForTrack(song.path);
     };
   }
 }

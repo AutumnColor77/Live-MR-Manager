@@ -2,7 +2,7 @@
  * add-song-modal.js — 유튜브 URL / 로컬 파일로 곡 추가하는 단일 모달.
  *
  * 플로우: 소스 입력 → 메타 미리보기(제목/아티스트 편집) → 라이브러리 추가
- * → (선택) MR 분리 모달 → (선택) 가사 AI 정렬(분리 시 완료 후 enqueue).
+ * → (선택) MR 분리 모달.
  */
 import { invoke } from './tauri-bridge.js';
 import { state } from './state.js';
@@ -72,11 +72,9 @@ function resetModal() {
   const urlInput = document.getElementById('add-song-url-input');
   const filePath = document.getElementById('add-song-file-path');
   const sep = document.getElementById('add-song-opt-separate');
-  const align = document.getElementById('add-song-opt-align');
   if (urlInput) urlInput.value = '';
   if (filePath) filePath.value = '';
   if (sep) sep.checked = false;
-  if (align) align.checked = false;
   setSourceTab('url');
 }
 
@@ -189,7 +187,6 @@ async function submitAdd() {
   const title = document.getElementById('add-song-title')?.value?.trim();
   const artist = document.getElementById('add-song-artist')?.value?.trim();
   const wantSep = !!document.getElementById('add-song-opt-separate')?.checked;
-  const wantAlign = !!document.getElementById('add-song-opt-align')?.checked;
   const extras = pendingExtraPaths.slice();
 
   try {
@@ -229,18 +226,11 @@ async function submitAdd() {
       : '추가되었습니다.';
     showNotification(msg, 'success');
 
-    const addedPath = song.path;
     closeAddSongModal();
 
     if (wantSep) {
-      if (wantAlign) {
-        state.pendingAlignAfterSep.add(addedPath);
-      }
       const { openSeparationModeModal } = await import('./separation-mode-modal.js');
       openSeparationModeModal(song);
-    } else if (wantAlign) {
-      const { enqueueAlignment } = await import('./alignment-queue.js');
-      enqueueAlignment([addedPath]);
     }
   } catch (err) {
     console.error('[AddSong] Submit failed:', err);

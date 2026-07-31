@@ -12,14 +12,20 @@
  *
  * 모델 에셋 다운로드는 이 큐의 책임이 아니다: 사용자가 설정에서 고른 언어
  * (getAlignmentLanguage)에 해당하는 모델이 아직 다운로드되어 있지 않으면
- * 항목을 "awaiting-model"로 표시하고 건너뛴다 - 실제 다운로드는 설정 화면의
- * AI 가사 정렬 모델 카드(events/controls/alignment-model.js)에서 확인
- * 다이얼로그를 거쳐 수행한다.
+ * 항목을 "awaiting-model"로 표시하고 건너뛴다 - 랩/혼합(rap)은 한국어·영어
+ * 둘 다 필요하다. 실제 다운로드는 설정 화면의 AI 가사 정렬 모델 카드
+ * (events/controls/alignment-model.js)에서 확인 다이얼로그를 거쳐 수행한다.
  */
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc, mergeAlignmentResult, getSyncText, encodeLrc, parseMarkers, formatMarkerLine } from './lrc-parser.js';
-import { getAlignmentLanguage, findModelForLanguage } from './alignment-model.js';
+import {
+  getAlignmentLanguage,
+  findModelForLanguage,
+  requiredLanguagesFor,
+  mergeDualAlignmentLines,
+  ALIGNMENT_LANGUAGES,
+} from './alignment-model.js';
 
 let isRunning = false;
 let listenerReady = false;
@@ -64,10 +70,22 @@ async function ensureProgressListener() {
     const p = Number(event.payload);
     if (p === -1) {
       // 백엔드가 이전 정렬 락을 기다리는 중 - 이미 "대기 중"으로 표시돼 있음.
+      item.phase = 'queued';
+      notifyQueueChanged();
+      return;
+    }
+    if (p === -2) {
+      // 전처리/모델 로드 중 — 0%로 보이면 "멈춘 것"처럼 보이므로 preparing으로 표시.
+      item.phase = 'preparing';
+      item.percentage = 0;
+      notifyQueueChanged();
       return;
     }
     if (Number.isFinite(p)) {
-      item.percentage = Math.max(0, Math.min(100, p));
+      // 듀얼(랩/혼합) 모드는 패스마다 offset/scale을 걸어 전체 0~100%로 이어 보이게.
+      item.phase = 'aligning';
+      const scaled = (item.progressOffset || 0) + p * (item.progressScale || 1);
+      item.percentage = Math.max(0, Math.min(100, scaled));
       notifyQueueChanged();
     }
   });
@@ -88,10 +106,10 @@ function extractMarkerLines(lrcContent) {
   return lines;
 }
 
-/** 사용자가 설정에서 고른 언어(getAlignmentLanguage)에 해당하는 로컬 정렬
- *  모델(model.onnx + tokens.txt)이 다운로드되어 있으면 그 식별자
- *  (get_model_list 항목, "display|path")를 반환, 없으면 null. */
-async function resolveLanguageModel() {
+/** 선택한 정렬 언어에 필요한 설치 모델들을 언어별로 반환.
+ *  단일 언어는 1개, 랩/혼합은 ko+en 2개. 하나라도 없으면 null.
+ *  반환: [{lang, model}] */
+async function resolveAlignmentModels() {
   let models = [];
   try {
     models = await invoke('get_model_list');
@@ -99,7 +117,22 @@ async function resolveLanguageModel() {
     console.error('[AlignQueue] get_model_list failed:', err);
     return null;
   }
-  return findModelForLanguage(models, getAlignmentLanguage());
+  const langs = requiredLanguagesFor(getAlignmentLanguage());
+  const resolved = [];
+  for (const lang of langs) {
+    const model = findModelForLanguage(models, lang);
+    if (!model) return null;
+    resolved.push({ lang, model });
+  }
+  return resolved;
+}
+
+function missingModelErrorMessage(language) {
+  if (language === 'rap') {
+    return '랩/혼합 정렬에는 한국어·영어 모델이 모두 필요합니다. 설정에서 두 모델을 다운로드한 뒤 다시 시도해 주세요.';
+  }
+  const label = ALIGNMENT_LANGUAGES[language]?.label || language;
+  return `${label} 정렬 모델이 설치되어 있지 않습니다. 설정에서 모델을 다운로드한 뒤 다시 시도해 주세요.`;
 }
 
 async function processOne(item) {
@@ -131,23 +164,40 @@ async function processOne(item) {
   }
 
   // 2. 모델 확인 (없으면 이 항목만 실패시키지 않고 "모델 대기" 상태로 표시)
+  //    랩/혼합 모드는 한국어+영어 모델이 둘 다 있어야 한다.
   const language = getAlignmentLanguage();
-  const modelSpec = await resolveLanguageModel();
-  if (!modelSpec) {
-    const label = language === 'en' ? '영어' : '한국어';
+  const modelSpecs = await resolveAlignmentModels();
+  if (!modelSpecs) {
     item.status = 'awaiting-model';
-    item.error = `${label} 정렬 모델이 설치되어 있지 않습니다. 설정에서 모델을 다운로드한 뒤 다시 시도해 주세요.`;
+    item.error = missingModelErrorMessage(language);
     return;
   }
 
   // 3. 강제정렬 실행 (백엔드 쪽이 단발 정렬 실행과의 동시성도 직렬화함)
-  const result = await invoke('run_forced_alignment', {
-    audioPath: item.path,
-    lyrics: allTexts.join('\n'),
-    modelName: modelSpec,
-    language,
-  });
-  const lines = (result && result.lines) || [];
+  //    단일 언어는 1패스, 랩/혼합은 언어별 2패스 후 줄 단위 병합.
+  const lyrics = allTexts.join('\n');
+  const passResults = [];
+  for (let pi = 0; pi < modelSpecs.length; pi++) {
+    const { lang, model } = modelSpecs[pi];
+    item.progressOffset = (100 / modelSpecs.length) * pi;
+    item.progressScale = 1 / modelSpecs.length;
+    item.passLabel = modelSpecs.length > 1 ? `${pi + 1}/${modelSpecs.length}` : null;
+    notifyQueueChanged();
+    const result = await invoke('run_forced_alignment', {
+      audioPath: item.path,
+      lyrics,
+      modelName: model,
+      language: lang,
+    });
+    passResults.push((result && result.lines) || []);
+  }
+  item.progressOffset = 0;
+  item.progressScale = 1;
+  item.passLabel = null;
+
+  const lines = passResults.length === 2
+    ? mergeDualAlignmentLines(passResults[0], passResults[1])
+    : (passResults[0] || []);
   const appliedCount = mergeAlignmentResult(segments, lines);
   if (appliedCount === 0) {
     item.status = 'error';
@@ -182,6 +232,7 @@ async function runQueue() {
       const item = state.alignmentQueue.find((i) => i.status === 'queued');
       if (!item) break;
       item.status = 'processing';
+      item.phase = 'preparing';
       item.percentage = 0;
       notifyQueueChanged();
       try {
@@ -223,6 +274,7 @@ export function enqueueAlignment(paths) {
       title: song?.title || path,
       thumbnail: song?.thumbnail || '',
       status: 'queued',
+      phase: 'queued',
       percentage: 0,
     });
     active.add(path);

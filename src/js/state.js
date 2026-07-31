@@ -30,8 +30,6 @@ export const state = {
   selectedLibraryPaths: new Set(),
   // 라이브러리 소스 필터 칩: all | youtube | local
   sourceFilter: localStorage.getItem("librarySourceFilter") || "all",
-  // 노래 추가 모달에서 "분리 후 정렬" 선택한 경로
-  pendingAlignAfterSep: new Set(),
   playbackSequence: 0, // Latest playback request ID to handle race conditions
   
   // Interpolation / Progress State

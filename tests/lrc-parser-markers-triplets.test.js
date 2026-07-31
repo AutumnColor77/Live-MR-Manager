@@ -18,6 +18,8 @@ import {
   parseLrc,
   parseMarkers,
   formatMarkerLine,
+  parseTimeInput,
+  formatTimeInput,
   isTriplet,
   getSyncText,
   getDisplayLines,
@@ -139,5 +141,25 @@ describe('suggestVocalStartFromSegments', () => {
   it('returns null when the intro is shorter than minSec', () => {
     const segments = [{ start: 1, end: 2 }];
     expect(suggestVocalStartFromSegments(segments)).toBeNull();
+  });
+});
+
+describe('parseTimeInput / formatTimeInput', () => {
+  it('parses mm:ss, mm:ss.xx, and plain seconds', () => {
+    expect(parseTimeInput('1:23')).toBeCloseTo(83);
+    expect(parseTimeInput('01:23.45')).toBeCloseTo(83.45);
+    expect(parseTimeInput('83')).toBe(83);
+    expect(parseTimeInput('83.5')).toBeCloseTo(83.5);
+  });
+
+  it('rejects invalid inputs', () => {
+    expect(parseTimeInput('')).toBeNull();
+    expect(parseTimeInput('1:60')).toBeNull();
+    expect(parseTimeInput('abc')).toBeNull();
+  });
+
+  it('round-trips with formatTimeInput', () => {
+    expect(parseTimeInput(formatTimeInput(83.45))).toBeCloseTo(83.45);
+    expect(formatTimeInput(5)).toBe('00:05.00');
   });
 });

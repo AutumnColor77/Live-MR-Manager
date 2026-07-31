@@ -204,6 +204,25 @@ html[data-theme="sky"] {
   --ok-soft-bg: rgba(21, 128, 61, 0.14);
 }
 
+/* 셀렉트 팝업 목록·기본 스크롤바 같은 네이티브 컨트롤이 테마를 따르게 한다
+   (지정하지 않으면 다크 테마에서도 드롭다운 목록이 흰색으로 뜬다) */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"],
+html[data-theme="pink"],
+html[data-theme="sky"] {
+  color-scheme: light;
+}
+
+/* color-scheme을 무시하는 플랫폼을 위한 안전망 */
+select option {
+  background-color: var(--surface-2);
+  color: var(--text-main);
+}
+
 /* Premium Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;

@@ -22,6 +22,8 @@
 | 오류 | 곡 경로가 없어 저장할 수 없습니다. | `src/js/events/modals.js` |
 | 오류 | 곡 삭제 실패 | `src/js/ui/manager.js` |
 | 오류 | 곡 삭제 중 오류가 발생했습니다. | `src/js/ui/library.js` |
+| 오류 | 라이브러리에서 곡을 찾을 수 없습니다. | `src/js/events/controls/playback.js`<br>하단 ⋯ 메뉴 |
+| 오류 | 기본 분리 모델 저장에 실패했습니다. | `src/js/separation-mode-modal.js` |
 | 오류 | 다운로드 실패: {err} | `src/js/events/controls/ai.js` |
 | 오류 | 등록 실패: {err} | `src/js/ui/manager.js` |
 | 오류 | 로그인에 실패했습니다. | `src/js/events/meloming.js`<br>OAuth 실패 기본 문구 |
@@ -52,7 +54,10 @@
 | 오류 | 저장할 가사 데이터가 없습니다. | `src/js/alignment-viewer.js` |
 | 오류 | 정렬 모델 다운로드 실패: {err} | `src/js/alignment-viewer.js` |
 | 오류 | 정렬 모델 목록을 불러오지 못했습니다: {err} | `src/js/alignment-viewer.js` |
-| 오류 | 정보를 가져오는데 실패했습니다. | `src/js/events/controls/youtube.js` |
+| 오류 | 정보를 가져오는데 실패했습니다. | `src/js/add-song-modal.js` |
+| 오류 | 파일 선택에 실패했습니다. | `src/js/add-song-modal.js` |
+| 오류 | 파일 정보를 읽지 못했습니다. | `src/js/add-song-modal.js` |
+| 오류 | 곡 추가에 실패했습니다. | `src/js/add-song-modal.js` |
 | 오류 | 태그 목록을 불러오지 못했습니다. | `src/js/ui/manager.js` |
 | 오류 | 편집 중인 곡을 찾을 수 없습니다. | `src/js/events/modals.js` |
 | 오류 | AI 정렬 준비 실패: {err} | `src/js/alignment-viewer.js` |
@@ -77,13 +82,14 @@
 | 경고 | 음원을 먼저 불러오세요. | `src/js/alignment-viewer.js` |
 | 경고 | 음원을 먼저 선택하세요. | `src/js/alignment-viewer.js` |
 | 경고 | 이미 대기열에 있거나 처리 중인 곡입니다. | `src/js/audio.js` |
-| 경고 | 이미 등록된 곡입니다. | `src/js/events/controls/youtube.js` |
+| 경고 | 이미 등록된 곡입니다. | `src/js/add-song-modal.js` |
 | 경고 | 파형 로드 실패: {err} | `src/js/alignment-viewer.js` |
 | 경고 | HTTPS URL만 사용할 수 있습니다. | `src/js/events/controls/custom-models.js` (notify()) |
 | 경고 | LAN 접속을 껐습니다. 앱을 다시 시작해야 적용됩니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
 | 경고 | LAN 접속을 켰습니다. 앱을 다시 시작해야 다른 기기에서 접속할 수 있습니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
 | 경고 | SHA-256은 64자리 16진수여야 합니다. | `src/js/events/controls/custom-models.js` (notify()) |
 | 안내 | {label} 모델로 변경되었습니다. | `src/js/events/controls/ai.js` |
+| 안내 | 다음부터는 이 모델로 바로 분리합니다. 설정 > AI 분리 엔진에서 되돌릴 수 있어요. | `src/js/separation-mode-modal.js` |
 | 안내 | 데이터 복구를 시작합니다. 유튜브 곡의 경우 시간이 소요될 수 있습니다. | `src/js/events/controls/settings.js` |
 | 안내 | 모델이 삭제되었습니다. | `src/js/events/controls/ai.js` |
 | 안내 | 배치할 미싱크 가사가 없습니다. | `src/js/alignment-viewer.js` |
@@ -91,6 +97,7 @@
 | 안내 | 싱크 데이터가 초기화되었습니다. | `src/js/alignment-viewer.js` |
 | 안내 | 오디오 설정이 초기화되었습니다. | `src/js/events/controls/playback.js` |
 | 안내 | 이 곡은 이미 정렬 대기열에 있거나 처리 중입니다. | `src/js/alignment-viewer.js` |
+| 안내 | 재생 중인 곡이 없습니다. | `src/js/events/controls/playback.js`<br>하단 ⋯ 메뉴 |
 | 안내 | 재생할 곡이 선택되지 않았습니다. | `src/js/player.js` |
 | 안내 | 정렬 모델이 삭제되었습니다. | `src/js/events/controls/alignment-model.js` (notify()) |
 | 안내 | 커스텀 모델이 삭제되었습니다. | `src/js/events/controls/custom-models.js` (notify()) |
@@ -99,7 +106,6 @@
 | 안내 | AI로 정렬할 미싱크 가사가 없습니다. | `src/js/alignment-viewer.js` |
 | 안내 | MR 저장 형식이 {label}로 변경되었습니다. | `src/js/events/controls/settings.js` |
 | 성공 | {n}개의 곡 정보가 저장되었습니다. | `src/js/ui/manager.js` |
-| 성공 | {n}개의 파일이 추가되었습니다. | `src/js/events/backend.js` |
 | 성공 | {n}곡이 삭제되었습니다. | `src/js/ui/manager.js` |
 | 성공 | 가사 싱크 저장 완료 | `src/js/alignment-viewer.js` |
 | 성공 | 가져오기 양식(CSV)을 저장했습니다. | `src/js/events/controls/settings.js` |
@@ -116,10 +122,11 @@
 | 성공 | 사전에 등록되었으며 곡 정보에 반영되었습니다. | `src/js/ui/manager.js` |
 | 성공 | 이미 최신 버전을 사용 중입니다. | `src/js/events/controls/settings.js` |
 | 성공 | 정보가 수정되었습니다. | `src/js/events/modals.js` |
-| 성공 | 추가되었습니다. | `src/js/events/controls/youtube.js` |
+| 성공 | 추가되었습니다. | `src/js/add-song-modal.js` |
+| 성공 | 추가되었습니다. (추가 파일 {n}개 포함) | `src/js/add-song-modal.js` |
 | 성공 | 커스텀 모델이 추가되었습니다. | `src/js/events/controls/custom-models.js` (notify()) |
 | 성공 | AI 가사 정렬 모델 다운로드가 완료되었습니다. | `src/js/events/controls/alignment-model.js` (notify()) |
-| 성공 | AI 자동 정렬을 시작했습니다. 완료되면 자동으로 결과가 반영돼요. | `src/js/alignment-viewer.js` |
+| 성공 | AI 자동 정렬을 시작했습니다. 완료되면 자동으로 결과가 반영돼요.[ (랩/혼합: …)] | `src/js/alignment-viewer.js` |
 | 성공 | AI 정렬 결과 {n}줄이 반영되었습니다. 결과는 AI 초안이니 필요한 부분만 검토해 다듬어 주세요. | `src/js/alignment-viewer.js` |
 | 성공 | BPM {bpm} 그리드로 {n}줄 대략 배치했습니다. 필요한 부분만 수동 보정하세요. | `src/js/alignment-viewer.js` |
 | 성공 | KEY/BPM 분석을 반영했습니다. | `src/js/events/modals.js` |

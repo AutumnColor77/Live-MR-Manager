@@ -124,6 +124,7 @@ export function initModalListeners() {
         is_mr: isManualMr,
         isSeparated: wasSeparated,
         is_separated: wasSeparated,
+        lyricsLink: (document.getElementById("edit-lyrics-link")?.value || "").trim() || null,
       };
 
       try {

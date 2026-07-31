@@ -24,7 +24,8 @@
   width: 100%;
   padding: 0 32px;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  /* 썸네일 · 곡 정보 · AI · 오디오 패널 · 현재 곡 ⋯ 메뉴 */
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 20px;
 }
@@ -602,4 +603,75 @@ input:checked + .slider:before {
 /* --- UI Cleanups --- */
 .status-msg-dock {
   display: none !important;
+}
+
+/* 하단 재생바 현재 곡 빠른 메뉴 (⋯) */
+.dock-more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.dock-more-popover {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: -6px;
+  min-width: 160px;
+  background: var(--menu-bg);
+  backdrop-filter: blur(25px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.dock-more-popover.active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.dock-more-title {
+  padding: 6px 10px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 4px;
+}
+
+/* 항목 스타일은 우클릭 컨텍스트 메뉴(.context-menu-item)와 동일하게 유지 */
+.dock-menu-item {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.dock-menu-item:hover {
+  background: var(--glass-bg);
+  color: var(--text-main);
+}
+
+.dock-menu-item.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: default;
 }

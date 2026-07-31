@@ -11,6 +11,8 @@ pub const INST_WAV: &str = "inst.wav";
 const FORMAT_MP3: u8 = 0;
 const FORMAT_WAV: u8 = 1;
 
+const SETTINGS_KEY: &str = "mr_cache_format";
+
 /// Default: MP3 320 kbps (smaller/faster cache writes).
 static MR_CACHE_FORMAT: AtomicU8 = AtomicU8::new(FORMAT_MP3);
 
@@ -58,15 +60,43 @@ pub fn current_format() -> MrCacheFormat {
     }
 }
 
-pub fn set_format(s: &str) -> Result<(), String> {
-    let format = MrCacheFormat::from_str(s)
-        .ok_or_else(|| "지원하지 않는 MR 캐시 형식입니다 (mp3 또는 wav)".to_string())?;
+fn store_format(format: MrCacheFormat) {
     let code = match format {
         MrCacheFormat::Mp3 => FORMAT_MP3,
         MrCacheFormat::Wav => FORMAT_WAV,
     };
     MR_CACHE_FORMAT.store(code, Ordering::Relaxed);
+}
+
+pub fn set_format(s: &str) -> Result<(), String> {
+    let format = MrCacheFormat::from_str(s)
+        .ok_or_else(|| "지원하지 않는 MR 캐시 형식입니다 (mp3 또는 wav)".to_string())?;
+    store_format(format);
+    let db = crate::state::DB.lock();
+    db.execute(
+        "INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)",
+        rusqlite::params![SETTINGS_KEY, format.as_str()],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Restores the saved format at startup. Must run after the DB is initialized
+/// and before any separation reads `current_format()`, otherwise the in-process
+/// default (MP3) would silently win over the user's choice.
+pub fn load_persisted_format() {
+    let stored: Option<String> = {
+        let db = crate::state::DB.lock();
+        db.query_row(
+            "SELECT value FROM Settings WHERE key = ?",
+            rusqlite::params![SETTINGS_KEY],
+            |row| row.get(0),
+        )
+        .ok()
+    };
+    if let Some(format) = stored.as_deref().and_then(MrCacheFormat::from_str) {
+        store_format(format);
+    }
 }
 
 pub fn mr_output_paths_for(dir: &Path, format: MrCacheFormat) -> (PathBuf, PathBuf) {
