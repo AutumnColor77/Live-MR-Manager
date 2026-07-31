@@ -1,8 +1,12 @@
 # Release Notes
 
-## License & notices (docs, 2026-07-29)
+## Unreleased (다음 정식 릴리스 v0.5.2+ 예정, 2026-07-31)
 
-다음 정식 릴리스(v0.5.2+)에 포함될 라이선스 정비입니다. **앱 버전 번호는 아직 올리지 않았습니다.**
+앱 버전 번호는 아직 올리지 않았습니다. 아래는 개발 브랜치에 들어간 변경입니다.
+
+**참고 기여**: [Temmis2077](https://github.com/Temmis2077)의 [Live-MR-Manager-Mod](https://github.com/Temmis2077/Live-MR-Manager-Mod) PR/포크에서 정렬·커스텀 모델·싱크 UX 아이디어를 선별 반영했습니다(거부 항목·라이선스 정책은 [`docs/MODEL_LICENSING.md`](docs/MODEL_LICENSING.md)).
+
+### 라이선스·고지 (docs, 2026-07-29~)
 
 - 루트 [LICENSE](LICENSE) (MIT) 복원 · `package.json` / `Cargo.toml` / Companion `package.json`에 `license: MIT` 선언
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — 링크·런타임 다운로드(FFmpeg LGPL, yt-dlp.exe GPLv3+)·AI 모델 구분
@@ -10,15 +14,43 @@
 - [docs/MODEL_LICENSING.md](docs/MODEL_LICENSING.md) — 상업 방송 허용 목표, UVR 잠정 MIT+크레딧, PR#1 Apache 정렬 OK / CC-BY-NC Deux 공식 제외
 - Companion 이용약관: MIT 소프트웨어 권리를 축소하지 않도록 범위 정리 (시행일 2026-07-29)
 - 설정 > 법적 고지: MIT·제3자 고지 링크 추가
+- 릴리스 준수: [docs/LICENSE_COMPLIANCE_CHECKLIST.md](docs/LICENSE_COMPLIANCE_CHECKLIST.md)
 
-### 릴리스 준수 체크리스트
+### 커스텀 분리 모델 URL 등록
+
+- 로컬 파일뿐 아니라 **HTTPS URL**로 ONNX 커스텀 모델을 등록할 수 있습니다.
+- 보안: HTTPS만 허용, 용량 상한(2 GiB), **스트리밍 SHA-256** 검증, 검증 후 원자적 설치, 진행률 이벤트.
+- 모델 라이선스·사용 권리는 이용자 확인 책임(공식 보증 없음). 상세: [docs/MODEL_LICENSING.md](docs/MODEL_LICENSING.md) §2.
+
+### 가사 싱크 (Lyric Sync)
+
+- **원문/차음/번역 3줄 모드**: 3줄을 한 싱크 단위로 묶어 `[orig]`/`[pron]`/`[tran]` LRC로 저장(태그 없는 기존 파일 호환).
+- **BPM 그리드 배치**: 라이브러리에 BPM이 있으면 분석 단계를 건너뛰고 즉시 배치.
+- **AI 자동 정렬** UI: 싱크 조작 박스 아래 전용 패널, 싱크 맞추기와 같은 버튼 톤, **정렬 언어 드롭다운**(설정과 연동).
+- 마커 버튼(보컬 시작~BPM 그리드) 4등분 그리드 정렬.
+- 미싱크 배지·상태 색: 밝은 테마에서 진한 앰버 등 테마별 경고/완료 토큰.
+- 싱크 초기화 확인을 커스텀 모달로 통일(브라우저 `confirm` 제거). 확인 모달 X 닫기·소형 레이아웃.
+
+### 설정·오버레이 UX
+
+- 설정 카드 레이아웃을 기존 톤앤매너에 맞춤(스택 카드, 인라인 경로/버튼, 설명문 말줄임 완화).
+- MR 캐시 경로: 현재 경로 표시·버튼 폭/배치 정리, 재시작 안내 문구 단순화.
+- AI/정렬/오버레이 등 설명에서 불필요 기술 용어 정리.
+
+### 문서
+
+- 알림·경고·확인 문구 목록: [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md)
+- ToDo: 유튜브 노래 검색 추가(미구현) 항목 등록
+
+### 릴리스 준수 체크리스트 (배포 전)
 
 - [ ] GitHub가 저장소 라이선스를 MIT로 표시하는지 확인
-- [ ] 설치 파일(`*_setup.exe`)에 ffmpeg.exe / yt-dlp.exe / `.onnx`가 **포함되지 않음** (런타임 다운로드만). ONNX Runtime EP DLL(`resources/libs`)은 MIT로 번들 가능 — 고지 유지.
+- [ ] 설치 파일에 ffmpeg.exe / yt-dlp.exe / `.onnx`가 **포함되지 않음** (런타임 다운로드만)
 - [ ] RELEASE 본문 또는 앱 내 링크에 THIRD_PARTY_NOTICES·UVR 크레딧 안내
 - [ ] FFmpeg 고정 자산 SHA-256 일치, 외부 도구 재호스팅·설치 패키지 번들 없음
-- [ ] Companion `/terms` 배포(Vercel)가 갱신된 약관을 반영
+- [ ] Companion `/terms` 배포가 갱신된 약관을 반영
 - [ ] NC 모델(Deux 등)을 공식 추천/Release 자산에 올리지 않음
+- [ ] 커스텀 모델 URL: HTTPS·SHA-256·용량 상한이 릴리스 빌드에서도 동작
 
 ---
 

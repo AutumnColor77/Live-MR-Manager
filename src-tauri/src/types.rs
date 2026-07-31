@@ -90,6 +90,10 @@ pub struct SongMetadata {
     pub is_mr: Option<bool>,
     pub is_separated: Option<bool>,
     pub has_lyrics: Option<bool>,
+    /// 가사 싱크 상태: "synced"(타임스탬프 있음) / "unsynced"(가사만) / "none"(가사 없음).
+    /// `get_songs_internal`에서만 채워지고, 다른 생성 경로는 None.
+    #[serde(default)]
+    pub lyric_sync_status: Option<String>,
     pub original_title: Option<String>,
     pub translated_title: Option<String>,
     pub curation_category: Option<String>,

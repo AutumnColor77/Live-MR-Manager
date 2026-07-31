@@ -18,4 +18,12 @@ describe('parseLrc', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0].text).toBe('가사');
   });
+
+  it('parses single-digit minutes and optional fractions', () => {
+    const lrc = `[1:02.34]한 자리 분\n[2:03]소수 없음`;
+    const segments = parseLrc(lrc, 200);
+    expect(segments).toHaveLength(2);
+    expect(segments[0].start).toBeCloseTo(62.34);
+    expect(segments[1].start).toBeCloseTo(123);
+  });
 });

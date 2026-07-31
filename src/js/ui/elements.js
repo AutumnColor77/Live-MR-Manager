@@ -7,6 +7,7 @@ export const elements = {
   libSearchInput: null,
   libGenreFilter: null,
   libCategoryFilter: null,
+  libSyncFilter: null,
   libSortSelect: null,
   viewTitle: null,
   viewSubtitle: null,
@@ -110,6 +111,7 @@ export function initDomReferences() {
   elements.libSearchInput = document.getElementById("lib-search-input");
   elements.libGenreFilter = document.getElementById("lib-genre-filter");
   elements.libCategoryFilter = document.getElementById("lib-category-filter");
+  elements.libSyncFilter = document.getElementById("lib-sync-filter");
   elements.libSortSelect = document.getElementById("lib-sort-select");
   elements.libraryControls = document.getElementById("library-controls");
   elements.youtubeSection = document.getElementById("youtube-search");

@@ -223,6 +223,13 @@ body.drawer-open .song-grid {
     overflow-wrap: break-word;
 }
 
+/* 원문/차음/번역 등 두 번째 줄부터 살짝 작고 흐리게 (lyric-drawer.js buildLyricTextEl) */
+.lyric-text .lyric-subline {
+    display: inline-block;
+    font-size: 0.7em;
+    opacity: 0.85;
+}
+
 .drawer-empty-msg {
     padding-top: 60px;
     text-align: center;

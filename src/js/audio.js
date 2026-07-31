@@ -127,7 +127,7 @@ export async function setVocalBalance(balance) {
     console.error("Failed to set balance:", err);
   }
 }
-export async function startMrSeparation(path) {
+export async function startMrSeparation(path, modelId) {
   // 1. 즉시 준비 상태 등록 (백엔드 이벤트 도달 전)
   const { state } = await import('./state.js');
   const { renderLibrary } = await import('./ui/library.js');
@@ -135,7 +135,7 @@ export async function startMrSeparation(path) {
   renderLibrary(); // 배지 즉시 반영
   
   try {
-    return await invoke("start_mr_separation", { path });
+    return await invoke("start_mr_separation", { path, modelId: modelId || null });
   } catch (err) {
     // 실패 시 activeTasks 정리
     delete state.activeTasks[path];

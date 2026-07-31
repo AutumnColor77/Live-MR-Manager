@@ -147,7 +147,9 @@ fn merge_pull_update(existing: SongMetadata, mut remote: SongMetadata) -> SongMe
     remote.karaoke_url = remote.karaoke_url.or(existing.karaoke_url);
     remote.cover_url = remote.cover_url.or(existing.cover_url);
     remote.original_url = remote.original_url.or(existing.original_url);
-    remote.lyrics_link = remote.lyrics_link.or(existing.lyrics_link);
+    // Local edits always win: a manually-set link should never be silently
+    // overwritten by a Pull; remote only fills in when local is empty.
+    remote.lyrics_link = existing.lyrics_link.or(remote.lyrics_link);
 
     remote
 }
@@ -256,6 +258,26 @@ pub async fn pull_channel(channel_id: i64) -> Result<PullResult, MelomingError> 
         } else {
             created += 1;
         }
+
+        // Best-effort: seed a local unsynced .lrc from Meloming's lyrics text
+        // when the track is addressable by URL and no local LRC exists yet.
+        // Never overwrites existing sync data (seed_lrc_if_missing is a no-op
+        // if any LRC is already found). Songs without a real source URL
+        // (synthetic `meloming:song:<id>` paths) have no valid on-disk LRC
+        // location under the current addressing scheme, so they're skipped.
+        if entry.path.starts_with("http") {
+            if let Some(text) = song.lyrics_text.as_deref().filter(|t| !t.trim().is_empty()) {
+                if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
+                    if let Err(e) = crate::alignment::seed_lrc_if_missing(paths, &entry.path, text) {
+                        crate::audio_player::sys_log(&format!(
+                            "[Meloming] Failed to seed LRC from lyrics_text for {}: {}",
+                            entry.path, e
+                        ));
+                    }
+                }
+            }
+        }
+
         batch.push(entry);
     }
 

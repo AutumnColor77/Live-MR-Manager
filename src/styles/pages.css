@@ -214,6 +214,17 @@ html[data-theme="sky"] .task-progress-container {
   min-width: 0;
 }
 
+/* 설명문은 액션 열 바로 앞까지 채우고, 버튼과는 카드 열 간격만큼만 띄운다
+   (고정 max-width로 잘라 두면 카드 폭과 무관하게 이른 줄바꿈이 생긴다) */
+.settings-container .ai-model-card {
+  column-gap: 28px;
+}
+
+.settings-container .ai-model-desc,
+.settings-container .settings-status-text {
+  max-width: none;
+}
+
 .settings-container .ai-actions-right {
   width: 100%;
   min-width: 0;
@@ -223,6 +234,128 @@ html[data-theme="sky"] .task-progress-container {
 
 .settings-container .ai-model-card:has(.settings-field) .ai-actions-right {
   align-self: start;
+}
+
+/* 한 그룹 안에서 카드가 여러 장 쌓일 때의 세로 리듬 (카드마다 인라인 여백을 주지 않는다) */
+.settings-group .ai-model-card + .ai-model-card,
+.settings-group .ai-recommend-card + .ai-model-card,
+.settings-group .ai-model-card + .ai-recommend-card,
+.overlay-tab-container .ai-model-card + .ai-model-card {
+  margin-top: 16px;
+}
+
+/* 우측 액션 열 없이 내용이 세로로 쌓이는 카드 (경로 지정, URL 목록 등).
+   설정 페이지는 그리드, 오버레이 페이지는 플렉스라 두 축 모두 지정한다. */
+.ai-model-card.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.settings-container .ai-model-card.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: 14px;
+}
+
+.settings-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-sublabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+/* 코드/경로 표시 + 우측 버튼 한 줄 */
+.settings-inline-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-code-display {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: var(--accent-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-ai-action.is-inline {
+  width: auto;
+  height: auto;
+  min-height: 36px;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+
+.settings-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-btn-row .btn-ai-action {
+  width: auto;
+  min-width: 148px;
+  padding: 0 18px;
+}
+
+/* 경로 표시(좌) + 동일 너비 액션 버튼 열(우) — 설정 카드 우측 액션 열과 같은 폭 */
+.settings-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--settings-actions-width);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-path-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-path-actions .btn-ai-action {
+  width: 100%;
+}
+
+/* AI 모델 카드 머리말: 상태 배지 줄 + 제목/선택 드롭다운 줄 */
+.ai-card-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-card-provider {
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.ai-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
 }
 
 .settings-header {
@@ -290,14 +423,6 @@ html[data-theme="sky"] .task-progress-container {
   margin-top: 2px;
 }
 
-.broadcast-mode-card {
-  margin-bottom: 20px;
-}
-
-.mr-cache-format-card {
-  margin-bottom: 20px;
-}
-
 #mr-cache-format-dropdown .select-trigger,
 #mr-cache-format-dropdown .option-item {
   white-space: nowrap;
@@ -310,12 +435,14 @@ html[data-theme="sky"] .task-progress-container {
   text-overflow: ellipsis;
 }
 
-.broadcast-mode-card-actions {
+.broadcast-mode-card-actions,
+.auto-skip-intro-card-actions {
   align-items: flex-end;
   justify-content: center;
 }
 
-.broadcast-mode-card-switch {
+.broadcast-mode-card-switch,
+.auto-skip-intro-card-switch {
   transform: scale(1.2);
   transform-origin: right center;
 }
@@ -425,6 +552,12 @@ html[data-theme="sky"] .task-progress-container {
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+.ai-status-badge.status-loading {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
 .ai-title-large {
   font-size: 1.3rem;
   font-weight: 800;
@@ -493,9 +626,27 @@ html[data-theme="sky"] .task-progress-container {
   border: 1px solid var(--glass-border);
 }
 
-.btn-ai-action:hover {
+.btn-ai-action.danger {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: none;
+}
+
+.btn-ai-action.danger:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-ai-action:hover:not(:disabled) {
   transform: translateY(-2px);
   filter: brightness(1.1);
+}
+
+.btn-ai-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .settings-field {
@@ -550,7 +701,7 @@ html[data-theme="sky"] .task-progress-container {
 }
 
 .settings-status-text.is-notice {
-  color: #fbbf24;
+  color: var(--warn-strong);
 }
 
 .btn-ai-action.is-coming-soon {

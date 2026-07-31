@@ -140,6 +140,7 @@ pub async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
             artist: artist_id3, tags: None, genre: Some(genre), categories: None, play_count: Some(0),
             date_added: Some(now), is_mr: Some(false), is_separated: Some(false),
             has_lyrics: Some(false),
+            lyric_sync_status: None,
             original_title: None, translated_title: None, curation_category: None,
             ..Default::default()
         }
@@ -190,9 +191,11 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
         let track_path = row.get::<_, String>(1).unwrap_or_default();
         let is_separated = crate::model_commands::mr_separated_files_exist(&paths, &track_path);
 
-        // Check for .lrc file in the same folder
-        let lrc_path = std::path::Path::new(&track_path).with_extension("lrc");
-        let has_lyrics = lrc_path.exists();
+        // 가사 싱크 상태: LRC 내용을 읽어 타임스탬프 유무로 분류(로컬/URL 캐시 모두).
+        // 라이브러리 로드마다 호출되므로 classify_lyric_sync_status의 바운디드
+        // 읽기 + mtime 캐시로 전체 파일을 매번 읽지 않도록 한다.
+        let lyric_sync_status = crate::alignment::classify_lyric_sync_status(&paths, &track_path);
+        let has_lyrics = lyric_sync_status != "none";
 
         Ok(SongMetadata {
             id: row.get(0).ok(), path: row.get(1)?, title: row.get(2)?, thumbnail: row.get::<_, String>(3).unwrap_or_default(),
@@ -202,6 +205,7 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
             is_mr: Some(row.get::<_, i64>(12).unwrap_or(0) != 0), genre, tags, categories,
             is_separated: Some(is_separated),
             has_lyrics: Some(has_lyrics),
+            lyric_sync_status: Some(lyric_sync_status.to_string()),
             original_title: row.get(16).ok(),
             translated_title: row.get(17).ok(),
             curation_category: row.get(18).ok(),
@@ -274,6 +278,7 @@ pub fn load_all_songs_from_db() -> Result<Vec<SongMetadata>, String> {
             categories,
             is_separated: None,
             has_lyrics: None,
+            lyric_sync_status: None,
             original_title: row.get(16).ok(),
             translated_title: row.get(17).ok(),
             curation_category: row.get(18).ok(),

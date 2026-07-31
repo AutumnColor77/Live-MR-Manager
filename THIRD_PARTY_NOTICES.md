@@ -73,6 +73,33 @@ Ultimate Vocal Remover (UVR) — [Anjok07](https://github.com/anjok07), [aufr33]
 3. 명시적 비상업(CC-BY-NC 등) 모델은 **공식 기본/추천 카탈로그에 넣지 않는다**.
 4. 신규 모델 채택 기준은 [`docs/MODEL_LICENSING.md`](docs/MODEL_LICENSING.md).
 
+### 사용자 커스텀 분리 모델 (로컬 / HTTPS URL)
+
+설정 → **커스텀 모델 관리**에서 이용자가 직접 등록하는 ONNX입니다. **프로젝트 공식 카탈로그가 아니며**, 라이선스·재배포·상업 이용 가능 여부는 이용자 책임입니다.
+
+- **로컬 파일**: 이용자가 지정한 경로의 파일을 앱 데이터 폴더로 복사·검증합니다.
+- **HTTPS URL**: HTTPS만 허용, 기대 SHA-256(64 hex) 필수, 용량 상한(2 GiB), 스트리밍 해시 검증 후 원자적 설치. 구현: [`src-tauri/src/model_commands.rs`](src-tauri/src/model_commands.rs).
+- CC-BY-NC 등 비상업 모델은 공식 추천/Release에 넣지 않습니다. 커스텀으로 넣는 경우에도 이용자가 권리를 확인해야 합니다.
+
+---
+
+## 3.1 AI 가사 정렬(강제정렬) 모델 — KO/EN (런타임 온디맨드, 실험적)
+
+코드 위치: [`src-tauri/src/alignment.rs`](src-tauri/src/alignment.rs) `ALIGNMENT_MODELS`. 배포처는
+**본 프로젝트의 GitHub Release뿐**이며(재호스팅), 원본 Hugging Face 저장소를 ONNX로 변환한 결과물입니다.
+전체 항목은 [`docs/MODEL_LICENSING.md`](docs/MODEL_LICENSING.md) §4를 참고하세요.
+
+| 언어 | 원본 모델 카드 | 릴리스 자산 | SHA-256 | 용량 | 라이선스 |
+| --- | --- | --- | --- | --- | --- |
+| 한국어 | [kresnik/wav2vec2-large-xlsr-korean](https://huggingface.co/kresnik/wav2vec2-large-xlsr-korean) | [ai-align-model-v1/model.onnx](https://github.com/AutumnColor77/Live-MR-Manager/releases/download/ai-align-model-v1/model.onnx) · [tokens.txt](https://github.com/AutumnColor77/Live-MR-Manager/releases/download/ai-align-model-v1/tokens.txt) | model `e0377224ca28e4daa434155d9a035e858c7dc0c984084011734e101852bba4db` · tokens `4511d865e8decdc630f6a7c1781e53d3c22ae40b81702881e2629eddf846b082` | 약 1.2GB (model.onnx, 1,270,167,840 bytes) | Apache-2.0 |
+| 영어 | [facebook/wav2vec2-base-960h](https://huggingface.co/facebook/wav2vec2-base-960h) | [align-model-en-v1/model.onnx](https://github.com/AutumnColor77/Live-MR-Manager/releases/download/align-model-en-v1/model.onnx) · [tokens.txt](https://github.com/AutumnColor77/Live-MR-Manager/releases/download/align-model-en-v1/tokens.txt) | model `7ffb91554931fb918bee1d2294d022886c73ca8642b93ad181d058300fe6a6ef` · tokens `07dd8185b1faf8802d94b9a1336aed9e54366994f7e2227b4b0fd0d32a9c044a` | 약 360MB (model.onnx, 377,884,762 bytes) | Apache-2.0 |
+
+- **ONNX 변환 고지**: 위 두 모델은 원본 PyTorch 가중치를 ONNX로 변환(export)한 결과물입니다. 추론 코드·그래프 구조가 달라졌을 뿐, 학습 가중치의 저작권자는 원본 모델 카드에 기재된 저작자입니다. Apache License 2.0 §4(b)에 따라 변경 사실을 여기에 고지합니다.
+- **다운로드 무결성**: 앱은 다운로드한 `model.onnx`/`tokens.txt`를 위 SHA-256과 대조해 일치하지 않으면 즉시 삭제하고 실패로 처리합니다(부분/변조 다운로드가 설치되지 않도록). 자세한 구현은 `src-tauri/src/alignment.rs`의 `download_alignment_model`을 참고하세요.
+- **품질 고지**: 두 모델 모두 낭독체(read-speech) 데이터로 학습되었습니다. 가창(노래) 음성 정렬은 실험적 초안이며, 다운로드 확인 UI와 설정 화면에 "AI 초안, 사용자가 다듬기" 문구로 고지합니다.
+- Apache-2.0 원문 고지: [`docs/licenses/alignment-models-NOTICE.md`](docs/licenses/alignment-models-NOTICE.md).
+- 본 프로젝트 GitHub Release 자산은 **이 프로젝트가 직접 게시한 미러**이며, 외부 포크(fork)의 릴리스를 참조하지 않습니다.
+
 ---
 
 ## 4. 외부 서비스 (네트워크)

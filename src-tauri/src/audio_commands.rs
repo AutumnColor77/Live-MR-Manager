@@ -558,6 +558,7 @@ pub async fn update_model_settings(model_id: String) -> Result<(), String> {
     db.execute("INSERT OR REPLACE INTO Settings (key, value) VALUES ('active_model_id', ?)", rusqlite::params![model_id]).map_err(|e| e.to_string())?;
     let mut engine = crate::separation::ROFORMER_ENGINE.lock();
     *engine = None;
+    *crate::separation::ENGINE_MODEL_ID.lock() = None;
     Ok(())
 }
 

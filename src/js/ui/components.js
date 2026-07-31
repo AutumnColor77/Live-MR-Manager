@@ -405,12 +405,13 @@ export function showSongContextMenu(e, song, originalIndex) {
           } else {
             menuSeparate.classList.remove("disabled");
             menuSeparate.onclick = async () => {
-              invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
+              invoke('remote_js_log', { msg: `[MR Separate] Opening mode picker` }).catch(() => {});
               elements.contextMenu.classList.remove("active");
               elements.contextMenu.style.display = 'none';
               try {
-                const { startMrSeparation } = await import('../audio.js');
-                await startMrSeparation(song.path);
+                // 바로 분리하지 않고 속도/품질(모델) 선택 모달을 먼저 띄운다.
+                const { openSeparationModeModal } = await import('../separation-mode-modal.js');
+                openSeparationModeModal(song);
               } catch (err) {
                 invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
                 console.error("Separation trigger failed:", err);

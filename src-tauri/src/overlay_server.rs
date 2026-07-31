@@ -53,6 +53,21 @@ pub struct OverlayState {
     pub lyrics_style: OverlayStyle,
 
     pub is_force_visible: bool,
+
+    /// Full lyric-line list + current-line index for the performer-facing
+    /// `/lyrics-view` page (separate from the 2-line broadcast overlay).
+    /// Each entry may itself contain multiple sub-lines (원문/차음/번역)
+    /// joined with `\n` — receivers must split on `\n` and build DOM nodes
+    /// themselves; never treat these strings as HTML (they can contain
+    /// untrusted lyric/title/artist text from LRC files or fetched metadata).
+    #[serde(default)]
+    pub lyrics_lines: Vec<String>,
+    #[serde(default = "default_lyric_index")]
+    pub lyric_index: i32,
+}
+
+fn default_lyric_index() -> i32 {
+    -1
 }
 
 impl Default for OverlayState {
@@ -71,6 +86,8 @@ impl Default for OverlayState {
                 ..OverlayStyle::default()
             },
             is_force_visible: false,
+            lyrics_lines: Vec::new(),
+            lyric_index: -1,
         }
     }
 }
@@ -89,6 +106,8 @@ pub fn init(handle: tauri::AppHandle) {
 
 static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
+static LYRICS_VIEW_HTML: &str = include_str!("../../src/lyrics-view.html");
+static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 
 fn resolve_overlay_info_html() -> String {
@@ -115,9 +134,40 @@ fn resolve_overlay_lyrics_html() -> String {
     OVERLAY_LYRICS_HTML.to_string()
 }
 
-pub async fn start_overlay_server() {
+fn resolve_lyrics_view_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/lyrics-view.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    LYRICS_VIEW_HTML.to_string()
+}
+
+fn resolve_overlay_shared_js() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/js/overlay/shared.js");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_SHARED_JS.to_string()
+}
+
+/// `allow_lan` gates whether the overlay HTTP/WS servers bind to all
+/// interfaces (LAN-reachable) or just loopback. Read once from the persisted
+/// setting at startup (see `cache_settings::set_overlay_lan_setting`) —
+/// toggling it in Settings requires a restart to actually change the bind
+/// address, which the UI must communicate.
+pub async fn start_overlay_server(allow_lan: bool) {
+    let bind_host = if allow_lan { "0.0.0.0" } else { "127.0.0.1" };
+
     // 1. Start WebSocket Data Server (Port 14201)
-    let ws_addr = "0.0.0.0:14201".to_string();
+    let ws_addr = format!("{}:14201", bind_host);
     let ws_listener = match TcpListener::bind(&ws_addr).await {
         Ok(listener) => listener,
         Err(e) => {
@@ -137,7 +187,7 @@ pub async fn start_overlay_server() {
     });
 
     // 2. Start HTTP Page Server (Port 14202)
-    let http_addr = "0.0.0.0:14202".to_string();
+    let http_addr = format!("{}:14202", bind_host);
     let http_listener = match TcpListener::bind(&http_addr).await {
         Ok(listener) => listener,
         Err(e) => {
@@ -173,6 +223,43 @@ pub async fn start_overlay_server() {
                         let _ = stream.write_all(APP_ICON).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] Served app-icon.png to {}", addr);
+                    } else if request.starts_with("GET /js/overlay/shared.js") {
+                        let js = resolve_overlay_shared_js();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: application/javascript; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            js.len(),
+                            js
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] Served shared.js to {}", addr);
+                    } else if request.starts_with("GET /lyrics-view") {
+                        // Performer-facing full-lyrics page (OBS custom dock /
+                        // any browser). Must be matched before the `/lyrics`
+                        // prefix branch below — keep this ordering.
+                        let html = resolve_lyrics_view_html();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/html; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            html.len(),
+                            html
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] HTTP Page served to {} (Path: /lyrics-view)", addr);
                     } else if request.starts_with("GET /lyrics")
                         || request.starts_with("GET /overlay-lyrics")
                     {
@@ -364,10 +451,23 @@ pub async fn update_overlay_style(target: String, scale: f32, font: String, colo
 
 
 #[tauri::command]
-pub async fn update_overlay_lyrics(current: String, next: String) {
+pub async fn update_overlay_lyrics(current: String, next: String, index: i32) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.current_lyric = current;
     state.next_lyric = next;
+    state.lyric_index = index;
+    broadcast_overlay_state(state).await;
+}
+
+/// Replaces the full lyric-line list when a track's lyrics (re)load — used
+/// by the `/lyrics-view` page to render the whole song and highlight
+/// `lyric_index`. Line text is untrusted (LRC/alignment output); it's stored
+/// and broadcast as plain strings only, never interpreted as markup.
+#[tauri::command]
+pub async fn update_overlay_lyrics_full(lines: Vec<String>) {
+    let mut state = CURRENT_STATE.lock().await.clone();
+    state.lyrics_lines = lines;
+    state.lyric_index = -1;
     broadcast_overlay_state(state).await;
 }
  
@@ -385,4 +485,24 @@ pub async fn update_overlay_lyrics(current: String, next: String) {
 #[tauri::command]
 pub async fn get_overlay_state() -> OverlayState {
     CURRENT_STATE.lock().await.clone()
+}
+
+/// Best-effort LAN-facing IP for this PC, used by Settings to show the
+/// address other devices on the same network could use to reach the overlay
+/// (only meaningful when the LAN toggle is on — see `start_overlay_server`).
+/// Connecting a UDP socket doesn't send any packets; it just asks the OS
+/// which local interface/IP would be used to route to that target.
+#[tauri::command]
+pub fn get_lan_addresses() -> Vec<String> {
+    use std::net::UdpSocket;
+
+    let mut addrs = Vec::new();
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
+                addrs.push(local_addr.ip().to_string());
+            }
+        }
+    }
+    addrs
 }

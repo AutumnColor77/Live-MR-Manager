@@ -244,6 +244,19 @@
               </div>
               <input type="hidden" id="lib-genre-filter" value="all">
             </div>
+            <div class="custom-select" id="lib-sync-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">가사 상태: 전체</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item selected" data-value="all">가사 상태: 전체</div>
+                <div class="option-item" data-value="unsynced">미싱크</div>
+                <div class="option-item" data-value="synced">싱크 완료</div>
+                <div class="option-item" data-value="none">가사 없음</div>
+              </div>
+              <input type="hidden" id="lib-sync-filter" value="all">
+            </div>
 
             <div class="custom-select" id="lib-sort-dropdown">
               <div class="select-trigger">
@@ -320,7 +333,7 @@
 
 
 
-              <div class="ai-model-card" style="margin-top: 16px;">
+              <div class="ai-model-card">
                 <div class="ai-info-left" style="width: 100%;">
                   <div class="ai-title-large">오버레이 디자인 커스텀</div>
                   <div class="ai-model-desc">설정 변경 내용이 미리보기에 바로 반영됩니다.</div>
@@ -474,42 +487,82 @@
                 </div>
               </div>
 
-              <div class="ai-model-card" style="margin-top: 16px; flex-direction: column; align-items: stretch; gap: 20px;">
+              <div class="ai-model-card is-stacked">
                 <!-- Header -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div class="ai-info-left">
                   <div class="ai-title-large">OBS 브라우저 소스</div>
                   <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 붙여넣으세요.</div>
                 </div>
 
+                <!-- LAN 접속 토글 - 기본 꺼짐. 켜면 같은 네트워크의 다른 기기(방송 PC 분리 세팅 등)에서
+                     오버레이/가사 상태에 접속 가능. 앱 재시작 시에만 실제 반영됨. -->
+                <div class="lan-toggle-row">
+                  <div class="lan-toggle-info">
+                    <div class="lan-toggle-title">다른 PC(LAN)에서 접속 허용</div>
+                    <div class="lan-toggle-desc">켜면 같은 네트워크의 다른 기기에서도 오버레이를 볼 수 있습니다. 공용 Wi-Fi에서는 끄세요.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="toggle-overlay-lan">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+                <div id="overlay-lan-status" class="lan-status-note">꺼짐 — 이 PC에서만 접속할 수 있습니다.</div>
+
                 <!-- URL 1: Full Info -->
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
-                  <div style="display: flex; gap: 12px; align-items: stretch;">
-                    <code id="overlay-url-display"
-                      style="flex: 1; min-width: 0; background: var(--surface-1); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid var(--glass-border); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/</code>
-                    <button class="btn-ai-action secondary" id="btn-copy-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                <div class="settings-subsection">
+                  <label class="settings-sublabel">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
+                  <div class="settings-inline-row">
+                    <code id="overlay-url-display" class="settings-code-display">http://localhost:14202/</code>
+                    <button class="btn-ai-action secondary is-inline" id="btn-copy-overlay-url">URL 복사</button>
                   </div>
                 </div>
 
                 <!-- URL 2: Lyrics Only -->
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">2. 가사 전용 오버레이 (가사만 2줄 출력)</label>
-                  <div style="display: flex; gap: 12px; align-items: stretch;">
-                    <code id="lyrics-overlay-url-display"
-                      style="flex: 1; min-width: 0; background: var(--surface-1); padding: 10px 14px; border-radius: 8px; font-family: monospace; color: var(--accent-primary); border: 1px solid var(--glass-border); display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0;">http://localhost:14202/lyrics</code>
-                    <button class="btn-ai-action secondary" id="btn-copy-lyrics-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
+                <div class="settings-subsection">
+                  <label class="settings-sublabel">2. 가사 전용 오버레이 (가사만 2줄 출력)</label>
+                  <div class="settings-inline-row">
+                    <code id="lyrics-overlay-url-display" class="settings-code-display">http://localhost:14202/lyrics</code>
+                    <button class="btn-ai-action secondary is-inline" id="btn-copy-lyrics-overlay-url">URL 복사</button>
                   </div>
                 </div>
-                
+
+                <!-- URL 3: 가사 뷰 (퍼포머 본인용 전체 가사) -->
+                <div class="settings-subsection">
+                  <label class="settings-sublabel">3. 가사 뷰 (본인용 전체 가사)</label>
+                  <div class="settings-inline-row">
+                    <code id="lyrics-view-url-display" class="settings-code-display">http://localhost:14202/lyrics-view</code>
+                    <button class="btn-ai-action secondary is-inline" id="btn-copy-lyrics-view-url">URL 복사</button>
+                  </div>
+                </div>
+
                 <!-- Guide Box -->
-                <div style="padding: 12px 14px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--glass-border);">
-                  <div style="display: flex; align-items: center; gap: 8px; color: var(--accent-primary); font-size: 0.8rem; font-weight: 700; margin-bottom: 6px;">
+                <div class="settings-guide-box">
+                  <div class="settings-guide-title">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                     OBS 브라우저 소스 설정 가이드
                   </div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; padding-left: 22px;">
-                    • 곡 정보: <span style="color: var(--text-main); font-weight: 700;">1760 × 520</span> 권장<br>
-                    • 가사: <span style="color: var(--text-main); font-weight: 700;">1200 × 300</span> 권장
+                  <div class="settings-guide-body">
+                    • 곡 정보: <strong>1760 × 520</strong> 권장<br>
+                    • 가사: <strong>1200 × 300</strong> 권장
+                  </div>
+                </div>
+
+                <!-- 3줄 가사(원문/차음/번역) 표시 항목 - 인앱 드로어/OBS 오버레이 독립 설정 -->
+                <div class="settings-subsection">
+                  <label class="settings-sublabel">4. 가사 표시 항목 (원문·차음·번역)</label>
+                  <div class="lyric-line-visibility-grid">
+                    <div class="lyric-line-visibility-col">
+                      <span class="lyric-line-visibility-title">인앱 드로어</span>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-app-original"> 원문</label>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-app-pronunciation"> 차음(발음)</label>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-app-translation"> 번역</label>
+                    </div>
+                    <div class="lyric-line-visibility-col">
+                      <span class="lyric-line-visibility-title">OBS 오버레이</span>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-overlay-original"> 원문</label>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-overlay-pronunciation"> 차음(발음)</label>
+                      <label class="lyric-line-visibility-item"><input type="checkbox" id="line-vis-overlay-translation"> 번역</label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -601,7 +654,7 @@
                 </div>
               </div>
 
-              <div class="ai-model-card" style="margin-top: 15px;">
+              <div class="ai-model-card">
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">엑셀(CSV) 가져오기 / 보내기</h2>
                   <div class="ai-model-desc">
@@ -614,7 +667,7 @@
                   <button id="btn-import-spreadsheet" class="btn-ai-action">가져오기 (병합)</button>
                 </div>
               </div>
-              <div class="ai-model-card" style="margin-top: 15px;">
+              <div class="ai-model-card">
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">데이터 백업 및 복원 (JSON)</h2>
                   <div class="ai-model-desc">
@@ -643,10 +696,8 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">멜로밍 노래책</h2>
                   <div class="ai-model-desc">
-                    <strong>가져오기</strong>는 멜로밍 노래책 → 앱(병합·갱신),
-                    <strong>보내기</strong>는 앱 → 멜로밍 노래책입니다.
-                    보내기는 우측 상단 <strong>「멜로밍 로그인」</strong>이 필요합니다.
-                    없는 아티스트·카테고리는 보내기 시 자동으로 등록합니다.
+                    <strong>가져오기</strong>는 멜로밍 → 앱, <strong>보내기</strong>는 앱 → 멜로밍입니다.
+                    보내기는 우측 상단 멜로밍 로그인이 필요합니다.
                   </div>
                   <div id="meloming-status" class="settings-status-text"></div>
                 </div>
@@ -691,6 +742,22 @@
                 </div>
               </div>
 
+              <!-- 인트로 자동 건너뛰기 -->
+              <div class="ai-model-card auto-skip-intro-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">인트로 자동 건너뛰기</h2>
+                  <div class="ai-model-desc">
+                    보컬 시작이 지정된 곡은 재생 시 인트로를 자동으로 건너뜁니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right auto-skip-intro-card-actions">
+                  <label class="switch auto-skip-intro-card-switch">
+                    <input type="checkbox" id="toggle-auto-skip-intro" checked>
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+
               <!-- MR 캐시 저장 형식 -->
               <div class="ai-model-card mr-cache-format-card">
                 <div class="ai-info-left">
@@ -714,14 +781,34 @@
                 </div>
               </div>
 
+              <!-- MR 캐시 저장 위치 -->
+              <div class="ai-model-card is-stacked">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">MR 캐시 저장 위치</h2>
+                  <div class="ai-model-desc">
+                    분리된 MR·보컬 파일을 저장할 폴더입니다. 네트워크 폴더는 느릴 수 있습니다.
+                    변경 후 <strong>앱을 다시 시작</strong>해야 적용됩니다.
+                  </div>
+                </div>
+                <div class="settings-path-row">
+                  <code id="mr-cache-path-display" class="settings-code-display">기본 위치</code>
+                  <div class="settings-path-actions">
+                    <button class="btn-ai-action secondary" id="btn-browse-mr-cache-path" type="button">찾아보기</button>
+                    <button class="btn-ai-action" id="btn-save-mr-cache-path" type="button" disabled>이 위치 저장</button>
+                    <button class="btn-ai-action secondary" id="btn-reset-mr-cache-path" type="button" style="display: none;">기본 위치로 재설정</button>
+                  </div>
+                </div>
+                <div id="mr-cache-path-status" class="settings-warning-box" style="display: none;"></div>
+              </div>
+
               <!-- CUDA 설치 권장 알림 (기본 숨김) -->
               <div id="cuda-recommend-banner" class="ai-recommend-card" style="display: none;">
                 <div class="ai-recommend-icon">⚠️</div>
                 <div class="ai-recommend-content">
                   <div class="ai-recommend-title">성능 최적화 권장 (NVIDIA GPU 감지됨)</div>
                   <div class="ai-recommend-text">
-                    시스템에 NVIDIA GPU가 있지만 CUDA 가속이 활성화되지 않았습니다.
-                    CUDA 12.x와 cuDNN을 설치하면 분리 속도가 <strong>최대 10배 이상</strong> 빨라집니다.
+                    NVIDIA 그래픽카드가 감지되었지만 GPU 가속이 꺼져 있습니다.
+                    CUDA와 cuDNN을 설치하면 분리가 훨씬 빨라집니다.
                   </div>
                   <div class="ai-recommend-actions">
                     <a href="https://developer.nvidia.com/cuda-downloads" target="_blank" class="recommend-link">CUDA
@@ -732,13 +819,13 @@
               </div>
 
               <div class="ai-model-card">
-                <div class="ai-info-left" style="flex: 1;">
-                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                <div class="ai-info-left">
+                  <div class="ai-card-status-row">
                     <div id="ai-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
-                    <div id="ai-engine-provider" style="font-size: 0.8rem; opacity: 0.7; font-weight: 500;"></div>
+                    <div id="ai-engine-provider" class="ai-card-provider"></div>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
-                    <h2 class="ai-title-large" style="margin: 0;">AI 분리 모델</h2>
+                  <div class="ai-card-title-row">
+                    <h2 class="ai-title-large">AI 분리 모델</h2>
                     <div class="custom-select" id="ai-model-select-dropdown" style="min-width: 220px;">
                       <div class="select-trigger">
                         <span class="selected-text" id="selected-model-text">Kim Vocal 2 (기본/고속)</span>
@@ -751,14 +838,41 @@
                     </div>
                   </div>
                   <div id="ai-model-desc" class="ai-model-desc">
-                    일반적인 보컬·MR 분리에 적합합니다. 기본 모델은 UVR(Anjok07, aufr33) 생태계 가중치이며
-                    라이선스는 잠정 MIT(크레딧 필수)입니다. 상세: 설정 → 법적 고지.
+                    일반적인 보컬·MR 분리에 적합합니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
                   <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
                   <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
                   <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
+                  <button id="btn-manage-custom-models" class="btn-ai-action secondary" type="button">커스텀 모델 관리</button>
+                </div>
+              </div>
+
+              <!-- AI 가사 정렬(강제정렬) 모델 - 실험적, KO/EN 언어 선택 -->
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <div class="ai-card-title-row">
+                    <h2 class="ai-title-large">AI 가사 정렬 모델 (실험적)</h2>
+                    <div id="align-model-status" class="ai-status-badge status-offline">상태 확인 중...</div>
+                    <div class="custom-select" id="align-language-select-dropdown" style="min-width: 160px;">
+                      <div class="select-trigger">
+                        <span class="selected-text" id="selected-align-language-text">한국어</span>
+                        <span class="select-arrow"></span>
+                      </div>
+                      <div class="select-options">
+                        <div class="option-item selected" data-value="ko">한국어</div>
+                        <div class="option-item" data-value="en">English</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="align-model-desc" class="ai-model-desc">
+                    가사 자동 정렬에 사용하는 언어별 AI 모델입니다. 결과는 <strong>AI 초안</strong>이므로 다듬어 사용하세요.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-download-align-model" class="btn-ai-action">모델 다운로드</button>
+                  <button id="btn-delete-align-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
                 </div>
               </div>
             </section>
@@ -777,7 +891,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">FAQ · Discord · 버그 신고</h2>
                   <div class="ai-model-desc">
-                    설치·멜로밍 연동·사용법은 FAQ와 Discord에서 안내합니다. 재현 가능한 버그는 GitHub Issues로 등록해 주세요.
+                    사용법은 FAQ와 Discord에서 안내합니다. 버그는 GitHub Issues로 제보해 주세요.
                   </div>
                 </div>
                 <div class="ai-actions-right support-actions-grid">
@@ -805,8 +919,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">개인정보 처리방침 · 이용약관 · 라이선스</h2>
                   <div class="ai-model-desc">
-                    앱 소스는 MIT입니다. Companion 약관은 온라인 연동·브랜드에만 적용되며 MIT 권리를 축소하지 않습니다.
-                    AI 모델·FFmpeg·yt-dlp 등 제3자 고지는 GitHub 문서를 참고하세요.
+                    개인정보 처리방침, 이용약관, 앱 라이선스와 제3자 고지를 확인할 수 있습니다.
                   </div>
                 </div>
                 <div class="ai-actions-right support-actions-grid">
@@ -820,11 +933,10 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">런타임 외부 도구</h2>
                   <div class="ai-model-desc">
-                    FFmpeg(LGPL-2.1-or-later)와 yt-dlp Windows 실행 파일(GPLv3+)은 설치 파일에 포함되지 않으며,
-                    필요할 때 원 배포처에서 %LOCALAPPDATA%\LiveMRManager\tools로 직접 다운로드되어 별도 프로세스로 실행됩니다.
+                    영상·음원 처리에 쓰는 외부 도구입니다. 필요할 때 자동으로 받아 사용하며, 설치 파일에는 포함되지 않습니다.
                   </div>
                 </div>
-                <div class="ai-actions-right support-actions-grid">
+                <div class="ai-actions-right">
                   <button id="btn-open-ffmpeg-source" class="btn-ai-action secondary" type="button">FFmpeg 소스·빌드</button>
                   <button id="btn-open-ytdlp-source" class="btn-ai-action secondary" type="button">yt-dlp 소스</button>
                 </div>
@@ -1153,6 +1265,12 @@
             </div>
           </div>
 
+          <!-- MR 분리 기록 (읽기 전용, 분리 완료 시 자동 저장됨) -->
+          <div class="input-group" id="edit-separation-info-group" style="display: none;">
+            <label>MR 분리 기록</label>
+            <div id="edit-separation-info" style="font-size: 0.82rem; color: var(--text-muted); padding: 8px 2px; line-height: 1.5;"></div>
+          </div>
+
         </div>
       </div>
       <footer class="modal-footer">
@@ -1174,12 +1292,107 @@
         <button class="close-btn" id="confirm-close-icon">&times;</button>
       </header>
       <div class="modal-body">
-        <p id="confirm-message" style="font-size: 1.1rem; text-align: center; margin: 20px 0;"></p>
+        <p id="confirm-message"></p>
       </div>
-      <footer class="modal-footer" style="justify-content: center; gap: 15px;">
-        <button class="secondary-btn" id="confirm-cancel" style="min-width: 100px;">취소</button>
-        <button class="primary-btn danger-btn" id="confirm-ok" style="min-width: 100px;">확인</button>
+      <footer class="modal-footer">
+        <button class="secondary-btn" id="confirm-cancel">취소</button>
+        <button class="primary-btn danger-btn" id="confirm-ok">확인</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- MR 분리 방식(속도/품질) 선택 모달 -->
+  <div id="separation-mode-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 520px;">
+      <header class="modal-header">
+        <h3>MR 분리 방식 선택</h3>
+        <button class="close-btn" id="separation-mode-close">&times;</button>
+      </header>
+      <div class="modal-body cm-body">
+        <div id="separation-mode-song-title" class="cm-hint"></div>
+
+        <button type="button" class="separation-mode-card" data-model-id="kim">
+          <div class="separation-mode-card-title">⚡ 빠른 분리 <span class="separation-mode-model">Kim Vocal 2</span></div>
+          <div class="separation-mode-card-desc">속도 우선 — 방송 중에도 부담이 적습니다. 대부분의 곡에 충분한 품질.</div>
+        </button>
+
+        <button type="button" class="separation-mode-card" data-model-id="inst_hq_3">
+          <div class="separation-mode-card-title">✨ 고품질 분리 <span class="separation-mode-model">Inst HQ 3</span></div>
+          <div class="separation-mode-card-desc">반주(MR) 품질 우선 — 처리 시간이 더 걸립니다. 노래방용 최종본에 추천.</div>
+        </button>
+
+        <div id="separation-mode-custom-wrap" class="cm-field" style="display: none;">
+          <label class="settings-sublabel" for="separation-mode-custom-select">커스텀 모델로 분리</label>
+          <div class="separation-mode-custom-row">
+            <select id="separation-mode-custom-select" class="cm-input"></select>
+            <button type="button" id="separation-mode-custom-start" class="btn-ai-action secondary is-inline">이 모델로 분리</button>
+          </div>
+        </div>
+
+        <label class="separation-mode-default-check">
+          <input type="checkbox" id="separation-mode-save-default">
+          이 선택을 기본 분리 모델로 저장
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 커스텀 AI 분리 모델 관리 모달 (로컬 파일 또는 HTTPS URL + SHA-256) -->
+  <div id="custom-model-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 520px;">
+      <header class="modal-header">
+        <h3>커스텀 분리 모델 관리</h3>
+        <button class="close-btn" id="custom-model-close">&times;</button>
+      </header>
+      <div class="modal-body cm-body">
+        <div class="cm-hint">
+          분리 모델 파일을 추가합니다. 모델에 맞는 프리셋을 선택하세요.
+          URL로 받을 때는 파일 해시(SHA-256)가 필요합니다.
+        </div>
+
+        <div class="cm-field">
+          <label class="settings-sublabel" for="cm-name">모델 이름</label>
+          <input type="text" id="cm-name" class="cm-input" placeholder="예: My Custom Vocal Model" autocomplete="off">
+        </div>
+
+        <div class="cm-field">
+          <label class="settings-sublabel">아키텍처 프리셋</label>
+          <div class="custom-select" id="cm-preset-dropdown" style="width: 100%;">
+            <div class="select-trigger">
+              <span class="selected-text">프리셋을 선택하세요</span>
+              <span class="select-arrow"></span>
+            </div>
+            <div class="select-options" id="cm-preset-options"></div>
+            <input type="hidden" id="cm-preset" value="">
+          </div>
+          <div id="cm-preset-desc" class="cm-note"></div>
+        </div>
+
+        <div class="cm-source-tabs">
+          <button type="button" class="cm-source-tab active" data-source="file" id="cm-tab-file">로컬 파일</button>
+          <button type="button" class="cm-source-tab" data-source="url" id="cm-tab-url">HTTPS URL</button>
+        </div>
+
+        <div id="cm-url-fields" class="cm-field" style="display: none;">
+          <label class="settings-sublabel" for="cm-url">다운로드 URL (https://)</label>
+          <input type="url" id="cm-url" class="cm-input" placeholder="https://example.com/model.onnx" autocomplete="off">
+          <label class="settings-sublabel" for="cm-sha256">SHA-256 (필수)</label>
+          <input type="text" id="cm-sha256" class="cm-input is-mono" placeholder="64자리 16진수" autocomplete="off" spellcheck="false">
+          <div id="cm-download-progress-wrap" class="cm-progress" style="display: none;">
+            <div class="cm-progress-label">다운로드 중… <span id="cm-download-pct">0%</span></div>
+            <div class="cm-progress-track">
+              <div id="cm-download-bar" class="cm-progress-bar"></div>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" id="cm-add-btn" class="btn-ai-action">모델 파일 선택하여 추가</button>
+
+        <div class="cm-list-section">
+          <label class="settings-sublabel">등록된 커스텀 모델</label>
+          <div id="cm-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1188,7 +1401,7 @@
     <div class="modal-content download-box">
       <div class="download-icon">🤖</div>
       <h3>AI 엔진 초기설정 중...</h3>
-      <p>최초 1회 AI 모델 다운로드가 필요합니다. (약 67MB · UVR 모델, 잠정 MIT + 크레딧)</p>
+      <p>최초 1회 AI 모델 다운로드가 필요합니다. (약 67MB)</p>
       <div class="download-progress-container">
         <div class="download-progress-bar" id="model-download-bar"></div>
       </div>
@@ -1351,6 +1564,12 @@
             <path d="M21 21l-4.35-4.35" />
           </svg>
           <input type="text" id="alignment-track-search" placeholder="곡 제목 또는 아티스트 검색..." autocomplete="off">
+        </div>
+        <div id="alignment-track-filter-chips" class="track-filter-chips">
+          <button type="button" class="track-filter-chip active" data-status="all">전체</button>
+          <button type="button" class="track-filter-chip" data-status="unsynced">미싱크</button>
+          <button type="button" class="track-filter-chip" data-status="synced">싱크 완료</button>
+          <button type="button" class="track-filter-chip" data-status="none">가사 없음</button>
         </div>
         <div id="alignment-track-list" class="alignment-track-list">
           <!-- Dynamically populated -->

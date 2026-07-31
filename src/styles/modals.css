@@ -57,6 +57,55 @@
   max-width: 720px;
 }
 
+/* 단순 확인창은 본문이 한두 줄이라 더 작게 */
+.modal-content.confirm-box {
+  max-width: 380px;
+  padding: 22px;
+  border-radius: 18px;
+}
+
+.confirm-box .modal-header {
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.confirm-box .modal-header h3 {
+  font-size: 1.05rem;
+}
+
+.confirm-box .close-btn {
+  top: 14px;
+  right: 14px;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+}
+
+.confirm-box .modal-body {
+  gap: 0;
+}
+
+.confirm-box #confirm-message {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: pre-line;
+  word-break: keep-all;
+}
+
+.confirm-box .modal-footer {
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.confirm-box .modal-footer button {
+  min-width: 92px;
+}
+
 @keyframes modalScale {
   from {
     opacity: 0;
@@ -791,10 +840,10 @@
 
 .track-genre-preview {
   font-size: 0.75rem;
-  color: #fbbf24;
+  color: var(--warn-strong);
   font-weight: 600;
   margin-top: 4px;
-  background: rgba(251, 191, 36, 0.1);
+  background: var(--warn-soft-bg);
   padding: 2px 8px;
   border-radius: 4px;
   display: inline-block;
@@ -854,4 +903,239 @@
   border-color: var(--accent-primary) !important;
   box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.15) !important;
   outline: none !important;
+}
+
+/* --- 커스텀 분리 모델 관리 모달 --- */
+.cm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cm-hint {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.cm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-note {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.cm-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+}
+
+.cm-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.15);
+}
+
+.cm-input.is-mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+
+.cm-source-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.cm-source-tab {
+  flex: 1;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cm-source-tab:hover {
+  background: var(--surface-3);
+  color: var(--text-main);
+}
+
+.cm-source-tab.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.cm-progress {
+  margin-top: 2px;
+}
+
+.cm-progress-label {
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.cm-progress-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.cm-progress-bar {
+  width: 0%;
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.15s ease;
+}
+
+.cm-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.cm-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.cm-list-row:last-child {
+  margin-bottom: 0;
+}
+
+.cm-list-info {
+  min-width: 0;
+}
+
+.cm-list-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-list-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.cm-list-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.cm-remove-btn {
+  width: auto;
+  padding: 0 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* --- MR 분리 방식(속도/품질) 선택 모달 --- */
+.separation-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.separation-mode-card:hover {
+  background: var(--surface-2);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
+.separation-mode-card.current-default {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.15);
+}
+
+.separation-mode-card.current-default::after {
+  content: "현재 기본값";
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: rgb(var(--accent-rgb) / 0.12);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.separation-mode-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.separation-mode-model {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.separation-mode-card-desc {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.separation-mode-custom-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.separation-mode-custom-row .cm-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.separation-mode-default-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.separation-mode-default-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
 }

@@ -22,6 +22,9 @@ export const state = {
   prevVolume: 100,
   activeTasks: {}, // path -> { title, percentage, status }
   cancelledPaths: new Set(), // path blacklist for UI updates
+  // AI 가사 정렬 배치 대기열 (분리된 activeTasks와 별개로 JS 주도 순차 처리,
+  // alignment-queue.js가 소유). status: queued/processing/done/error/blocked
+  alignmentQueue: [], // [{ path, title, status, error? }]
   playbackSequence: 0, // Latest playback request ID to handle race conditions
   
   // Interpolation / Progress State
@@ -37,6 +40,10 @@ export const state = {
   vocalEnabled: localStorage.getItem("vocalEnabled") === "true", // Default to false
   lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
   broadcastMode: localStorage.getItem("broadcastMode") === "true",
+  // 기본값 켜짐(다른 on/off 설정과 달리 값이 없으면 true) - 설정 화면 토글로 끌 수 있음.
+  autoSkipIntro: localStorage.getItem("autoSkipIntro") === null
+    ? true
+    : localStorage.getItem("autoSkipIntro") === "true",
   mrCacheFormat: localStorage.getItem("mrCacheFormat") || "mp3",
   lastColumns: 0,
   

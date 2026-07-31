@@ -69,6 +69,8 @@
   - **DB 메타데이터 통합**: 정렬할 곡 선택 시 라이브러리 DB와 연동하여 썸네일, 장르, 태그 정보를 즉각적으로 표시.
   - **뷰포트 최적화**: 하단 컨트롤 독(Dock)과의 레이아웃 간섭을 해결하고 30px 세이프 에리어를 적용한 프리미엄 UI.
   - **스마트 가사 분석**: 기존 `.lrc` 파일 자동 로드 및 텍스트 수정 시 타임스탬프를 유지하는 지능형 파싱 로직.
+  - **원문/차음/번역 3줄 모드**: 3줄을 한 싱크 단위로 묶어 `[orig]`/`[pron]`/`[tran]`으로 저장(태그 없는 LRC와 하위 호환).
+  - **BPM 그리드·AI 자동 정렬**: 저장된 BPM이 있으면 분석 생략 후 대략 배치; AI 정렬은 언어 선택(설정 연동)·대기열 공유.
   - **듀레이션 락킹 (Duration Locking)**: 백엔드 상태 변화 시에도 트랙 길이를 고정하여 UI 리셋 현상을 원천 차단.
 - **곡 정보 관리자 (Library Manager)**: 엑셀 스타일의 고밀도 테이블을 통한 곡 메타데이터(제목, 아티스트, 카테고리, 장르, 태그) 일괄 편집 기능.
 - **MR(인스트루먼탈) 수동 관리**: 메타데이터 모달에서 직접 MR 여부를 설정 가능. 단, AI로 분리된 곡은 데이터 보호를 위해 체크박스가 자동으로 잠김(Lock) 처리됨.
@@ -125,6 +127,17 @@
 - **멜로밍 OAuth 배포 로그인**: 릴리스 빌드에 `MELOMING_CLIENT_ID` 임베드. Client Secret은 Vercel Companion에만 두고, 설치본은 `/api/oauth/exchange`·`/api/oauth/refresh`로 토큰 교환·갱신.
 - **「OAuth 설정이 없습니다」**: 배포본·타 PC에서 로그인 시작이 막히던 문제를 수정.
 - **버전 메타데이터 통일**: `0.5.1`으로 일괄 갱신.
+
+### 🆕 Unreleased (다음 v0.5.2+ 예정)
+
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) Unreleased 절.
+
+- **커스텀 분리 모델 URL 등록**: HTTPS + SHA-256 + 용량 상한으로 외부 ONNX 등록(이용자 라이선스 확인 책임).
+- **가사 싱크**: 3줄(원문/차음/번역) 모드, BPM 기분석 시 그리드 배치 스킵, AI 정렬 패널·언어 연동, 미싱크 배지 밝은 테마 대비.
+- **설정 UX**: 카드 레이아웃·MR 캐시 경로·설명 문구를 기존 톤앤매너에 맞춤.
+- **확인 모달**: 싱크 초기화 등 네이티브 `confirm` 제거, X 닫기·소형 확인창.
+- **라이선스 문서**: MIT·THIRD_PARTY_NOTICES·MODEL_LICENSING·준수 체크리스트.
+- **알림 문구 목록**: [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md)
 
 ### 🆕 v0.5.0 업데이트 (2026-07-05)
 
@@ -301,6 +314,8 @@ Redirect URI: `https://lmrm.vercel.app/oauth/callback`
 - **프로젝트 코드**: [MIT License](LICENSE) — Copyright (c) 2026 AutumnColor77
 - **제3자 구성요소·런타임 도구·AI 모델**: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 - **AI 모델 채택 기준** (상업 방송 사용자 허용 목표): [docs/MODEL_LICENSING.md](docs/MODEL_LICENSING.md)
+- **릴리스 라이선스 준수 체크리스트**: [docs/LICENSE_COMPLIANCE_CHECKLIST.md](docs/LICENSE_COMPLIANCE_CHECKLIST.md)
+- **알림·경고 문구 목록** (톤앤매너 정리용): [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md)
 - **기여**: [CONTRIBUTING.md](CONTRIBUTING.md) — PR 제출 시 MIT로 기여하는 것에 동의
 
 ### 요약
@@ -319,3 +334,7 @@ Companion 이용약관·개인정보 처리방침은 서비스 운영 문서이�
 
 기본 분리 모델은 [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) 생태계 가중치를 사용합니다.
 크레딧: Anjok07, aufr33 및 UVR 기여자.
+
+### 감사 · 기여자
+
+- **[Temmis2077](https://github.com/Temmis2077)** ([Live-MR-Manager-Mod](https://github.com/Temmis2077/Live-MR-Manager-Mod)): 가사 정렬·커스텀 모델·싱크 UX 등 아이디어와 참고 구현. 본 저장소에는 선별 반영·재구현했으며, 공식 카탈로그에서 제외한 항목(예: CC-BY-NC 분리 모델)은 [`docs/MODEL_LICENSING.md`](docs/MODEL_LICENSING.md)를 참고하세요.

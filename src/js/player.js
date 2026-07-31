@@ -11,7 +11,7 @@ import {
   setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated,
   stopPlayback as apiStopPlayback
 } from './audio.js';
-import { loadLyricsForTrack } from './lyrics.js';
+import { loadLyricsForTrack, getIntroSkipTarget } from './lyrics.js';
 import { emit, invoke, convertFileSrc as bridgeConvertFileSrc } from './tauri-bridge.js';
 
 function isYoutubePath(path) {
@@ -226,10 +226,12 @@ export async function selectTrack(index) {
 
   // Load Lyrics for the selected track
   loadLyricsForTrack(song.path, parseDurationToMs(song.duration) / 1000).then(lyrics => {
+    if (mySequence !== state.playbackSequence) return;
     state.currentLyrics = lyrics;
     state.currentLyricIndex = -1;
     // Trigger drawer update if it's initialized
     import('./lyric-drawer.js').then(m => {
+      if (mySequence !== state.playbackSequence) return;
       if (m.updateLyrics) m.updateLyrics(lyrics);
       if (m.syncLyricDrawerHeader) m.syncLyricDrawerHeader();
     });
@@ -258,7 +260,9 @@ export async function selectTrack(index) {
   updatePlayButton();
 
   // MR이 있는 경우 보컬 토글을 자동으로 꺼짐으로 설정 (요구사항)
-  if (await checkMrSeparated(song.path)) {
+  const mrSeparated = await checkMrSeparated(song.path);
+  if (mySequence !== state.playbackSequence) return;
+  if (mrSeparated) {
     state.vocalEnabled = false;
   }
 
@@ -317,6 +321,19 @@ export async function selectTrack(index) {
 
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");
+
+    // 인트로 자동 건너뛰기: 이 곡의 LRC에 등록된 "보컬 시작" 마커가 있으면
+    // 재생 시작 직후 그 지점(또는 그 앞의 전주 시작)으로 넘어간다. 재생을
+    // 막지 않도록 완전히 비동기로 처리하고, 그 사이 다른 곡으로 넘어갔으면
+    // (playbackSequence 변경) 조용히 무시.
+    if (state.autoSkipIntro) {
+      getIntroSkipTarget(song.path).then((target) => {
+        if (mySequence !== state.playbackSequence) return;
+        if (typeof target === 'number' && target > 1.5) {
+          seekTo(target * 1000);
+        }
+      }).catch((err) => console.log('[Player] Intro-skip lookup failed:', err));
+    }
 
     emit('track-change', {
       title: song.title,

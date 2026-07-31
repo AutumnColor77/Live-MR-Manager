@@ -235,29 +235,29 @@ html[data-theme="sky"] {
     letter-spacing: -0.02em;
 }
 
+/* 사이드바가 좁아지면 제목을 자르지 말고 버튼 줄이 아래로 내려가게 한다. */
 .lyric-sidebar .card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    flex-wrap: nowrap;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .lyric-sidebar .card-header h3 {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     font-size: 1.02rem;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .lyric-sidebar .card-header > div {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
     margin-left: auto;
-    flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .waveform-canvas-container {
@@ -349,6 +349,37 @@ canvas#waveform-canvas {
     color: var(--text-main);
     outline: none;
     transition: color 0.2s;
+}
+
+.lyric-line-item .triplet-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.triplet-line-0 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.triplet-line-1 {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--align-text-soft);
+}
+
+.triplet-line-2 {
+    font-size: 0.78rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--accent-primary);
+}
+
+#toggle-translation-btn.active-toggle {
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    border-color: var(--align-item-active-border);
 }
 
 .lyric-line-item .lyric-text[contenteditable="true"] {
@@ -561,9 +592,13 @@ canvas#waveform-canvas {
     box-shadow: 0 0 15px var(--align-danger-hover-shadow);
 }
 
+/* 버튼 줄 아래에 우측 정렬로 따로 놓아 제목 자리를 차지하지 않게 한다. */
 .sync-save-status {
+    flex: 0 0 100%;
+    text-align: right;
     white-space: nowrap;
-    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--align-text-soft);
 }
 
 /* Cleanup: Removing AI-related styles */
@@ -867,4 +902,249 @@ canvas#waveform-canvas {
     background: var(--align-scrollbar-thumb-hover);
 }
 
+/* 13. Lyric sync-status filter chips (audio selection modal) */
+.track-filter-chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.track-filter-chip {
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--align-btn-border);
+    background: transparent;
+    color: var(--align-text-soft);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.track-filter-chip:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-main);
+}
+
+.track-filter-chip.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #fff;
+}
+
+.track-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 4px 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: var(--align-text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.track-group-header:first-child {
+    padding-top: 2px;
+}
+
+.track-group-count {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    background: var(--align-track-item-bg);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+
+/* Sync-status badge inside the track selection modal's list items */
+.sync-status-badge {
+    flex-shrink: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sync-status-badge.sync-status-synced {
+    background: var(--ok-soft-bg);
+    color: var(--ok-text);
+}
+
+.sync-status-badge.sync-status-unsynced {
+    background: var(--warn-soft-bg);
+    color: var(--warn-text);
+}
+
+.sync-status-badge.sync-status-none {
+    background: color-mix(in srgb, #64748b 22%, transparent);
+    color: #94a3b8;
+}
+
+/* 14. Vocal-start / interlude marker controls */
+/* 가사 원고 헤더: 제목 옆에 3줄 모드 체크박스를 붙여 줄을 아끼다 */
+.lyrics-input-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* 정렬 화면 공용 체크박스 (마커 버튼과 같은 톤) */
+.align-check-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--align-text-soft);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.align-check-label:hover {
+    color: var(--accent-blue);
+}
+
+.align-check-label:has(.align-checkbox:checked) {
+    color: var(--text-main);
+}
+
+.align-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 1px solid var(--align-btn-border);
+    border-radius: 5px;
+    background: var(--surface-2);
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.align-checkbox:checked {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+}
+
+.align-checkbox:checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    border: solid var(--text-inverse);
+    border-width: 0 2px 2px 0;
+    transform: translateY(-1px) rotate(45deg);
+}
+
+.align-checkbox:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+/* 마커 버튼 4개가 카드 폭을 균등하게 채운다 */
+.marker-controls-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--align-btn-border);
+}
+
+.marker-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--align-btn-border);
+    background: var(--align-btn-bg, transparent);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.marker-btn:hover:not(:disabled) {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+.marker-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.marker-summary {
+    font-size: 0.75rem;
+    color: var(--align-text-soft);
+}
+
+.sync-controls-panel > .marker-summary {
+    margin-top: 8px;
+}
+
+/* 싱크 조작 박스 아래에 붙는 AI 자동 정렬 박스 */
+.sync-controls-panel.ai-align-panel {
+    margin-top: 0;
+    flex: 0 0 auto;
+}
+
+.ai-align-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* 메인 싱크 버튼과 같은 톤이되, 주목도는 싱크 버튼에 남겨둔다 */
+.ai-align-panel .tap-btn {
+    animation: none !important;
+}
+
+.ai-align-panel .tap-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.ai-align-row .custom-select {
+    flex: 0 0 auto;
+    min-width: 130px;
+    z-index: 30;
+}
+
+.ai-align-row .select-trigger {
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    gap: 8px;
+}
+
+/* 카드가 overflow:hidden이라 아래로 열면 잘린다 - 위로 편다 */
+.ai-align-row .select-options {
+    top: auto;
+    bottom: calc(100% + 8px);
+}
+
+.ai-align-panel > .marker-summary {
+    display: block;
+    margin-top: 8px;
+    text-align: right;
+}
+
+.ai-align-panel > .marker-summary:empty {
+    display: none;
+}
 

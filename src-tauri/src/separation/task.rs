@@ -9,7 +9,8 @@ use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use crate::model_manager::{ModelManager, ModelSpec};
 use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
-use super::{SeparationProgress, ROFORMER_ENGINE, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
+use crate::youtube_url::normalize_cache_key;
+use super::{SeparationProgress, ROFORMER_ENGINE, ENGINE_MODEL_ID, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
 static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
 static MODEL_INIT_INFLIGHT: AtomicU32 = AtomicU32::new(0);
@@ -19,6 +20,11 @@ pub struct SeparationTask {
     window: WebviewWindow,
     path: String,
     cache_dir: PathBuf,
+    /// Per-request model choice (e.g. "빠른 분리" vs "고품질 분리" from the
+    /// separation-method picker). None falls back to the global
+    /// `active_model_id` setting. Captured at enqueue time so later changes
+    /// to the global setting don't retroactively affect queued tasks.
+    model_override: Option<String>,
 }
 
 impl SeparationTask {
@@ -42,8 +48,8 @@ impl SeparationTask {
         0
     }
 
-    pub fn new(window: WebviewWindow, path: String, cache_dir: PathBuf) -> Self {
-        Self { window, path, cache_dir }
+    pub fn new(window: WebviewWindow, path: String, cache_dir: PathBuf, model_override: Option<String>) -> Self {
+        Self { window, path, cache_dir, model_override }
     }
 
     /// Orchestrates the entire separation process.
@@ -51,10 +57,14 @@ impl SeparationTask {
         let window = self.window;
         let path = self.path;
         let cache_dir = self.cache_dir;
+        // Resolve the model for this task once, up front: explicit override
+        // (per-request 속도/품질 choice) wins, else the global setting.
+        let task_model_id = self.model_override.unwrap_or_else(Self::read_active_model_id);
+        let task_model_name = Self::model_name_for(&task_model_id);
 
         // 1. Normalize path and register in active map immediately to prevent duplicates
-        let norm_p = path.replace("\\", "/");
-        
+        let norm_p = normalize_cache_key(&path);
+
         // If a cancel was already requested before the task reached this point, abort immediately.
         if crate::audio_player::CANCEL_REQUESTS.lock().remove(&norm_p) {
             window.emit("separation-progress", SeparationProgress {
@@ -62,7 +72,7 @@ impl SeparationTask {
                 percentage: 0.0,
                 status: "Cancelled".into(),
                 provider: "SYSTEM".into(),
-                model: Self::get_configured_model_name(),
+                model: task_model_name.clone(),
             }).ok();
             return;
         }
@@ -74,7 +84,7 @@ impl SeparationTask {
         }
 
         // 2. Initial status: Queued (Waiting for Lock)
-        let default_model = Self::get_configured_model_name();
+        let default_model = task_model_name.clone();
         window.emit("separation-progress", SeparationProgress {
             path: path.clone(),
             percentage: 0.0,
@@ -98,7 +108,7 @@ impl SeparationTask {
         }
 
         // 4. Ensure AI Engine is loaded
-        let engine = match Self::ensure_engine(&window, &path).await {
+        let engine = match Self::ensure_engine(&window, &path, &task_model_id).await {
             Ok(e) => e,
             Err(_) => {
                 let mut active = ACTIVE_SEPARATIONS.lock();
@@ -127,7 +137,7 @@ impl SeparationTask {
         }).ok();
 
         // 7. Execute core separation logic in a dedicated thread
-        Self::execute_separation(window, path, source_path, cache_dir, engine, cancel_flag, norm_p).await;
+        Self::execute_separation(window, path, source_path, cache_dir, engine, cancel_flag, norm_p, task_model_id).await;
     }
 
     fn now_secs() -> u64 {
@@ -143,12 +153,28 @@ impl SeparationTask {
             .unwrap_or_else(|_| "kim".to_string())
     }
 
-    async fn ensure_engine(window: &WebviewWindow, path: &str) -> Result<Arc<dyn InferenceEngine>, String> {
-        {
-            let engine_guard = ROFORMER_ENGINE.lock();
-            if let Some(engine) = engine_guard.as_ref() {
-                return Ok(engine.clone());
-            }
+    fn model_name_for(model_id: &str) -> String {
+        crate::model_manager::ModelManager::spec_from_id(model_id)
+            .map(|spec| spec.name)
+            .unwrap_or_else(|_| crate::state::MODELS[0].1.to_string())
+    }
+
+    /// Returns the cached engine only if it was built with `wanted_model_id`;
+    /// a per-task model override can differ from whatever the cache holds, in
+    /// which case the stale engine is dropped so it gets rebuilt below.
+    fn cached_engine_for(wanted_model_id: &str) -> Option<Arc<dyn InferenceEngine>> {
+        let engine_guard = ROFORMER_ENGINE.lock();
+        let engine = engine_guard.as_ref()?;
+        let id_guard = ENGINE_MODEL_ID.lock();
+        match id_guard.as_deref() {
+            Some(cached_id) if cached_id == wanted_model_id => Some(engine.clone()),
+            _ => None,
+        }
+    }
+
+    async fn ensure_engine(window: &WebviewWindow, path: &str, wanted_model_id: &str) -> Result<Arc<dyn InferenceEngine>, String> {
+        if let Some(engine) = Self::cached_engine_for(wanted_model_id) {
+            return Ok(engine);
         }
 
         // Single-flight model init: one initializer at a time across all tasks.
@@ -160,12 +186,10 @@ impl SeparationTask {
             MODEL_INIT_INFLIGHT.load(Ordering::Relaxed)
         ));
 
-        // Re-check after waiting for lock in case another task initialized it.
-        {
-            let engine_guard = ROFORMER_ENGINE.lock();
-            if let Some(engine) = engine_guard.as_ref() {
-                return Ok(engine.clone());
-            }
+        // Re-check after waiting for lock in case another task initialized it
+        // (only usable if it was built with the model this task wants).
+        if let Some(engine) = Self::cached_engine_for(wanted_model_id) {
+            return Ok(engine);
         }
 
         let now = Self::now_secs();
@@ -176,7 +200,7 @@ impl SeparationTask {
                 "Error: 모델 초기화 재시도 대기 중 ({}초 후 가능). 앱 재시작 또는 모델 재다운로드를 권장합니다.",
                 wait_sec
             );
-            Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
+            Self::emit_error(window, path, &err, "SYSTEM", &Self::model_name_for(wanted_model_id));
             return Err(err);
         }
 
@@ -185,12 +209,12 @@ impl SeparationTask {
             percentage: 0.0,
             status: "AI 모델 로딩 중...".into(),
             provider: "SYSTEM".into(),
-            model: Self::get_configured_model_name(),
+            model: Self::model_name_for(wanted_model_id),
         }).ok();
 
         let app = window.app_handle();
         let manager = ModelManager::new(app);
-        let primary_model_id = Self::read_active_model_id();
+        let primary_model_id = wanted_model_id.to_string();
         let mut attempt_specs: Vec<ModelSpec> = Vec::new();
         if let Ok(primary_spec) = ModelManager::spec_from_id(&primary_model_id) {
             attempt_specs.push(primary_spec);
@@ -228,6 +252,7 @@ impl SeparationTask {
 
                     let model_path_for_spawn = resolution.path.clone();
                     let model_id_for_spawn = resolution.spec.id.clone();
+                    let model_params_for_spawn = resolution.spec.params.clone();
                     let init_started = std::time::Instant::now();
                     let timeout_secs = Self::model_init_timeout_secs();
                     let spawn_wait_started = std::time::Instant::now();
@@ -241,7 +266,7 @@ impl SeparationTask {
                     let init_result = tokio::time::timeout(
                         Duration::from_secs(timeout_secs),
                         tokio::task::spawn_blocking(move || {
-                            WaveformRemover::new(&model_path_for_spawn, Some(&model_id_for_spawn))
+                            WaveformRemover::new_with_params(&model_path_for_spawn, Some(&model_id_for_spawn), model_params_for_spawn)
                         })
                     ).await;
                     let inflight_after_wait = MODEL_INIT_INFLIGHT.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
@@ -265,6 +290,7 @@ impl SeparationTask {
                                 let engine_arc = Arc::new(remover);
                                 let mut guard = ROFORMER_ENGINE.lock();
                                 *guard = Some(engine_arc.clone());
+                                *ENGINE_MODEL_ID.lock() = Some(resolution.spec.id.clone());
                                 MODEL_INIT_COOLDOWN_UNTIL.store(0, Ordering::Relaxed);
                                 return Ok(engine_arc);
                             }
@@ -308,7 +334,7 @@ impl SeparationTask {
         }
 
         let err = format!("Error: {}", if last_error.is_empty() { "모델 초기화 실패" } else { &last_error });
-        Self::emit_error(window, path, &err, "SYSTEM", &Self::get_configured_model_name());
+        Self::emit_error(window, path, &err, "SYSTEM", &Self::model_name_for(wanted_model_id));
         Err(err)
     }
 
@@ -364,7 +390,8 @@ impl SeparationTask {
         cache_dir: PathBuf, 
         engine: Arc<dyn InferenceEngine>,
         cancel_flag: Arc<AtomicBool>,
-        norm_p: String
+        norm_p: String,
+        task_model_id: String,
     ) {
         let window_clone = window.clone();
         let path_clone = path.clone();
@@ -421,11 +448,10 @@ impl SeparationTask {
                 sys_log(&format!("[AI-ENGINE] Separation failed: {}", e));
             }
 
-            // Clean up from active map
+            // Clean up from active map (key already normalized when registered)
             {
                 let mut active = ACTIVE_SEPARATIONS.lock();
-                let norm_p = p_for_cleanup.replace("\\", "/");
-                active.remove(&norm_p);
+                active.remove(&p_for_cleanup);
             }
             
             let _ = tx.send(separation_result.map(|_| ()));
@@ -434,6 +460,9 @@ impl SeparationTask {
         // Await thread result
         match rx.await {
             Ok(Ok(_)) => {
+                // 어떤 모델로 분리했는지 곡별로 기록 — 분리 산출물 옆에 저장해서
+                // MR 캐시 삭제/재분리 시 자연스럽게 함께 갱신·폐기되게 한다.
+                Self::write_separation_info(&cache_dir, &task_model_id, &engine.get_model_name(), &engine.get_provider());
                 window.emit("separation-progress", SeparationProgress {
                     path: path.clone(),
                     percentage: 100.0,
@@ -446,6 +475,15 @@ impl SeparationTask {
                 let _ = std::fs::remove_dir_all(&cache_dir);
                 let status = if e.contains("Cancelled") {
                     "Cancelled".to_string()
+                } else if Self::is_gpu_device_removed_error(&e) {
+                    sys_log(&format!(
+                        "[AI-ENGINE] GPU device removed, evicting cached engine: {}",
+                        e
+                    ));
+                    *ROFORMER_ENGINE.lock() = None;
+                    *ENGINE_MODEL_ID.lock() = None;
+                    "Error: GPU 처리 중 그래픽 드라이버가 응답하지 않아 중단되었습니다. 다시 시도해주세요"
+                        .to_string()
                 } else {
                     sys_log(&format!("[AI-ENGINE] Separation failed: {}", e));
                     format!("Error: {}", e)
@@ -463,6 +501,33 @@ impl SeparationTask {
                 Self::emit_error(&window, &path, "Process panicked", "SYSTEM", &Self::get_configured_model_name());
             }
         }
+    }
+
+    /// Persists which model produced this song's separated stems, next to the
+    /// stems themselves (`separation_info.json` in the cache dir). Failure is
+    /// non-fatal — this is informational metadata only.
+    fn write_separation_info(cache_dir: &PathBuf, model_id: &str, model_name: &str, provider: &str) {
+        let completed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let info = serde_json::json!({
+            "modelId": model_id,
+            "modelName": model_name,
+            "provider": provider,
+            "completedAt": completed_at,
+        });
+        let path = cache_dir.join("separation_info.json");
+        if let Err(e) = std::fs::write(&path, info.to_string()) {
+            sys_log(&format!("[AI-ENGINE] Failed to write separation info: {}", e));
+        }
+    }
+
+    fn is_gpu_device_removed_error(e: &str) -> bool {
+        let upper = e.to_ascii_uppercase();
+        upper.contains("887A0005")
+            || upper.contains("DXGI_ERROR_DEVICE_REMOVED")
+            || upper.contains("DXGI_ERROR_DEVICE_HUNG")
     }
 
     fn emit_error(window: &WebviewWindow, path: &str, message: &str, provider: &str, model: &str) {

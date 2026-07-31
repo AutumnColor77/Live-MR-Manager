@@ -221,12 +221,47 @@ impl StftEngine {
     }
 }
 
+/// How the ONNX model consumes and produces audio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineKind {
+    /// Rust-side STFT → model estimates a spectrogram/mask → Rust-side iSTFT.
+    /// Used by the built-in MDX/Kim/KARA models.
+    Spectrogram,
+    /// The model embeds STFT/iSTFT and works directly on waveforms:
+    /// input `[1, 2, N]` (planar stereo) → output `[1, sources, 2, N]`.
+    /// Used by Mel-Band RoFormer ONNX exports.
+    RawWaveform,
+}
+
+/// Explicit STFT / architecture parameters for a model.
+///
+/// Built-in models leave this as `None` and rely on filename heuristics in
+/// `separate`. Custom (user-added) models carry an explicit `ModelParams`
+/// derived from an architecture preset so that arbitrary ONNX files that do
+/// not match the built-in name patterns still separate correctly.
+#[derive(Debug, Clone)]
+pub struct ModelParams {
+    pub engine: EngineKind,
+    pub is_mdx: bool,
+    pub is_roformer: bool,
+    pub is_kara: bool,
+    pub n_fft: usize,
+    pub hop_length: usize,
+    pub target_bins: usize,
+    pub outputs_instrumental: bool,
+    /// Index of the vocal stem on the `sources` axis of a RawWaveform model's
+    /// output. Ignored by Spectrogram models.
+    pub vocal_source_index: usize,
+}
+
 #[derive(Clone)]
 pub struct WaveformRemover {
     session: Arc<Mutex<Session>>,
     model_name: String,
     active_provider: String,
     outputs_instrumental: bool,
+    params: Option<ModelParams>,
 }
 
 impl WaveformRemover {
@@ -261,6 +296,14 @@ impl WaveformRemover {
     }
 
     pub fn new(model_path: &Path, model_id_hint: Option<&str>) -> Result<Self> {
+        Self::new_with_params(model_path, model_id_hint, None)
+    }
+
+    pub fn new_with_params(
+        model_path: &Path,
+        model_id_hint: Option<&str>,
+        params: Option<ModelParams>,
+    ) -> Result<Self> {
         Self::log_runtime_diagnostics_once();
         let threads: usize = 1;
         sys_log(&format!("[AI-ENGINE] Initializing with conservative settings (intra-op threads: {})", threads));
@@ -275,9 +318,23 @@ impl WaveformRemover {
             Err(_) => true,
         };
 
+        // RawWaveform models (Mel-Band RoFormer) run a single, very heavy
+        // dispatch per chunk (conv-emulated STFT + full attention over an
+        // 8s waveform). On DirectML this routinely exceeds the Windows TDR
+        // watchdog budget and kills the GPU device mid-inference
+        // (DXGI_ERROR_DEVICE_REMOVED / 887A0005), which is unrecoverable
+        // until the process restarts. CUDA's kernel scheduling doesn't hit
+        // the same wall in practice, so DirectML is skipped for this engine
+        // kind and CUDA/CPU are tried instead.
+        let is_raw_waveform = params.as_ref().map_or(false, |p| p.engine == EngineKind::RawWaveform);
+
         let mut providers_to_try = Vec::new();
         if gpu_opt_in {
-            providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+            if is_raw_waveform {
+                sys_log("[AI-ENGINE] RawWaveform model: skipping DirectML (known TDR/device-removed risk on heavy single-shot dispatches)");
+            } else {
+                providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+            }
             providers_to_try.push((
                 "GPU (CUDA)",
                 CUDAExecutionProvider::default().with_device_id(0).build(),
@@ -362,13 +419,19 @@ impl WaveformRemover {
 
         let session = session_opt.ok_or_else(|| anyhow!("[AI-ENGINE] Failed to initialize any execution provider"))?;
         let model_name = model_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
-        let outputs_instrumental = Self::detect_instrumental_output(model_id_hint, &model_name);
-        
+        // A custom model's preset dictates its output type; otherwise fall back
+        // to detecting it from the id hint / filename.
+        let outputs_instrumental = match &params {
+            Some(p) => p.outputs_instrumental,
+            None => Self::detect_instrumental_output(model_id_hint, &model_name),
+        };
+
         sys_log(&format!(
-            "[AI-ENGINE] Model loaded: {}, Provider: {}, instrumental_output={}, total_init_ms={}",
+            "[AI-ENGINE] Model loaded: {}, Provider: {}, instrumental_output={}, custom_params={}, total_init_ms={}",
             model_name,
             active_provider,
             outputs_instrumental,
+            params.is_some(),
             init_started.elapsed().as_millis()
         ));
         Ok(Self {
@@ -376,6 +439,7 @@ impl WaveformRemover {
             model_name,
             active_provider,
             outputs_instrumental,
+            params,
         })
     }
 }
@@ -388,6 +452,12 @@ impl InferenceEngine for WaveformRemover {
         self.model_name.clone()
     }
     fn separate(&self, audio_path: &Path, output_dir: &Path, cancel_flag: Arc<AtomicBool>, on_progress: Box<dyn Fn(f32) + Send>) -> Result<(PathBuf, PathBuf)> {
+        // Raw-waveform models (Mel-Band RoFormer) take a completely different
+        // inference path: no Rust-side STFT, the model consumes audio directly.
+        if self.params.as_ref().map_or(false, |p| p.engine == EngineKind::RawWaveform) {
+            return self.separate_raw(audio_path, output_dir, cancel_flag, on_progress);
+        }
+
         let start_time = Instant::now();
         sys_log(&format!("DEBUG: [WaveformRemover] Starting advanced separation for: {:?}. Using: {}", audio_path, self.active_provider));
         // Emit an early progress tick so UI does not stay visually frozen at 0%.
@@ -485,17 +555,41 @@ impl InferenceEngine for WaveformRemover {
             return Err(anyhow!("Cancelled after model detection"));
         }
 
-        let is_mdx = self.model_name.contains("MDX") || self.model_name.contains("Kim");
-        let is_roformer = self.model_name.contains("RoFormer");
-        let is_kara = self.model_name.contains("KARA");
-        sys_log(&format!("DEBUG: [WaveformRemover] Model identification: is_mdx={}, is_roformer={}, is_kara={}, model={}", is_mdx, is_roformer, is_kara, self.model_name));
-        
+        // Custom models supply explicit architecture params (from a preset);
+        // built-in models detect them from the filename below.
+        let (is_mdx, is_roformer, is_kara) = match &self.params {
+            Some(p) => (p.is_mdx, p.is_roformer, p.is_kara),
+            None => (
+                self.model_name.contains("MDX") || self.model_name.contains("Kim"),
+                self.model_name.contains("RoFormer"),
+                self.model_name.contains("KARA"),
+            ),
+        };
+        sys_log(&format!("DEBUG: [WaveformRemover] Model identification: is_mdx={}, is_roformer={}, is_kara={}, custom_params={}, model={}", is_mdx, is_roformer, is_kara, self.params.is_some(), self.model_name));
+
         let mut n_fft = 2048;
         let mut hop_length = 512;
         let mut target_bins = 1025;
         let mut required_samples = 354848;
 
-        if is_mdx {
+        if let Some(p) = &self.params {
+            // Explicit preset params. `required_samples` is still refined from
+            // the ONNX input shape below, matching the built-in code path.
+            n_fft = p.n_fft;
+            hop_length = p.hop_length;
+            target_bins = p.target_bins;
+            if is_mdx {
+                if input_rank >= 4 {
+                    let frames = input_shape[3] as usize; // MDX Shape: [1, 4, bins, frames]
+                    if frames > 0 { required_samples = (frames - 1) * hop_length + n_fft; }
+                }
+            } else if is_roformer || (input_rank == 4 && input_shape[3] == 2) {
+                if input_rank == 4 {
+                    let frames = input_shape[1] as usize;
+                    if frames > 0 { required_samples = (frames - 1) * hop_length + n_fft; }
+                }
+            }
+        } else if is_mdx {
             n_fft = 7680;
             hop_length = 1024;
             target_bins = 3072;
@@ -897,6 +991,257 @@ impl InferenceEngine for WaveformRemover {
 }
 
 impl WaveformRemover {
+    /// Separation path for RawWaveform models (Mel-Band RoFormer ONNX):
+    /// the model embeds STFT/iSTFT and maps `[1, 2, N]` waveform chunks to
+    /// `[1, sources, 2, N]` separated stems. Sequential chunked inference with
+    /// windowed overlap-add; no Rust-side STFT is involved.
+    fn separate_raw(
+        &self,
+        audio_path: &Path,
+        output_dir: &Path,
+        cancel_flag: Arc<AtomicBool>,
+        on_progress: Box<dyn Fn(f32) + Send>,
+    ) -> Result<(PathBuf, PathBuf)> {
+        let start_time = Instant::now();
+        let params = self.params.clone().ok_or_else(|| anyhow!("RawWaveform path requires ModelParams"))?;
+        sys_log(&format!(
+            "DEBUG: [WaveformRemover] Starting raw-waveform separation for: {:?}. Using: {}",
+            audio_path, self.active_provider
+        ));
+        on_progress(1.0);
+
+        if !output_dir.exists() {
+            std::fs::create_dir_all(output_dir)?;
+        }
+
+        // 1. Load & resample to 44.1kHz (same approach as the spectrogram path).
+        let (raw_samples, sample_rate, channels) = self.load_any_audio(audio_path)?;
+        let path_str = audio_path.to_string_lossy().to_string().replace("\\", "/");
+        let is_cancelled = || {
+            cancel_flag.load(Ordering::Relaxed) || crate::audio_player::CANCEL_REQUESTS.lock().contains(&path_str)
+        };
+        if is_cancelled() {
+            return Err(anyhow!("Cancelled before processing"));
+        }
+
+        let target_sample_rate = 44100u32;
+        let num_channels = (channels as usize).max(1);
+        let processed_samples = if sample_rate != target_sample_rate {
+            sys_log(&format!("DEBUG: [WaveformRemover] Resampling from {} to {}", sample_rate, target_sample_rate));
+            let padding_samples = (sample_rate as f32 * 0.1) as usize; // 100ms padding for resampler
+            let mut padded = vec![0.0f32; padding_samples * num_channels];
+            padded.extend_from_slice(&raw_samples);
+            padded.extend_from_slice(&vec![0.0f32; padding_samples * num_channels]);
+            if is_cancelled() {
+                return Err(anyhow!("Cancelled before resampling"));
+            }
+            let resampled = self.resample(&padded, sample_rate, target_sample_rate, num_channels)?;
+            let ratio = target_sample_rate as f64 / sample_rate as f64;
+            let trim = (padding_samples as f64 * ratio) as usize;
+            if resampled.len() > 2 * trim * num_channels {
+                resampled[trim * num_channels..resampled.len() - trim * num_channels].to_vec()
+            } else {
+                resampled
+            }
+        } else {
+            raw_samples
+        };
+        on_progress(5.0);
+
+        // 2. 1.0s silence padding on both ends (AI stabilization, same as MDX path).
+        let ai_padding_samples = (target_sample_rate as f32 * 1.0) as usize;
+        let mut padded = vec![0.0f32; ai_padding_samples * num_channels];
+        padded.extend_from_slice(&processed_samples);
+        padded.extend_from_slice(&vec![0.0f32; ai_padding_samples * num_channels]);
+        drop(processed_samples);
+
+        // 3. Interleaved → fixed stereo planar (the model expects exactly 2 channels;
+        //    mono input is duplicated, extra channels are dropped).
+        let total_samples = padded.len() / num_channels;
+        let mut mix = vec![vec![0.0f32; total_samples]; 2];
+        for (f_idx, frame) in padded.chunks_exact(num_channels).enumerate() {
+            let l = frame[0];
+            let r = if num_channels >= 2 { frame[1] } else { frame[0] };
+            mix[0][f_idx] = l;
+            mix[1][f_idx] = r;
+        }
+        drop(padded);
+
+        if is_cancelled() {
+            return Err(anyhow!("Cancelled before model parameter detection"));
+        }
+
+        // 4. Chunk size from the ONNX input shape [1, 2, N]; dynamic axes fall
+        //    back to 8s @ 44.1kHz (the common Mel-Band RoFormer export).
+        let input_shape = {
+            let session_guard = self.session.lock();
+            match session_guard.inputs()[0].dtype() {
+                ValueType::Tensor { shape, .. } => shape.clone(),
+                _ => return Err(anyhow!("Unexpected input type")),
+            }
+        };
+        let mut chunk_size = 352800usize;
+        if input_shape.len() == 3 && input_shape[2] > 0 {
+            chunk_size = input_shape[2] as usize;
+        }
+        let overlap_size = chunk_size / 4;
+        let step_size = chunk_size - overlap_size;
+        let num_chunks = (total_samples + step_size - 1) / step_size;
+        sys_log(&format!(
+            "DEBUG: [WaveformRemover] Raw params: chunk={}, overlap={}, chunks={}, vocal_source_index={}",
+            chunk_size, overlap_size, num_chunks, params.vocal_source_index
+        ));
+
+        // Sin-squared window for smooth OLA (same formula as the spectrogram path).
+        let window: Vec<f32> = (0..chunk_size)
+            .map(|i| {
+                if i < overlap_size {
+                    let ratio = i as f32 / overlap_size as f32;
+                    (ratio * std::f32::consts::PI / 2.0).sin().powi(2)
+                } else if i >= chunk_size - overlap_size {
+                    let ratio = (chunk_size - 1 - i) as f32 / overlap_size as f32;
+                    (ratio * std::f32::consts::PI / 2.0).sin().powi(2)
+                } else {
+                    1.0
+                }
+            })
+            .collect();
+
+        let mut final_vocal = vec![vec![0.0f32; total_samples]; 2];
+        let mut final_inst = vec![vec![0.0f32; total_samples]; 2];
+        let mut weight_sum = vec![0.0f32; total_samples];
+
+        on_progress(10.0);
+        let inference_start = Instant::now();
+
+        // 5. Sequential chunked inference (the model itself is the bottleneck;
+        //    a multi-stage pipeline buys nothing here).
+        for (chunk_idx, chunk_start) in (0..total_samples).step_by(step_size).enumerate() {
+            if is_cancelled() {
+                return Err(anyhow!("Separation Cancelled during processing"));
+            }
+
+            // Build [1, 2, chunk] planar input, zero-padded past the end.
+            let avail = (total_samples - chunk_start).min(chunk_size);
+            let mut input_vec = vec![0.0f32; 2 * chunk_size];
+            for ch in 0..2 {
+                input_vec[ch * chunk_size..ch * chunk_size + avail]
+                    .copy_from_slice(&mix[ch][chunk_start..chunk_start + avail]);
+            }
+
+            let input_value = Value::from_array(([1usize, 2, chunk_size], input_vec))?;
+            let outputs_vec: Vec<Value> = {
+                let mut session_guard = self.session.lock();
+                session_guard
+                    .run(ort::inputs![input_value])
+                    .map(|outputs| outputs.into_iter().map(|(_, v)| v).collect::<Vec<Value>>())
+            }?;
+            let (out_shape, out_data) = outputs_vec[0].try_extract_tensor::<f32>()?;
+
+            // Interpret output: rank 4 = [1, sources, ch, N]; rank 3 = [1, ch, N]
+            // (single-stem export; the complement is derived from the mix).
+            let rank = out_shape.len();
+            let (n_sources, out_ch, out_len) = if rank == 4 {
+                (out_shape[1] as usize, out_shape[2] as usize, out_shape[3] as usize)
+            } else if rank == 3 {
+                (1usize, out_shape[1] as usize, out_shape[2] as usize)
+            } else {
+                return Err(anyhow!("Unexpected output rank {} from raw-waveform model", rank));
+            };
+            if n_sources == 0 || out_ch == 0 || out_len == 0 {
+                return Err(anyhow!("Empty output tensor from raw-waveform model"));
+            }
+
+            let primary_idx = params.vocal_source_index.min(n_sources - 1);
+            let secondary_idx = (0..n_sources).find(|&s| s != primary_idx);
+            let copy_len = out_len.min(avail);
+
+            for ch in 0..2 {
+                let src_ch = ch.min(out_ch - 1);
+                for i in 0..copy_len {
+                    let w = window[i];
+                    let out_idx = chunk_start + i;
+                    let primary = out_data[(primary_idx * out_ch + src_ch) * out_len + i];
+
+                    let (vocal_s, inst_s) = match secondary_idx {
+                        Some(sec) => {
+                            let secondary = out_data[(sec * out_ch + src_ch) * out_len + i];
+                            // vocal_source_index points at the vocal stem.
+                            (primary, secondary)
+                        }
+                        None => {
+                            // Single-stem export: derive the complement from the mix.
+                            let residual = mix[ch][out_idx] - primary;
+                            if params.outputs_instrumental {
+                                (residual, primary)
+                            } else {
+                                (primary, residual)
+                            }
+                        }
+                    };
+
+                    final_vocal[ch][out_idx] += vocal_s * w;
+                    final_inst[ch][out_idx] += inst_s * w;
+                    if ch == 0 {
+                        weight_sum[out_idx] += w;
+                    }
+                }
+            }
+
+            let processing_pct = 10.0 + (((chunk_idx + 1) as f32 / num_chunks as f32) * 89.0);
+            on_progress(processing_pct.min(99.0));
+
+            // Broadcast-protection mode: yield between chunks to reduce contention.
+            if crate::separation::BROADCAST_MODE.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        sys_log(&format!("PERF: [WaveformRemover] Raw inference took: {:?}", inference_start.elapsed()));
+
+        if is_cancelled() {
+            return Err(anyhow!("Separation Cancelled during processing"));
+        }
+
+        // 6. OLA normalization.
+        for i in 0..total_samples {
+            if weight_sum[i] > 1e-10 {
+                for ch in 0..2 {
+                    final_vocal[ch][i] /= weight_sum[i];
+                    final_inst[ch][i] /= weight_sum[i];
+                }
+            }
+        }
+
+        // 7. Trim the 1.0s stabilization padding.
+        let (trimmed_vocal, trimmed_inst) = if total_samples > 2 * ai_padding_samples {
+            let start = ai_padding_samples;
+            let end = total_samples - ai_padding_samples;
+            let v: Vec<Vec<f32>> = final_vocal.iter().map(|ch| ch[start..end].to_vec()).collect();
+            let inst: Vec<Vec<f32>> = final_inst.iter().map(|ch| ch[start..end].to_vec()).collect();
+            (v, inst)
+        } else {
+            sys_log("WARN: [WaveformRemover] Result too short to trim padding, results might have edge artifacts.");
+            (final_vocal, final_inst)
+        };
+
+        // 8. Save via the shared MR cache path.
+        let format = crate::mr_cache::current_format();
+        let (vocal_path, inst_path) = crate::mr_cache::mr_output_paths_for(output_dir, format);
+        sys_log(&format!(
+            "DEBUG: [WaveformRemover] Saving MR cache as {} ({:?}, {:?})",
+            format.as_str(),
+            vocal_path.file_name(),
+            inst_path.file_name()
+        ));
+        self.save_mr(&trimmed_vocal, &vocal_path, target_sample_rate)
+            .map_err(|e| anyhow!("Vocal save failed: {}", e))?;
+        self.save_mr(&trimmed_inst, &inst_path, target_sample_rate)
+            .map_err(|e| anyhow!("Inst save failed: {}", e))?;
+
+        sys_log(&format!("PERF: [WaveformRemover] Total raw separation time for track: {:?}", start_time.elapsed()));
+        Ok((vocal_path, inst_path))
+    }
+
     fn load_any_audio(&self, path: &Path) -> Result<(Vec<f32>, u32, u8)> {
         let file = std::fs::File::open(path)?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());

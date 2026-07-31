@@ -142,6 +142,13 @@
       overflow: hidden;
     }
 
+    /* 원문/차음/번역 등 두 번째 줄부터 살짝 작고 흐리게 */
+    .lyric-subline {
+      display: inline-block;
+      font-size: 0.7em;
+      opacity: 0.85;
+    }
+
     .lyrics-container.line-promoting #lyric-current {
       transform: translateY(-14px);
       opacity: 0.72;
@@ -215,9 +222,34 @@
     let lastTrackSignature = "";
     let pendingTrackShowTimer = null;
 
+    // Lyric text is untrusted (LRC files / forced-alignment output / fetched
+    // metadata), so it's never assigned via innerHTML. Multi-line cues
+    // (원문/차음/번역) arrive as a single `\n`-joined string (see
+    // lyric-drawer.js) — split on that and build real DOM nodes instead.
+    function renderLineInto(el, text) {
+      el.textContent = '';
+      const trimmed = text && text.trim();
+      if (!trimmed) {
+        el.appendChild(document.createTextNode('\u00A0'));
+        return;
+      }
+      const parts = text.split('\n');
+      parts.forEach((part, i) => {
+        if (i > 0) el.appendChild(document.createElement('br'));
+        if (i === 0) {
+          el.appendChild(document.createTextNode(part));
+        } else {
+          const sub = document.createElement('span');
+          sub.className = 'lyric-subline';
+          sub.textContent = part;
+          el.appendChild(sub);
+        }
+      });
+    }
+
     function setLineTexts(currentText, nextText) {
-      lyricCurrent.innerHTML = currentText && currentText.trim() ? currentText : '&nbsp;';
-      lyricNext.innerHTML = nextText && nextText.trim() ? nextText : '&nbsp;';
+      renderLineInto(lyricCurrent, currentText || "");
+      renderLineInto(lyricNext, nextText || "");
       displayedCurrent = currentText || "";
       displayedNext = nextText || "";
     }

@@ -19,16 +19,20 @@ import {
 } from '../../companion-links.js';
 import {
   checkForAppUpdate,
+  checkMrCachePath,
   exportBackup,
   exportLibrarySpreadsheet,
   getMrCacheFormat,
+  getMrCachePathInfo,
   importBackup,
   importLibrarySpreadsheet,
   openAppPage,
   openCacheFolder,
+  pickMrCacheFolder,
   runCacheRescue,
   setBroadcastMode,
   setMrCacheFormat,
+  setMrCachePath,
 } from '../../settings-api.js';
 
 async function reloadLibraryAfterSpreadsheetImport(result) {
@@ -223,6 +227,18 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
   }
   syncBroadcastModeToggles(state.broadcastMode);
 
+  // 인트로 자동 건너뛰기 - 순수 로컬 설정(백엔드 호출 없음), 기본값 켜짐.
+  const toggleAutoSkipIntro = document.getElementById("toggle-auto-skip-intro");
+  if (toggleAutoSkipIntro) {
+    const stored = localStorage.getItem("autoSkipIntro");
+    state.autoSkipIntro = stored === null ? true : stored === "true";
+    toggleAutoSkipIntro.checked = state.autoSkipIntro;
+    toggleAutoSkipIntro.onchange = (e) => {
+      state.autoSkipIntro = !!e.target.checked;
+      localStorage.setItem("autoSkipIntro", String(state.autoSkipIntro));
+    };
+  }
+
   const syncMrCacheFormatToUi = (format) => {
     const normalized = format === "wav" ? "wav" : "mp3";
     const dropdown = document.getElementById("mr-cache-format-dropdown");
@@ -288,6 +304,125 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
     btnOpenCache.onclick = async () => {
       await openCacheFolder();
     };
+  }
+
+  // MR 캐시 저장 위치 - 로컬 디스크 우선, 쓰기 가능한 네트워크 공유도 허용하되
+  // 성능 경고 표시. 변경 사항은 앱 재시작 시에만 실제 반영된다(백엔드가
+  // AppPaths::from_handle에서 시작 시 한 번만 읽음) - 라이브러리의 바운디드
+  // LRC 싱크 상태 스캔(classify_lyric_sync_status)은 그대로 유지된다.
+  const mrCachePathDisplay = document.getElementById("mr-cache-path-display");
+  const mrCachePathStatus = document.getElementById("mr-cache-path-status");
+  const btnBrowseMrCachePath = document.getElementById("btn-browse-mr-cache-path");
+  const btnSaveMrCachePath = document.getElementById("btn-save-mr-cache-path");
+  const btnResetMrCachePath = document.getElementById("btn-reset-mr-cache-path");
+
+  if (mrCachePathDisplay && btnBrowseMrCachePath) {
+    let pendingPath = null; // 아직 저장하지 않은, 찾아보기로 방금 고른 경로
+
+    const showStatus = (message, tone = "warning") => {
+      if (!mrCachePathStatus) return;
+      if (!message) {
+        mrCachePathStatus.style.display = "none";
+        mrCachePathStatus.textContent = "";
+        return;
+      }
+      mrCachePathStatus.style.display = "block";
+      mrCachePathStatus.textContent = message;
+      mrCachePathStatus.style.borderColor = tone === "error" ? "rgba(239, 68, 68, 0.4)" : "rgba(245, 158, 11, 0.35)";
+      mrCachePathStatus.style.background = tone === "error" ? "rgba(239, 68, 68, 0.1)" : "rgba(245, 158, 11, 0.1)";
+    };
+
+    const refreshFromBackend = async () => {
+      try {
+        const info = await getMrCachePathInfo();
+        pendingPath = null;
+        if (btnSaveMrCachePath) btnSaveMrCachePath.disabled = true;
+        // 기본 위치일 때도 실제 폴더 경로를 그대로 보여준다. 저장은 했지만 아직
+        // 재시작 전이면 저장된 경로를 보여주고, 지금 쓰는 경로는 경고에서 알린다.
+        mrCachePathDisplay.textContent = info.customPath || info.effectivePath;
+        if (btnResetMrCachePath) btnResetMrCachePath.style.display = info.isCustom ? "" : "none";
+
+        if (info.pendingRestart) {
+          showStatus(
+            `앱을 다시 시작해야 적용됩니다. 지금은 ${info.effectivePath} 를 사용 중입니다.`,
+            "warning"
+          );
+        } else if (info.isNetworkPath) {
+          showStatus("네트워크 폴더를 사용 중입니다. 느릴 수 있습니다.", "warning");
+        } else {
+          showStatus(null);
+        }
+      } catch (err) {
+        console.error("Failed to load MR cache path info:", err);
+      }
+    };
+
+    btnBrowseMrCachePath.onclick = async () => {
+      const { showNotification } = await import('../../utils.js');
+      let picked;
+      try {
+        picked = await pickMrCacheFolder();
+      } catch (err) {
+        console.error("Failed to open folder picker:", err);
+        return;
+      }
+      if (!picked) return;
+
+      let check;
+      try {
+        check = await checkMrCachePath(picked);
+      } catch (err) {
+        showNotification("경로 확인 중 오류: " + err, "error");
+        return;
+      }
+
+      if (!check.writable) {
+        pendingPath = null;
+        if (btnSaveMrCachePath) btnSaveMrCachePath.disabled = true;
+        mrCachePathDisplay.textContent = picked;
+        showStatus(check.error || "이 폴더에는 쓸 수 없습니다.", "error");
+        return;
+      }
+
+      pendingPath = picked;
+      mrCachePathDisplay.textContent = picked;
+      if (btnSaveMrCachePath) btnSaveMrCachePath.disabled = false;
+      showStatus(
+        check.isNetworkPath
+          ? "쓸 수 있는 폴더입니다. 네트워크 경로라 느릴 수 있습니다."
+          : "쓸 수 있는 폴더입니다. 저장 후 앱을 다시 시작하면 적용됩니다.",
+        "warning"
+      );
+    };
+
+    if (btnSaveMrCachePath) {
+      btnSaveMrCachePath.onclick = async () => {
+        const { showNotification } = await import('../../utils.js');
+        if (!pendingPath) return;
+        try {
+          await setMrCachePath(pendingPath);
+          showNotification("MR 캐시 저장 위치를 저장했습니다. 앱을 다시 시작하면 적용됩니다.", "success");
+          await refreshFromBackend();
+        } catch (err) {
+          showNotification("저장 실패: " + err, "error");
+        }
+      };
+    }
+
+    if (btnResetMrCachePath) {
+      btnResetMrCachePath.onclick = async () => {
+        const { showNotification } = await import('../../utils.js');
+        try {
+          await setMrCachePath(null);
+          showNotification("기본 위치로 되돌렸습니다. 앱을 다시 시작하면 적용됩니다.", "success");
+          await refreshFromBackend();
+        } catch (err) {
+          showNotification("재설정 실패: " + err, "error");
+        }
+      };
+    }
+
+    refreshFromBackend();
   }
 
   const btnCheckAppUpdate = document.getElementById("btn-check-app-update");

@@ -4,6 +4,7 @@
 import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
 import { registerAppHandler, callAppHandler } from './app-context.js';
+import { getDisplayLines } from './lrc-parser.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
@@ -222,11 +223,67 @@ export function updateLyrics(segments) {
     lastOverlayCurrent = null;
     lastOverlayNext = null;
 
-    container.innerHTML = segments.map((s, i) => `
-        <div class="lyric-line-item drawer-lyric-item" data-index="${i}">
-            <span class="lyric-text">${s.text}</span>
-        </div>
-    `).join('');
+    container.textContent = '';
+    const frag = document.createDocumentFragment();
+    segments.forEach((s, i) => {
+        const item = document.createElement('div');
+        item.className = 'lyric-line-item drawer-lyric-item';
+        item.dataset.index = String(i);
+        item.appendChild(buildLyricTextEl(s, 'app'));
+        frag.appendChild(item);
+    });
+    container.appendChild(frag);
+
+    // 가사 뷰 페이지(/lyrics-view, OBS 독)용 전체 가사 목록 푸시.
+    // 인앱 표시 설정('app' 스코프)을 따라 원문/차음/번역 노출을 결정.
+    // 가사 텍스트는 신뢰할 수 없는 입력이므로 일반 문자열로만 전송하고
+    // (마크업 없음), 여러 줄은 `\n`으로만 구분 — 수신측이 안전하게 DOM으로
+    // 조립한다 (overlay-lyrics.html / lyrics-view.html).
+    invoke('update_overlay_lyrics_full', {
+        lines: (segments || []).map((seg) => joinLinesForTransport(displayLines(seg, 'app'))),
+    }).catch(() => {});
+}
+
+/**
+ * 설정된 표시 항목(원문/차음/번역)을 순서대로 반환. 일반 가사는 [text] 하나.
+ * `scope`는 'app'(인앱 드로어) 또는 'overlay'(OBS 오버레이) — 서로 독립적으로
+ * 설정 가능하다(lrc-parser.js의 getLineVisibility).
+ *
+ * 보안 참고: 반환값은 항상 순수 문자열 배열이며 절대 HTML로 조립하지 않는다
+ * — LRC/강제정렬/온라인 메타데이터 등 신뢰할 수 없는 출처를 포함하므로,
+ * 렌더링은 항상 buildLyricTextEl(DOM 생성) 또는 joinLinesForTransport(전송용
+ * `\n` 결합, 수신측이 다시 안전하게 DOM으로 조립) 경유로만 이루어져야 한다.
+ */
+function displayLines(seg, scope = 'app') {
+    return getDisplayLines(seg, scope).filter(Boolean);
+}
+
+/** 전송용(WS/오버레이 커맨드) 결합 — `\n`으로만 구분, 마크업 없음. 수신측이
+ * 이 문자열을 innerHTML에 넣으면 안 되고, split('\n') 후 DOM으로 조립해야
+ * 한다 (overlay-lyrics.html의 renderLineInto, lyrics-view.html의 buildLineEl 참고). */
+function joinLinesForTransport(lines) {
+    return lines.join('\n');
+}
+
+/** 인앱 드로어용 `.lyric-text` 요소를 innerHTML 없이 안전하게 조립한다 — 가사
+ * 텍스트가 신뢰할 수 없는 출처(LRC/강제정렬 결과)를 포함할 수 있기 때문
+ * (XSS 방지). 첫 줄은 본문 크기, 나머지(원문/차음/번역)는 작고 흐리게. */
+function buildLyricTextEl(seg, scope) {
+    const span = document.createElement('span');
+    span.className = 'lyric-text';
+    const lines = displayLines(seg, scope);
+    lines.forEach((line, i) => {
+        if (i > 0) span.appendChild(document.createElement('br'));
+        if (i === 0) {
+            span.appendChild(document.createTextNode(line));
+        } else {
+            const sub = document.createElement('span');
+            sub.className = 'lyric-subline';
+            sub.textContent = line;
+            span.appendChild(sub);
+        }
+    });
+    return span;
 }
 
 /**
@@ -237,7 +294,7 @@ function syncLyricsWithTime(currentTime) {
     const lyrics = state.currentLyrics;
     if (!lyrics || lyrics.length === 0) {
         // [추가] 가사가 없는 곡이라면 오버레이의 가사 영역을 확실히 비움
-        invoke('update_overlay_lyrics', { current: "", next: "" }).catch(err => console.error(err));
+        invoke('update_overlay_lyrics', { current: "", next: "", index: -1 }).catch(err => console.error(err));
         return;
     }
 
@@ -249,16 +306,17 @@ function syncLyricsWithTime(currentTime) {
         }
     }
 
-    const current = (playingIndex !== -1) ? lyrics[playingIndex].text : "";
+    const current = (playingIndex !== -1) ? joinLinesForTransport(displayLines(lyrics[playingIndex], 'overlay')) : "";
     const next = (playingIndex !== -1)
-        ? ((playingIndex + 1 < lyrics.length) ? lyrics[playingIndex + 1].text : "")
-        : ((lyrics.length > 0) ? lyrics[0].text : "");
+        ? ((playingIndex + 1 < lyrics.length) ? joinLinesForTransport(displayLines(lyrics[playingIndex + 1], 'overlay')) : "")
+        : ((lyrics.length > 0) ? joinLinesForTransport(displayLines(lyrics[0], 'overlay')) : "");
 
     // IMPORTANT: Don't skip overlay update only because index didn't change.
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".
     const overlayPayloadChanged = current !== lastOverlayCurrent || next !== lastOverlayNext;
     if (overlayPayloadChanged) {
-        invoke('update_overlay_lyrics', { current, next }).catch(err => console.error(err));
+        // index는 가사 뷰 페이지(/lyrics-view)의 현재 줄 하이라이트용
+        invoke('update_overlay_lyrics', { current, next, index: playingIndex }).catch(err => console.error(err));
         lastOverlayCurrent = current;
         lastOverlayNext = next;
     }

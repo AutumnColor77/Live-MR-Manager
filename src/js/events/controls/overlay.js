@@ -1,7 +1,28 @@
 /**
  * OBS overlay customization control listeners
  */
-import { updateOverlayLyrics, updateOverlayStyle } from '../../overlay-api.js';
+import { updateOverlayLyrics, updateOverlayStyle, getLanAddresses, getOverlayLanSetting, setOverlayLanSetting } from '../../overlay-api.js';
+import { getLineVisibility, setLineVisibility } from '../../lrc-parser.js';
+
+let cachedLanAddress = null;
+
+/** 3줄 가사(원문/차음/번역) 표시 항목 체크박스 - 인앱 드로어/OBS 오버레이 각각
+ *  독립적으로 설정(lrc-parser.js의 getLineVisibility/setLineVisibility, scope
+ *  단위로 localStorage에 저장). 체크박스 자체는 어떤 백엔드 호출도 필요 없다 -
+ *  실제 반영은 lyric-drawer.js가 다음 렌더링 때 최신 설정을 읽어간다. */
+function initLyricLineVisibilityControls() {
+  ['app', 'overlay'].forEach((scope) => {
+    const current = getLineVisibility(scope);
+    ['original', 'pronunciation', 'translation'].forEach((key) => {
+      const checkbox = document.getElementById(`line-vis-${scope}-${key}`);
+      if (!checkbox) return;
+      checkbox.checked = !!current[key];
+      checkbox.addEventListener('change', () => {
+        setLineVisibility(scope, key, checkbox.checked);
+      });
+    });
+  });
+}
 
 export function initOverlayListeners() {
   const overlayScale = document.getElementById('overlay-scale');
@@ -19,10 +40,13 @@ export function initOverlayListeners() {
   const overlayBgColorHex = document.getElementById('overlay-bg-color-hex');
   const overlayUrlDisplay = document.getElementById('overlay-url-display');
   const lyricsOverlayUrlDisplay = document.getElementById('lyrics-overlay-url-display');
+  const lyricsViewUrlDisplay = document.getElementById('lyrics-view-url-display');
   const overlayIframe = document.getElementById('overlay-iframe');
   const overlayPreviewWrapper = document.querySelector('.overlay-preview-wrapper');
   const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
   const overlayAnimationDirection = document.getElementById('overlay-animation-direction');
+  const toggleOverlayLan = document.getElementById('toggle-overlay-lan');
+  const overlayLanStatus = document.getElementById('overlay-lan-status');
 
   const resizeOverlayPreview = () => {
     if (!overlayIframe || !overlayPreviewWrapper) return;
@@ -130,15 +154,32 @@ export function initOverlayListeners() {
       localStorage.setItem('overlay-settings', JSON.stringify(config));
     }
 
-    const infoUrl = 'http://localhost:14202/overlay-info';
-    const lyricsUrl = 'http://localhost:14202/overlay-lyrics';
+    // LAN 접속: 기본은 항상 localhost 표시. 토글이 켜져 있고 이 PC의 LAN
+    // 주소를 찾았을 때만 그 주소로 바꿔 보여준다 (오버레이/가사 상태가
+    // 네트워크에 노출된다는 점을 사용자가 명확히 인지한 상태에서만).
+    const useLan = !!(toggleOverlayLan && toggleOverlayLan.checked);
+    const host = (useLan && cachedLanAddress) ? cachedLanAddress : 'localhost';
+    const infoUrl = `http://${host}:14202/overlay-info`;
+    const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
+    const lyricsViewUrl = `http://${host}:14202/lyrics-view`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
+    if (lyricsViewUrlDisplay) lyricsViewUrlDisplay.textContent = lyricsViewUrl;
+
+    if (overlayLanStatus) {
+      if (useLan && !cachedLanAddress) {
+        overlayLanStatus.textContent = '네트워크 주소를 찾지 못했습니다. 이 PC 주소로 표시합니다.';
+      } else if (useLan) {
+        overlayLanStatus.textContent =
+          `켜짐 — ${cachedLanAddress} · 같은 네트워크의 다른 기기에서 접속할 수 있습니다. 공용 Wi-Fi에서는 끄세요. 앱을 다시 시작해야 적용됩니다.`;
+      } else {
+        overlayLanStatus.textContent = '꺼짐 — 이 PC에서만 접속할 수 있습니다.';
+      }
+    }
 
     const setupCopyBtn = (id, text) => {
       const btn = document.getElementById(id);
-      if (btn && !btn.dataset.listenerAdded) {
-        btn.dataset.listenerAdded = 'true';
+      if (btn) {
         btn.onclick = async () => {
           try {
             await navigator.clipboard.writeText(text);
@@ -149,6 +190,7 @@ export function initOverlayListeners() {
     };
     setupCopyBtn('btn-copy-overlay-url', infoUrl);
     setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);
+    setupCopyBtn('btn-copy-lyrics-view-url', lyricsViewUrl);
 
     if (!overlayIframe.src.includes('preview=true')) {
       const mode = activeTab && activeTab.dataset.previewMode === 'lyrics' ? 'lyrics' : 'info';
@@ -193,11 +235,12 @@ export function initOverlayListeners() {
         overlayIframe.src = `overlay-lyrics.html?preview=true`;
         await updateOverlayLyrics({
           current: "",
-          next: "첫 번째 가사가 여기에 미리 표시됩니다."
+          next: "첫 번째 가사가 여기에 미리 표시됩니다.",
+          index: -1
         }).catch(err => console.error(err));
       } else {
         overlayIframe.src = `overlay-info.html?preview=true`;
-        await updateOverlayLyrics({ current: "", next: "" }).catch(err => console.error(err));
+        await updateOverlayLyrics({ current: "", next: "", index: -1 }).catch(err => console.error(err));
       }
       requestAnimationFrame(resizeOverlayPreview);
     };
@@ -377,9 +420,53 @@ export function initOverlayListeners() {
   if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
   if (overlayAnimationDirection) overlayAnimationDirection.addEventListener('change', () => updateOverlaySettings());
 
+  // LAN 노출 토글 — 기본 꺼짐(로컬호스트만). 실제 서버 바인딩 반영은 앱
+  // 재시작 시에만 이뤄지므로(overlay_server::start_overlay_server), 저장된
+  // 설정을 그대로 보여주고 변경 시 재시작 필요 안내를 띄운다.
+  const initOverlayLanToggle = async () => {
+    if (!toggleOverlayLan) return;
+    let persisted = false;
+    try {
+      persisted = !!(await getOverlayLanSetting());
+    } catch (err) {
+      console.error('Failed to load LAN setting:', err);
+    }
+    toggleOverlayLan.checked = persisted;
+    updateOverlaySettings(true);
+
+    toggleOverlayLan.addEventListener('change', async () => {
+      const enabled = toggleOverlayLan.checked;
+      const { showNotification } = await import('../../utils.js');
+      try {
+        await setOverlayLanSetting(enabled);
+        updateOverlaySettings(true);
+        showNotification(
+          enabled
+            ? 'LAN 접속을 켰습니다. 앱을 다시 시작해야 다른 기기에서 접속할 수 있습니다.'
+            : 'LAN 접속을 껐습니다. 앱을 다시 시작해야 적용됩니다.',
+          'warning'
+        );
+      } catch (err) {
+        console.error('Failed to save LAN setting:', err);
+        toggleOverlayLan.checked = !enabled;
+        updateOverlaySettings(true);
+        showNotification('LAN 설정 변경 실패: ' + err, 'error');
+      }
+    });
+
+    getLanAddresses()
+      .then((addresses) => {
+        cachedLanAddress = (addresses && addresses[0]) || null;
+        updateOverlaySettings(true);
+      })
+      .catch((err) => console.error('Failed to get LAN address:', err));
+  };
+
   loadOverlaySettings();
   updateOverlaySettings(true);
   syncAllOverlayStylesToBackend();
+  initLyricLineVisibilityControls();
+  initOverlayLanToggle();
   requestAnimationFrame(resizeOverlayPreview);
   window.addEventListener('resize', resizeOverlayPreview);
 

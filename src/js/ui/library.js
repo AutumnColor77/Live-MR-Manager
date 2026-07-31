@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
-import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong } from '../library-filters.js';
+import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong, getLyricSyncStatus } from '../library-filters.js';
 import { updateCardStatusBadge, updateThumbnailOverlay, showSongContextMenu } from './components.js';
 
 export function updateLibraryCount(count) {
@@ -26,6 +26,7 @@ export function getFilteredSongs() {
     query: elements.libSearchInput?.value || "",
     genreFilter: elements.libGenreFilter?.value || "all",
     categoryFilter: elements.libCategoryFilter?.value || "all",
+    syncFilter: elements.libSyncFilter?.value || "all",
     sortBy: elements.libSortSelect?.value || "dateNew",
     currentTab: state.activeView || "library",
   });
@@ -71,10 +72,16 @@ export function addSongCard(song, index) {
   const isList = state.viewMode === "list";
 
   const thumbUrl = getThumbnailUrl(song.thumbnail, song);
+  const syncStatus = getLyricSyncStatus(song);
+  const syncBadge = syncStatus === "none" ? "" : `
+      <span class="lyric-sync-badge lyric-sync-${syncStatus}" title="가사 ${syncStatus === 'synced' ? '싱크 완료' : '미싱크'}">
+        ${syncStatus === "synced" ? "♪" : "…"}
+      </span>`;
 
   card.innerHTML = `
     <div class="thumbnail">
       <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
+      ${syncBadge}
       <div class="thumb-overlay">
         <svg class="icon-loading" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3">
           <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>

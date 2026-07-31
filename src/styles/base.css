@@ -81,6 +81,15 @@ html[data-theme="dark"] {
   --scrollbar-thumb: rgba(255, 255, 255, 0.2);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
 
+  /* 상태 색(주의/완료) - 밝은 테마에서는 아래에서 어둡게 덮어쓴다 */
+  --warn-text: #fde047;
+  --warn-strong: #fbbf24;
+  --warn-soft-bg: rgba(250, 204, 21, 0.22);
+  --warn-solid-bg: rgba(250, 204, 21, 0.85);
+  --warn-on-solid: #1f2937;
+  --ok-text: #4ade80;
+  --ok-soft-bg: rgba(34, 197, 94, 0.22);
+
   --safe-area: 40px;
   --dock-height: 100px;
   --titlebar-height: 38px;
@@ -180,6 +189,19 @@ html[data-theme="sky"] {
   --menu-bg: rgba(246, 251, 255, 0.98);
   --scrollbar-thumb: rgba(147, 186, 214, 0.38);
   --scrollbar-thumb-hover: rgba(121, 163, 194, 0.48);
+}
+
+/* 밝은 배경 테마에서는 밝은 노랑/연두가 묻히므로 같은 계열의 진한 톤을 쓴다 */
+html[data-theme="light"],
+html[data-theme="pink"],
+html[data-theme="sky"] {
+  --warn-text: #b45309;
+  --warn-strong: #b45309;
+  --warn-soft-bg: rgba(180, 83, 9, 0.14);
+  --warn-solid-bg: rgba(180, 83, 9, 0.92);
+  --warn-on-solid: #ffffff;
+  --ok-text: #15803d;
+  --ok-soft-bg: rgba(21, 128, 61, 0.14);
 }
 
 /* Premium Custom Scrollbars */

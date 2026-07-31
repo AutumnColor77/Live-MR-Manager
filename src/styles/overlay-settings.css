@@ -79,3 +79,112 @@
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* 카드 안 안내 박스 (OBS 소스 권장 크기 등) */
+.settings-guide-box {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.settings-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.settings-guide-body {
+  padding-left: 22px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.settings-guide-body strong {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* 3줄 가사(원문/차음/번역) 표시 항목 설정 */
+.lyric-line-visibility-grid {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.lyric-line-visibility-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.lyric-line-visibility-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+}
+
+.lyric-line-visibility-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.lyric-line-visibility-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+/* LAN 노출 토글 (오버레이/가사 뷰) */
+.lan-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+}
+.lan-toggle-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lan-toggle-title { font-size: 0.85rem; font-weight: 700; color: var(--text-main); }
+.lan-toggle-desc { font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+.lan-status-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+}
+
+/* 설정 카드 안의 경고/안내 박스 (LAN 노출, 네트워크 캐시 경로 성능 등) */
+.settings-warning-box {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-main);
+}
+.settings-restart-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}

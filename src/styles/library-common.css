@@ -32,6 +32,35 @@
   text-transform: uppercase !important; /* v0.6.2 핵심 서식 */
 }
 
+/* 가사 싱크 상태 배지 - status-badge(MR/분리중)와 겹치지 않도록 반대쪽(좌상단)에 배치 */
+.lyric-sync-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.lyric-sync-badge.lyric-sync-synced {
+  background: rgba(34, 197, 94, 0.85);
+  color: #fff;
+}
+
+.lyric-sync-badge.lyric-sync-unsynced {
+  background: var(--warn-solid-bg);
+  color: var(--warn-on-solid);
+}
+
 .status-badge {
   position: absolute;
   top: 10px;

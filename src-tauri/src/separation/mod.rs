@@ -12,6 +12,10 @@ use crate::vocal_remover::InferenceEngine;
 
 // AI Engine Management
 pub static ROFORMER_ENGINE: Lazy<Mutex<Option<Arc<dyn InferenceEngine>>>> = Lazy::new(|| Mutex::new(None));
+/// Which model id built the currently cached `ROFORMER_ENGINE`. Needed since
+/// per-task model overrides (속도/품질 선택) can request a different model
+/// than whatever the cache was built with — consulted only on cache hits.
+pub static ENGINE_MODEL_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 pub static AI_QUEUE_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 pub static MODEL_INIT_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 pub static MODEL_INIT_COOLDOWN_UNTIL: AtomicU64 = AtomicU64::new(0);

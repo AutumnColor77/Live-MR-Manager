@@ -124,6 +124,9 @@ export function initLibraryListeners(updateViewMode) {
   if (elements.libCategoryFilter) {
     elements.libCategoryFilter.addEventListener("change", renderLibraryDeferred);
   }
+  if (elements.libSyncFilter) {
+    elements.libSyncFilter.addEventListener("change", renderLibraryDeferred);
+  }
   if (elements.libSortSelect) {
     elements.libSortSelect.addEventListener("change", renderLibraryDeferred);
   }

@@ -20,6 +20,50 @@ pub const MODELS: &[(&str, &str, &str)] = &[
     ("inst_hq_3", "UVR-MDX-NET-Inst_HQ_3.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx"),
 ];
 
+// --- App Config (persisted outside the DB so it's readable before DB init) ---
+// Config that must be known at startup, before `DB` (lazy, itself depends on
+// `APP_PATHS`) is available: the MR-separated cache location (may point at a
+// user-chosen disk/network folder) and whether the OBS overlay server binds
+// to LAN interfaces. Both take effect on next launch only — see the
+// "restart required" messaging in Settings — so a small JSON file is enough;
+// no need to plumb this through the SQLite schema.
+const APP_CONFIG_FILE: &str = "app_config.json";
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct AppConfig {
+    /// Custom base directory for the MR separated-audio cache. When set,
+    /// `<mr_separated_path>/separated` replaces the default
+    /// `<app-data>/cache/separated`. None/empty = use the default.
+    #[serde(default)]
+    pub mr_separated_path: Option<String>,
+    /// Whether the overlay HTTP/WS server binds 0.0.0.0 (LAN-reachable) or
+    /// 127.0.0.1 (this PC only). Defaults to false (localhost-only) so LAN
+    /// exposure is opt-in.
+    #[serde(default)]
+    pub overlay_allow_lan: bool,
+}
+
+impl AppConfig {
+    pub fn load(root: &std::path::Path) -> Self {
+        let path = root.join(APP_CONFIG_FILE);
+        fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(root: &std::path::Path, cfg: &AppConfig) -> std::io::Result<()> {
+        let path = root.join(APP_CONFIG_FILE);
+        let json = serde_json::to_string_pretty(cfg).unwrap_or_else(|_| "{}".to_string());
+        fs::write(path, json)
+    }
+}
+
+/// Default location for the MR separated-audio cache (no custom override).
+pub fn default_separated_dir(root: &std::path::Path) -> PathBuf {
+    root.join("cache").join("separated")
+}
+
 // --- App Paths Management ---
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AppPaths {
@@ -36,9 +80,22 @@ impl AppPaths {
         let root = handle.path().app_local_data_dir().expect("Failed to get app data dir");
         let models = root.join("models");
         let cache = root.join("cache");
-        let separated = cache.join("separated");
         let temp = root.join("temp");
         let db = root.join("library.db");
+
+        // Custom MR-separated cache path (local disk or writable network
+        // share) — see cache_settings::set_mr_cache_path. Falls back to the
+        // default under app-data if unset or if the configured folder can't
+        // be created right now (e.g. network share unreachable at startup).
+        let config = AppConfig::load(&root);
+        let separated = config
+            .mr_separated_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(|p| PathBuf::from(p).join("separated"))
+            .filter(|p| fs::create_dir_all(p).is_ok())
+            .unwrap_or_else(|| default_separated_dir(&root));
 
         // Ensure directories exist
         let _ = fs::create_dir_all(&models);
@@ -280,6 +337,8 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
          );",
     )
     .ok();
+
+    crate::custom_models::ensure_table(conn);
 
     // 3. One-time migration from library.json if exists
     let json_path = app_dir.join("library.json");
