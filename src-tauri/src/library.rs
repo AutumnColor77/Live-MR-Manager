@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use std::fs::File;
 use std::io::BufReader;
 use id3::{Tag, TagLike};
@@ -13,80 +13,44 @@ pub fn to_sqlite_err(e: SqliteError) -> String {
     e.to_string()
 }
 
-pub fn format_id_list(ids: Option<&Vec<i64>>) -> Option<String> {
-    ids.filter(|v| !v.is_empty())
-        .map(|v| v.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(","))
+/// Meloming-only library rows (no local/youtube audio) — removed on library load.
+fn is_meloming_only_song(source: &str, path: &str) -> bool {
+    source == "meloming" || path.starts_with("meloming:song:")
 }
 
-pub fn parse_id_list(raw: Option<String>) -> Option<Vec<i64>> {
-    let text = raw.filter(|s| !s.trim().is_empty())?;
-    let ids: Vec<i64> = text
-        .split([',', ';', '|'])
-        .filter_map(|p| p.trim().parse::<i64>().ok())
-        .collect();
-    if ids.is_empty() {
-        None
-    } else {
-        Some(ids)
+/// Delete Meloming-only tracks. Returns how many rows were removed.
+pub fn purge_meloming_only_songs() -> Result<usize, String> {
+    let db = DB.lock();
+    let mut stmt = db
+        .prepare("SELECT path, source FROM Tracks")
+        .map_err(to_sqlite_err)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(to_sqlite_err)?;
+
+    let mut to_delete = Vec::new();
+    for row in rows {
+        let (path, source) = row.map_err(to_sqlite_err)?;
+        if is_meloming_only_song(&source, &path) {
+            to_delete.push(path);
+        }
     }
-}
+    drop(stmt);
 
-fn meloming_channel_id_for_song(
-    tx: &rusqlite::Transaction<'_>,
-    song: &SongMetadata,
-) -> Option<i64> {
-    if let Some(id) = song.meloming_channel_id {
-        return Some(id);
+    let mut deleted = 0usize;
+    for path in &to_delete {
+        deleted += db
+            .execute("DELETE FROM Tracks WHERE path = ?", params![path])
+            .map_err(to_sqlite_err)?;
     }
-    // Must read via `tx` — callers hold DB.lock(); re-locking would deadlock.
-    tx.query_row(
-        "SELECT value FROM Settings WHERE key = 'meloming_channel_id'",
-        [],
-        |row| row.get::<_, String>(0),
-    )
-    .ok()
-    .and_then(|v| v.trim().parse().ok())
-}
-
-fn sync_meloming_category_maps(
-    tx: &rusqlite::Transaction<'_>,
-    song: &SongMetadata,
-) -> Result<(), SqliteError> {
-    let channel_id = match meloming_channel_id_for_song(tx, song) {
-        Some(id) => id,
-        None => return Ok(()),
-    };
-    let ids = match &song.meloming_category_ids {
-        Some(ids) if !ids.is_empty() => ids,
-        _ => return Ok(()),
-    };
-    let names: Vec<String> = song
-        .categories
-        .as_ref()
-        .map(|cats| cats.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-        .unwrap_or_default();
-
-    let pairs: Vec<(&str, i64)> = if names.len() == ids.len() {
-        names.iter().map(|s| s.as_str()).zip(ids.iter().copied()).collect()
-    } else if names.len() == 1 {
-        ids.iter().map(|id| (names[0].as_str(), *id)).collect()
-    } else if names.is_empty() {
-        return Ok(());
-    } else {
-        names
-            .iter()
-            .zip(ids.iter())
-            .map(|(name, id)| (name.as_str(), *id))
-            .collect()
-    };
-
-    for (name, meloming_id) in pairs {
-        tx.execute(
-            "INSERT OR REPLACE INTO Meloming_Category_Map (local_name, meloming_category_id, channel_id) VALUES (?, ?, ?)",
-            params![name, meloming_id, channel_id],
-        )?;
+    if deleted > 0 {
+        let _ = crate::audio_player::sys_log(&format!(
+            "[Library] Purged {deleted} Meloming-only song(s)"
+        ));
     }
-    Ok(())
+    Ok(deleted)
 }
 
 pub fn probe_audio_duration(path: &str) -> Option<String> {
@@ -166,9 +130,7 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
          (SELECT GROUP_CONCAT(name) FROM Categories JOIN Track_Category_Map ON Categories.id = Track_Category_Map.category_id WHERE Track_Category_Map.track_id = t.id) as categories,
          t.original_title, t.translated_title, t.curation_category,
          t.song_key, t.bpm, t.difficulty, t.proficiency,
-         t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link,
-         t.meloming_song_id, t.meloming_channel_id, t.meloming_artist_id,
-         t.meloming_category_ids, t.sync_status
+         t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link
          FROM Tracks t LEFT JOIN Genres g ON t.genre_id = g.id"
     ).map_err(to_sqlite_err)?;
     
@@ -217,11 +179,6 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
             cover_url: row.get(24).ok(),
             original_url: row.get(25).ok(),
             lyrics_link: row.get(26).ok(),
-            meloming_song_id: row.get(27).ok(),
-            meloming_channel_id: row.get(28).ok(),
-            meloming_artist_id: row.get(29).ok(),
-            meloming_category_ids: parse_id_list(row.get(30).ok()),
-            sync_status: row.get(31).ok(),
         })
     }).map_err(to_sqlite_err)?;
 
@@ -240,9 +197,7 @@ pub fn load_all_songs_from_db() -> Result<Vec<SongMetadata>, String> {
          (SELECT GROUP_CONCAT(name) FROM Categories JOIN Track_Category_Map ON Categories.id = Track_Category_Map.category_id WHERE Track_Category_Map.track_id = t.id) as categories,
          t.original_title, t.translated_title, t.curation_category,
          t.song_key, t.bpm, t.difficulty, t.proficiency,
-         t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link,
-         t.meloming_song_id, t.meloming_channel_id, t.meloming_artist_id,
-         t.meloming_category_ids, t.sync_status
+         t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link
          FROM Tracks t LEFT JOIN Genres g ON t.genre_id = g.id",
         )
         .map_err(to_sqlite_err)?;
@@ -298,11 +253,6 @@ pub fn load_all_songs_from_db() -> Result<Vec<SongMetadata>, String> {
             cover_url: row.get(24).ok(),
             original_url: row.get(25).ok(),
             lyrics_link: row.get(26).ok(),
-            meloming_song_id: row.get(27).ok(),
-            meloming_channel_id: row.get(28).ok(),
-            meloming_artist_id: row.get(29).ok(),
-            meloming_category_ids: parse_id_list(row.get(30).ok()),
-            sync_status: row.get(31).ok(),
         })
     }).map_err(to_sqlite_err)?;
 
@@ -319,7 +269,24 @@ pub async fn get_songs(paths: tauri::State<'_, crate::state::AppPaths>) -> Resul
 }
 
 #[tauri::command]
-pub async fn load_library(paths: tauri::State<'_, crate::state::AppPaths>) -> Result<Vec<SongMetadata>, String> { 
+pub async fn load_library(
+    app: AppHandle,
+    paths: tauri::State<'_, crate::state::AppPaths>,
+) -> Result<Vec<SongMetadata>, String> {
+    match purge_meloming_only_songs() {
+        Ok(n) if n > 0 => {
+            let _ = app.emit(
+                "library-meloming-purged",
+                serde_json::json!({ "count": n }),
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Library] Meloming purge skipped: {e}"
+            ));
+        }
+    }
     match get_songs_internal(paths.inner().clone()).await {
         Ok(songs) => Ok(songs),
         Err(e) => {
@@ -441,9 +408,8 @@ pub async fn save_library_internal(songs: Vec<SongMetadata>) -> Result<(), Strin
                 path, title, thumbnail, duration, source, pitch, tempo, volume, artist, play_count, date_added, is_mr, genre_id,
                 original_title, translated_title, curation_category,
                 song_key, bpm, difficulty, proficiency,
-                karaoke_url, cover_url, original_url, lyrics_link,
-                meloming_song_id, meloming_channel_id, meloming_artist_id, meloming_category_ids, sync_status
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                karaoke_url, cover_url, original_url, lyrics_link
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 song.path, song.title, song.thumbnail, song.duration, song.source,
                 song.pitch.unwrap_or(0.0), song.tempo.unwrap_or(1.0), song.volume.unwrap_or(100.0),
@@ -451,17 +417,10 @@ pub async fn save_library_internal(songs: Vec<SongMetadata>) -> Result<(), Strin
                 if song.is_mr.unwrap_or(false) { 1 } else { 0 },
                 genre_id, song.original_title, song.translated_title, curation_category,
                 song.song_key, song.bpm, song.difficulty, song.proficiency,
-                song.karaoke_url, song.cover_url, song.original_url, song.lyrics_link,
-                song.meloming_song_id, song.meloming_channel_id, song.meloming_artist_id,
-                format_id_list(song.meloming_category_ids.as_ref()),
-                song.sync_status.as_deref().unwrap_or("none")
+                song.karaoke_url, song.cover_url, song.original_url, song.lyrics_link
             ]
         )
         .map_err(|e| format!("Tracks 저장 실패 ({}): {}", song.path, e))?;
-
-        sync_meloming_category_maps(&tx, &song).map_err(|e| {
-            format!("Meloming 카테고리 매핑 실패 ({}): {}", song.path, e)
-        })?;
 
         let track_id: Option<i64> = tx.query_row("SELECT id FROM Tracks WHERE path = ?", params![song.path], |row| row.get(0)).ok();
         if let Some(tid) = track_id {

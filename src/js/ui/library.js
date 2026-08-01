@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
-import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong, getLyricSyncStatus } from '../library-filters.js';
+import { filterSongLibrary, getSongCategoryFromMetadata, getLyricSyncStatus } from '../library-filters.js';
 import { updateCardStatusBadge, updateThumbnailOverlay, showSongContextMenu } from './components.js';
 
 export function updateLibraryCount(count) {
@@ -17,9 +17,6 @@ export function updateLibraryCount(count) {
 export function getSongCategory(song) {
   return getSongCategoryFromMetadata(song);
 }
-
-/** Meloming pull/push로 연동된 곡인지 판별 */
-export { isMelomingLinkedSong };
 
 export function getFilteredSongs() {
   const filtered = filterSongLibrary(state.songLibrary, {

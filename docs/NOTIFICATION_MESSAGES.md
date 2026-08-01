@@ -8,7 +8,7 @@
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) Unreleased, 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) v0.6.0, 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 
@@ -26,9 +26,7 @@
 | 오류 | 기본 분리 모델 저장에 실패했습니다. | `src/js/separation-mode-modal.js` |
 | 오류 | 다운로드 실패: {err} | `src/js/events/controls/ai.js` |
 | 오류 | 등록 실패: {err} | `src/js/ui/manager.js` |
-| 오류 | 로그인에 실패했습니다. | `src/js/events/meloming.js`<br>OAuth 실패 기본 문구 |
 | 오류 | 릴리스 페이지를 열지 못했습니다. | `src/js/utils.js` |
-| 오류 | 멜로밍 서버 오류(500)입니다. 잠시 후 다시 로그인해 주세요. | `src/js/events/meloming.js` |
 | 오류 | 모델 변경 실패: {err} | `src/js/events/controls/ai.js` |
 | 오류 | 방송 제원 보호 모드 변경 실패: {err} | `src/js/events/controls/settings.js` |
 | 오류 | 백업 중 오류가 발생했습니다: {err} | `src/js/events/controls/settings.js` |
@@ -70,8 +68,6 @@
 | 오류 | MR 저장 형식 변경 실패: {err} | `src/js/events/controls/settings.js` |
 | 경고 / 성공 | 가져오기 완료: 추가 {added}곡, 갱신 {updated}곡[, 유튜브 정보 {enriched}곡][, 건너뜀 {skipped}행][, 오류 {errCount}건] | `src/js/events/controls/settings.js`<br>스프레드시트 가져오기 결과 |
 | 경고 | 모델 이름을 입력해주세요. | `src/js/events/controls/custom-models.js` (notify()) |
-| 경고 / 성공 | 보내기 완료 — {pushed}곡 (신규 {created}, 갱신 {updated})[, 건너뜀 {skipped}곡] | `src/js/events/meloming.js`<br>멜로밍 Push |
-| 경고 | 보내기는 멜로밍 로그인이 필요합니다. 우측 상단에서 로그인해 주세요. | `src/js/events/meloming.js` |
 | 경고 / 성공 | 복구 완료: 스캔 {scanned}곡 / 복구 {recovered}곡 / 실패 {failed}곡 | `src/js/events/controls/settings.js`<br>캐시 복구 결과 |
 | 경고 | 분리 방식 선택 UI를 찾지 못해 기본 모델로 분리합니다. | `src/js/separation-mode-modal.js` |
 | 경고 | 분리 작업(진행/대기열)이 있는 동안에는 모델을 삭제할 수 없습니다. | `src/js/events/controls/ai.js` |
@@ -88,12 +84,12 @@
 | 경고 | LAN 접속을 껐습니다. 앱을 다시 시작해야 적용됩니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
 | 경고 | LAN 접속을 켰습니다. 앱을 다시 시작해야 다른 기기에서 접속할 수 있습니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
 | 경고 | SHA-256은 64자리 16진수여야 합니다. | `src/js/events/controls/custom-models.js` (notify()) |
+| 안내 | 멜로밍 연동으로만 있던 곡 {count}개를 정리했습니다. | `src/js/events/backend.js`<br>라이브러리 로드 시 Meloming 전용 곡 정리 |
 | 안내 | {label} 모델로 변경되었습니다. | `src/js/events/controls/ai.js` |
 | 안내 | 다음부터는 이 모델로 바로 분리합니다. 설정 > AI 분리 엔진에서 되돌릴 수 있어요. | `src/js/separation-mode-modal.js` |
 | 안내 | 데이터 복구를 시작합니다. 유튜브 곡의 경우 시간이 소요될 수 있습니다. | `src/js/events/controls/settings.js` |
 | 안내 | 모델이 삭제되었습니다. | `src/js/events/controls/ai.js` |
 | 안내 | 배치할 미싱크 가사가 없습니다. | `src/js/alignment-viewer.js` |
-| 안내 | 브라우저에서 멜로밍 로그인을 완료해 주세요. | `src/js/events/meloming.js` |
 | 안내 | 싱크 데이터가 초기화되었습니다. | `src/js/alignment-viewer.js` |
 | 안내 | 오디오 설정이 초기화되었습니다. | `src/js/events/controls/playback.js` |
 | 안내 | 이 곡은 이미 정렬 대기열에 있거나 처리 중입니다. | `src/js/alignment-viewer.js` |
@@ -109,14 +105,11 @@
 | 성공 | {n}곡이 삭제되었습니다. | `src/js/ui/manager.js` |
 | 성공 | 가사 싱크 저장 완료 | `src/js/alignment-viewer.js` |
 | 성공 | 가져오기 양식(CSV)을 저장했습니다. | `src/js/events/controls/settings.js` |
-| 성공 | 가져오기 완료 — {fetched}곡 조회, 추가 {created}곡, 갱신 {updated}곡 | `src/js/events/meloming.js`<br>멜로밍 Pull |
 | 성공 | 곡이 삭제되었습니다. | `src/js/ui/library.js` |
 | 성공 | 기본 위치로 되돌렸습니다. 앱을 다시 시작하면 적용됩니다. | `src/js/events/controls/settings.js` |
 | 성공 | 다른 정렬이 진행 중이라 대기열에 추가했습니다. 완료되면 자동으로 결과가 반영돼요. | `src/js/alignment-viewer.js` |
 | 성공 | 라이브러리 목록이 성공적으로 백업되었습니다. | `src/js/events/controls/settings.js` |
 | 성공 | 라이브러리를 CSV로 저장했습니다. | `src/js/events/controls/settings.js` |
-| 성공 | 멜로밍 로그아웃했습니다. | `src/js/events/meloming.js` |
-| 성공 | 멜로밍 로그인이 완료되었습니다. | `src/js/events/meloming.js` |
 | 성공 | 모델 다운로드 완료 | `src/js/events/controls/ai.js` |
 | 성공 | 백업본에서 없는 곡들을 성공적으로 병합했습니다. | `src/js/events/controls/settings.js` |
 | 성공 | 사전에 등록되었으며 곡 정보에 반영되었습니다. | `src/js/ui/manager.js` |
@@ -153,8 +146,6 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 
 | 유형 | 문구 | 출처 |
 | --- | --- | --- |
-| 오류 | 「{}」: 아티스트 이름이 없어 멜로밍에 등록할 수 없습니다. | `src-tauri/src/meloming/push.rs` |
-| 오류 | 「{}」: 카테고리를 지정할 수 없습니다. | `src-tauri/src/meloming/push.rs` |
 | 오류 | 다운로드 실패: HTTP {} | `src-tauri/src/alignment.rs` |
 | 오류 | 다운로드 용량이 허용 상한({} bytes)을 초과했습니다. | `src-tauri/src/alignment.rs` |
 | 오류 | 다운로드 URL을 입력해주세요. | `src-tauri/src/model_commands.rs` |
@@ -165,7 +156,6 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 모델 파일을 찾을 수 없습니다: {:?} | `src-tauri/src/alignment.rs` |
 | 오류 | 무결성 검증에 실패했습니다({}). | `src-tauri/src/model_commands.rs` |
 | 오류 | 무결성 검증에 실패했습니다({}). 다시 시도해 주세요. | `src-tauri/src/alignment.rs` |
-| 오류 | 보내기는 멜로밍 로그인이 필요합니다. 우측 상단에서 로그인해 주세요. | `src-tauri/src/meloming/commands.rs` |
 | 오류 | 분석할 오디오가 너무 짧습니다. | `src-tauri/src/key_bpm.rs` |
 | 오류 | 서버가 보고한 파일 크기({} bytes)가 허용 상한({} bytes)을 초과합니다. | `src-tauri/src/alignment.rs` |
 | 오류 | 알 수 없는 소스 종류: {} | `src-tauri/src/model_commands.rs` |
@@ -175,7 +165,6 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 원본 오디오 파일을 찾을 수 없습니다: {} | `src-tauri/src/alignment.rs` |
 | 오류 | 원본이 온라인 곡이며 MR 파일이 없어 분석할 수 없습니다. | `src-tauri/src/key_bpm.rs` |
 | 오류 | 유튜브 오디오 경로를 해소할 수 없습니다. | `src-tauri/src/alignment.rs` |
-| 오류 | 제목이 비어 있습니다. | `src-tauri/src/meloming/push.rs` |
 | 오류 | 첫 행에 'path'(경로) 열이 필요합니다. | `src-tauri/src/spreadsheet.rs` |
 | 오류 | 파일을 열 수 없습니다: {} | `src-tauri/src/audio_commands.rs` |
 | 오류 | 파일을 찾을 수 없습니다 | `src-tauri/src/audio_commands.rs` |

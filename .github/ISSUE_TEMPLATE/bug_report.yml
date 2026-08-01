@@ -33,8 +33,8 @@ body:
       label: 재현 단계
       description: 문제가 발생하기까지 한 단계씩 적어 주세요.
       placeholder: |
-        1. 설정 → 멜로밍 노래책에서 …
-        2. 「가져오기」 클릭
+        1. 라이브러리에서 「노래 추가」 클릭
+        2. 유튜브 URL을 입력하고 추가
         3. 오류 발생
     validations:
       required: true

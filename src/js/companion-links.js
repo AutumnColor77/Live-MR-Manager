@@ -22,7 +22,6 @@ export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';
 const issuesBase = `https://github.com/${GITHUB_REPO}/issues`;
 
 export const GITHUB_ISSUES_BUG_URL = `${issuesBase}/new?template=bug_report.yml`;
-export const GITHUB_ISSUES_MELOMING_URL = `${issuesBase}/new?template=meloming_integration.yml`;
 export const GITHUB_ISSUES_FEATURE_URL = `${issuesBase}/new?template=feature_request.yml`;
 
 /** Discord URL이 없으면 문의 허브(/qa)로 폴백 */

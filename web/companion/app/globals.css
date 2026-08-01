@@ -96,82 +96,6 @@ main {
   gap: 1rem 1.25rem;
 }
 
-.auth-nav {
-  font-size: 0.88rem;
-}
-
-.auth-nav-login {
-  color: var(--accent);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.auth-nav-login:hover {
-  text-decoration: underline;
-}
-
-.auth-nav-user {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.auth-nav-profile {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  text-decoration: none;
-  color: inherit;
-}
-
-.auth-nav-profile:hover .auth-nav-name {
-  color: var(--accent);
-}
-
-.auth-nav-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.auth-nav-avatar-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.auth-nav-name {
-  color: var(--text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.auth-nav-logout {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-muted);
-  border-radius: 999px;
-  padding: 0.25rem 0.65rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
-.auth-nav-logout:hover:not(:disabled) {
-  color: var(--text);
-}
-
-.auth-nav-logout:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
 .account-dl {
   margin: 1rem 0 1.25rem;
   display: grid;
@@ -402,39 +326,6 @@ main {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-soft);
-}
-
-.oauth-icon {
-  display: block;
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 1rem;
-  border-radius: 14px;
-  object-fit: contain;
-}
-
-.oauth-box {
-  text-align: center;
-  padding: 2.5rem 1.5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.oauth-box h1 {
-  margin: 0 0 0.75rem;
-  font-size: 1.35rem;
-}
-
-.oauth-box p {
-  margin: 0 0 1rem;
-  color: var(--text-muted);
-}
-
-.oauth-status {
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  word-break: break-all;
 }
 
 .site-footer {

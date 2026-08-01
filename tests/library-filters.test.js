@@ -4,14 +4,14 @@ import { filterSongLibrary, getLyricSyncStatus } from '../src/js/library-filters
 const sampleSongs = [
   { title: 'Alpha', artist: 'A', source: 'youtube', genre: 'POP', dateAdded: 2, playCount: 1, path: 'a' },
   { title: 'Beta', artist: 'B', source: 'local', genre: 'Ballad', dateAdded: 1, playCount: 5, path: 'b' },
-  { title: 'Gamma', artist: 'C', source: 'meloming', melomingSongId: 9, genre: 'POP', dateAdded: 3, playCount: 2, path: 'c' },
+  { title: 'Gamma', artist: 'C', source: 'youtube', genre: 'POP', dateAdded: 3, playCount: 2, path: 'c' },
 ];
 
 describe('filterSongLibrary', () => {
   it('filters by tab', () => {
     const youtubeOnly = filterSongLibrary(sampleSongs, { currentTab: 'youtube' });
-    expect(youtubeOnly).toHaveLength(1);
-    expect(youtubeOnly[0].title).toBe('Alpha');
+    expect(youtubeOnly).toHaveLength(2);
+    expect(youtubeOnly.map((s) => s.title).sort()).toEqual(['Alpha', 'Gamma']);
   });
 
   it('filters by sourceFilter chip (overrides library tab)', () => {

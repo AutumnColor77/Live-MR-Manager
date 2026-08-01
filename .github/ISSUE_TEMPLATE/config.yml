@@ -2,10 +2,10 @@ blank_issues_enabled: false
 contact_links:
   - name: Discord — [LMRM] Live MR Manager
     url: https://discord.gg/qfJnk3VJyf
-    about: 설치·사용법·멜로밍 연동 질문 (스트리머 커뮤니티)
+    about: 설치·사용법 질문 (스트리머 커뮤니티)
   - name: FAQ — 자주 묻는 질문
     url: https://lmrm.vercel.app/faq
-    about: 설치·멜로밍 연동·사용법을 먼저 확인해 주세요.
+    about: 설치·사용법을 먼저 확인해 주세요.
   - name: 문의 허브 (Discord · Q&A)
     url: https://lmrm.vercel.app/qa
     about: Discord 커뮤니티 및 문의 안내 페이지입니다.

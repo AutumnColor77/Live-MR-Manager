@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Live MR Manager(Beta)",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "identifier": "com.autumncolor77.live-mr-manager",
   "build": {
     "frontendDist": "../src",
@@ -12,7 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Live MR Manager(Beta) v0.5.1",
+        "title": "Live MR Manager(Beta) v0.6.0",
         "width": 1319,
         "height": 787,
         "minWidth": 1024,
@@ -33,13 +33,7 @@
       }
     }
   },
-  "plugins": {
-    "deep-link": {
-      "desktop": {
-        "schemes": ["live-mr-manager"]
-      }
-    }
-  },
+  "plugins": {},
   "bundle": {
     "active": true,
     "targets": ["nsis"],

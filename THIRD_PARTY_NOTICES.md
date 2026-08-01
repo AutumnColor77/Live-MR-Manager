@@ -108,7 +108,6 @@ Ultimate Vocal Remover (UVR) — [Anjok07](https://github.com/anjok07), [aufr33]
 | --- | --- | --- |
 | YouTube / yt-dlp | 메타·오디오 추출 | 플랫폼 ToS는 이용자 책임 |
 | Hugging Face | 모델 다운로드 | Hub 약관·모델별 라이선스 |
-| Meloming OpenAPI | 노래책 메타 동기화 | 멜로밍 약관·OAuth |
 | Last.fm | 메타 보강(선택) | Last.fm API 약관 |
 | GitHub Releases | 앱 업데이트 확인 | — |
 | Vercel Companion | OAuth 중계·법적 문서 | 서비스 이용약관 별도 |

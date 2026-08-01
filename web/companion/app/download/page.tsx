@@ -16,15 +16,15 @@ export default function DownloadPage() {
           <span className="badge">Windows</span>
           <h1>Live MR Manager 받기</h1>
           <p>
-            PC에 설치한 뒤 MR 라이브러리를 만들고, 멜로밍 노래책과 곡 정보를
-            맞출 수 있습니다.
+            PC에 설치한 뒤 MR 라이브러리를 만들고, 방송·연습에 맞게 곡을
+            관리할 수 있습니다.
           </p>
         </section>
         <article className="card">
           <h2>최신 버전 설치</h2>
           <p>
-            아래 버튼에서 설치 파일을 받을 수 있습니다. 설치 후 앱 설정에서
-            멜로밍 채널을 연결해 보세요.
+            아래 버튼에서 설치 파일을 받을 수 있습니다. 설치 후 유튜브·로컬
+            음원을 추가해 라이브러리를 시작해 보세요.
           </p>
           <a
             href={GITHUB_RELEASES_URL}
@@ -38,11 +38,11 @@ export default function DownloadPage() {
         <article className="card" style={{ marginTop: "1rem" }}>
           <h2>설치 후</h2>
           <p>
-            유튜브·로컬 음원을 추가하고, 설정 → 멜로밍 노래책에서 방송 채널 주소를
-            입력해 노래 목록을 가져올 수 있습니다.
+            곡을 추가하고 AI MR 분리, 가사 동기화, OBS 오버레이 등 앱 기능을
+            활용할 수 있습니다.
           </p>
           <Link href="/faq" className="btn btn-secondary">
-            연동 방법 보기
+            사용 방법 보기
           </Link>
         </article>
       </main>

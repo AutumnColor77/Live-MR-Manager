@@ -70,6 +70,13 @@ export async function setupBackendListeners() {
   if (backendListenersInitialized) return;
   backendListenersInitialized = true;
 
+  await listen('library-meloming-purged', (event) => {
+    const count = Number(event.payload?.count ?? 0);
+    if (count > 0) {
+      showNotification(`멜로밍 연동으로만 있던 곡 ${count}개를 정리했습니다.`, 'info');
+    }
+  });
+
   // Playback Progress Update
   await listen('playback-progress', (event) => {
     if (!state.isSeeking) {

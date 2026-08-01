@@ -37,9 +37,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Client ID만 바이너리에 임베드. Secret은 Vercel Companion env에만 둠.
-          MELOMING_CLIENT_ID: ${{ secrets.MELOMING_CLIENT_ID }}
-          MELOMING_USE_COMPANION_EXCHANGE: "true"
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Live MR Manager (Beta) ${{ github.ref_name }} - AI Vocal Remover & Live Backing Track Manager with Lyrics Sync."

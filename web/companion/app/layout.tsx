@@ -5,11 +5,11 @@ import { SITE_ICON, SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: {
-    default: `${SITE_NAME} — 멜로밍 노래책 연동 안내`,
+    default: `${SITE_NAME} — 공식 Companion`,
     template: `%s · ${SITE_NAME}`,
   },
   description:
-    "Live MR Manager 설치, 멜로밍 노래책 연동, 곡 정보 관리 도움말.",
+    "Live MR Manager 설치, FAQ, 다운로드 및 법적 문서 안내.",
   icons: {
     icon: SITE_ICON,
     apple: SITE_ICON,

@@ -8,7 +8,7 @@ import {
 export const metadata = {
   title: "개인정보 처리방침",
   description:
-    "Live MR Manager 및 Companion 웹의 개인정보 처리 항목, 멜로밍 OAuth 범위, 쿠키, 제3자 연동 안내",
+    "Live MR Manager 및 Companion 웹의 개인정보 처리 항목, 제3자 연동, 쿠키 안내",
 };
 
 export default function PrivacyPage() {

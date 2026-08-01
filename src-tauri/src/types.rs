@@ -106,10 +106,4 @@ pub struct SongMetadata {
     pub cover_url: Option<String>,
     pub original_url: Option<String>,
     pub lyrics_link: Option<String>,
-    pub meloming_song_id: Option<i64>,
-    pub meloming_channel_id: Option<i64>,
-    pub meloming_artist_id: Option<i64>,
-    /// 멜로밍 API `categoryIds` (1–N개)
-    pub meloming_category_ids: Option<Vec<i64>>,
-    pub sync_status: Option<String>,
 }

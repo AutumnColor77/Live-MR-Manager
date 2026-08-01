@@ -8,9 +8,8 @@ function FaqAnswer({ id, answer }: { id: string; answer: string }) {
   if (id === "privacy") {
     return (
       <p>
-        아니요. MR 분리·재생에 쓰는 음원 파일은 PC 안에서만 처리됩니다. 멜로밍과
-        주고받는 것은 곡 이름·링크·가사 같은 텍스트 정보입니다. 자세한 내용은{" "}
-        <Link href="/privacy">개인정보 처리방침</Link>을 참고해 주세요.
+        아니요. MR 분리·재생에 쓰는 음원 파일은 PC 안에서만 처리됩니다. 자세한
+        내용은 <Link href="/privacy">개인정보 처리방침</Link>을 참고해 주세요.
       </p>
     );
   }

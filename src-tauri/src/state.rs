@@ -296,7 +296,8 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN curation_category TEXT", []);
             sys_log("[DB] Added curation_category column to Tracks.");
         }
-        let meloming_columns: &[(&str, &str)] = &[
+        // Legacy meloming_* / sync columns stay for old DBs (inert; no DROP).
+        let extended_columns: &[(&str, &str)] = &[
             ("song_key", "ALTER TABLE Tracks ADD COLUMN song_key TEXT"),
             ("bpm", "ALTER TABLE Tracks ADD COLUMN bpm INTEGER"),
             ("difficulty", "ALTER TABLE Tracks ADD COLUMN difficulty INTEGER"),
@@ -314,29 +315,13 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             ("remote_updated_at", "ALTER TABLE Tracks ADD COLUMN remote_updated_at INTEGER"),
             ("content_hash", "ALTER TABLE Tracks ADD COLUMN content_hash TEXT"),
         ];
-        for (name, ddl) in meloming_columns {
+        for (name, ddl) in extended_columns {
             if !columns.contains(&name.to_string()) {
                 let _ = conn.execute(ddl, []);
                 sys_log(&format!("[DB] Added {} column to Tracks.", name));
             }
         }
     }
-
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS Meloming_Artist_Map (
-            local_name TEXT NOT NULL,
-            meloming_artist_id INTEGER NOT NULL,
-            channel_id INTEGER NOT NULL,
-            PRIMARY KEY (local_name, channel_id)
-         );
-         CREATE TABLE IF NOT EXISTS Meloming_Category_Map (
-            local_name TEXT NOT NULL,
-            meloming_category_id INTEGER NOT NULL,
-            channel_id INTEGER NOT NULL,
-            PRIMARY KEY (local_name, channel_id)
-         );",
-    )
-    .ok();
 
     crate::custom_models::ensure_table(conn);
 

@@ -18,7 +18,7 @@
 - [X] **UI 고도화 및 태그 확장**: 오디오 제어 UI 정밀 조정 및 메타데이터 매핑 대거 추가 완료
 - [X] **썸네일 로컬 캐싱**: 유튜브 썸네일 차단 문제 해결을 위한 자동 로컬 캐싱 시스템
 - [X] **YouTube 등록 UX/중복 방지 (v0.4.7)**: `정보 가져오기` 버튼 로딩 상태/크기 정렬 적용 및 YouTube 영상 ID 기반 중복 등록 차단 로직 반영
-- [X] **노래 추가 모달·미디어 네비 정리 (Unreleased)**: 유튜브/내 파일/멜로밍 사이드바 탭 제거, 라이브러리 아래 「노래 추가」 CTA·모달(URL/파일·선택 MR 분리), 소스 필터 칩, DnD→모달
+- [X] **노래 추가 모달·미디어 네비 정리 (v0.6.0)**: 유튜브/내 파일 사이드바 탭 제거, 라이브러리 아래 「노래 추가」 CTA·모달(URL/파일·선택 MR 분리), 소스 필터 칩, DnD→모달
 - [X] **카테고리 필터 드롭다운 정합성 (v0.4.10)**: 실제 곡에 사용 중인 카테고리만 노출, 저장·추가·삭제 후 즉시 갱신(`refreshFilterDropdowns`)
 - [X] **카테고리 표시/저장 동기화 (v0.4.10)**: `getSongCategory()` 우선순위 정리(`categories` → `curationCategory`), 편집 저장 시 DB·UI 일치
 - [ ] **유튜브 노래 검색 추가**: URL 붙여넣기 외에 제목·아티스트로 유튜브를 검색해 결과를 고르고 라이브러리에 넣는 UI (yt-dlp 검색 연동)
@@ -109,94 +109,21 @@
 - [X] **MP3 MR 저장 콘솔 숨김 (v0.4.12)**: ffmpeg `CREATE_NO_WINDOW`
 - [X] **멜로밍 연동 기획 문서**: [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) (API·OAuth·필드 매핑·Vercel companion·동기화·업데이트 알림)
 
-## 🎵 7. 멜로밍 노래책 연동 (Meloming OpenAPI)
+## 🎵 7. 멜로밍 노래책 연동 — 중단 (v0.6.0)
 
-[멜로밍 채널 노래책 API](https://developers.meloming.com/docs/openapi/reference/songbook)와 로컬 라이브러리 **양방향 메타데이터 동기화**. 음원·AI 분리 파일은 로컬만(P1); 멜로밍에는 제목·URL·가사·숙련도/난이도 등만 전송.
+v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**했습니다. Companion는 다운로드·FAQ·약관만 유지합니다.
 
-**인증 참고**: 문서의 「애플리케이션 등록」 링크는 개발자 센터 **미니앱(앱) 등록** UI로 연결됨. `GET` 읽기는 등록 없이 가능, `POST`/`PATCH`/`DELETE`는 OAuth 필요.
+- [X] **멜로밍 연동 제거 (v0.6.0)**: Rust meloming 모듈·deep-link·설정 UI·헤더 로그인 삭제
+- [X] **멜로밍 전용 곡 정리**: 라이브러리 로드 시 source=meloming / meloming:song: path 일괄 삭제 + 토스트
+- [X] **Companion OAuth 제거**: /login·/account·/api/oauth/*·약관·FAQ 멜로밍 절 삭제
+- [ ] **(수동) Vercel/GitHub MELOMING_* secret 삭제**, 멜로밍 개발자 센터 Redirect URI 정리
 
-**Companion (Vercel)**: 미니앱 iframe·OAuth Redirect·FAQ/Q&A·changelog·업데이트 manifest — 별도 Next.js 프로젝트. **배포 앱 토큰 교환**: Client Secret은 Vercel env만, Client ID는 릴리스 바이너리 임베드(v0.5.1+).
+### Companion 확장 (연동 무관)
 
-**실행 순서 (2026-06)**: **Phase 2A(companion·미니앱 신청)를 먼저** → 심사·OAuth 대기 중 **Phase 0·1·2B 코드** 병행 → 승인 후 Push 연동.
-
-### Phase 2A — Vercel companion + 미니앱 등록·심사 (**1순위**)
-
-- [X] **Vercel companion 스캐폴딩**: [`web/companion`](web/companion) — `/`, `/oauth/callback`, `/faq`, `/qa`, `/download`, `/privacy` (로컬 `npm run dev` / `npm run build` 확인)
-- [X] **Vercel 프로덕션 배포**: https://lmrm.vercel.app (`web/companion`)
-- [X] **개인정보 처리방침 (v0.4.13)**: companion `/privacy`, 멜로밍 OAuth·쿠키·Last.fm 범위 명시, 푸터·FAQ 링크
-- [X] **이용약관 (v0.4.13)**: companion `/terms`, 베타·멜로밍·저작권·면책, 푸터 링크
-- [X] **미니앱(앱) 등록**: iframe `https://lmrm.vercel.app/`, Redirect `https://lmrm.vercel.app/oauth/callback`
-- [X] **심사 제출** (승인 대기)
-- [X] **OAuth 클라이언트 확보**: Client ID/Secret, API Key (미니앱 승인)
-- [ ] **(병행) 멜로밍 문의**: OAuth 토큰 교환 500/401 — Redirect URI·Client 승인 상태 확인 (2026-06 진행 중)
-
-### Phase 0 — 로컬 메타데이터 (2A 대기 중 병행)
-
-- [X] **KEY/BPM DB 영속화**: `SongMetadata`/`song_key`·`bpm`·저장·로드
-- [X] **숙련도·난이도 필드**: `difficulty`/`proficiency` (1–5) — DB·편집 모달
-- [X] **songKey 명칭 통일**: UI `edit-key` ↔ DB `song_key` ↔ 멜로밍 `songKey`
-
-### Phase 1 — 읽기 동기화 (인증 불필요)
-
-- [X] **Rust `meloming` 모듈**: `client`·`sync`·`commands`·`resolve` — 목록·아티스트 (`GET`)
-- [X] **설정 UI**: 방송 채널 주소(치지직·SOOP·씨미), 연결 테스트, 「가져오기」(Pull)
-- [X] **플랫폼 채널 해석 (v0.4.11)**: `CHZZK` / `SOOP` / `CIME` URL·ID → `GET /v1/channels/platforms/{platform}/{id}`
-- [X] **아티스트 Map 테이블**: `Meloming_Artist_Map`
-- [X] **확장 DB 컬럼**: `meloming_song_id`, URL 필드, `sync_status` 등
-- [ ] **카테고리 Map 갱신·매칭 UI**: Pull 시 `Meloming_Category_Map` + 로컬 카테고리 연동
-- [ ] **Pull 매칭 정교화**: YouTube ID·제목+아티스트 중복 최소화, `meloming:` 경로 곡 UX
-
-### Phase 2B — OAuth 쓰기 (2A 승인 후 실연동)
-
-- [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + companion `/api/oauth/exchange`
-- [X] **배포 OAuth 자격 증명 (v0.5.1)**: Client ID 바이너리 임베드, Secret 없으면 Companion exchange/refresh 자동
-- [X] **Push 코드**: `POST`/`PATCH` 노래책 API (일괄 보내기)
-- [X] **Push 안정화 (v0.4.13·v0.4.14)**: 보내기 전 아티스트 Map 갱신, 유튜브 메타 보강, 아티스트 느슨 매칭, 채널별 `meloming_song_id`, PATCH 403/404 → CREATE 재시도
-- [ ] **OAuth 실연동 (간헐적 이슈)**: 멜로밍 `POST /oauth/token` 500 INTERNAL_ERROR·401 Invalid redirect_uri — **v0.4.13 UI 재개**, 서버 오류 시 재시도 안내
-- [X] **UI 잠금 해제 (v0.4.13)**: `MELOMING_COMING_SOON` 제거 — 「멜로밍 로그인」·「멜로밍에 보내기」 활성화
-- [X] **MP3 MR ffmpeg PATH 핫픽스 (v0.4.16)**: `ffmpeg_tools` — MR 저장·유튜브 공통 탐색, 관리형 캐시·자동 다운로드
-- [X] **노래책 동기화 UI 잠금 (v0.4.15–v0.4.16)**: OpenAPI 아티스트·카테고리 CRUD 대기, 설정 카드·백엔드 가드
-- [X] **노래책 동기화 재개 (v0.5.0)**: 「가져오기」/「보내기」 UI 분리, Pull/Push 활성, 로그인 시 채널 자동 해석
-- [X] **Push Diff·메타 고도화 (v0.5.0)**: RemoteSongIndex, PATCH diff, 가사·KEY/BPM·숙련도/난이도, rate limit, 아티스트·카테고리 자동 생성
-- [X] **곡 정보 편집 별점 UI (v0.5.0)**: 난이도/숙련도 클릭 선택, KEY/BPM 그리드 정렬
-- [X] **멜로밍 아티스트·카테고리 POST (v0.5.0)**: Push 시 `create_artist`/`create_category` 자동 등록 (OpenAPI 동작 확인)
-- [X] **멜로밍 계정 메뉴 z-index (v0.4.14)**: 헤더·드롭다운 겹침 수정
-- [ ] **DELETE** 노래 삭제 Push
-- [ ] **YouTube `path` → `originalUrl`** 자동 매핑
-- [ ] **2A 미완 시**: 읽기만·`pending_push` 큐 또는 웹 수동 안내
-
-### Phase 2A+ — Companion 웹 (테스트·추후 정리)
-
-- [X] **웹 OAuth 테스트**: `/login`, `/account`, `/api/oauth/login|complete|exchange`, `/api/auth/session`
-- [X] **OAuth 콜백 분기**: 웹 PKCE 쿠키 있으면 웹 세션, 없으면 앱 딥링크
-- [ ] **웹 로그인 UI 제거 또는 정식화** (OAuth 안정화 후 결정)
-
-### Phase 3 — 양방향·충돌
-
-- [ ] **동기화 엔진**: `local_updated_at`/`remote_updated_at`, `content_hash`
-- [ ] **충돌 UI**: `newer_wins` / `local_wins` / `remote_wins` / `ask`
-- [ ] **삭제·고아 정책**: 자동 삭제 전파 없음, 사용자 확인
-- [ ] **일괄 Pull/Push·진행률 UI**
-
-### Phase 4 — Companion 확장·업데이트 알림
-
-- [ ] **Vercel `/changelog`**, `/qa` 본문, `GET /api/releases/latest`
-- [ ] **`updater.rs` 연동**: GitHub Releases 유지 + companion manifest/changelog URL 폴백
-- [ ] **`RELEASE_NOTES.md` ↔ changelog** 동기화 (CI 또는 릴리즈 스크립트)
-- [X] **Discord 릴리즈 공지 (v0.5.0+)**: `v*` 태그 push → `#공지` webhook, 사용자용 [`DISCORD_ANNOUNCEMENTS.md`](DISCORD_ANNOUNCEMENTS.md)
+- [ ] **Vercel /changelog**, /qa 본문 보강
+- [X] **Discord 릴리즈 공지 (v0.5.0+)**: * 태그 push → #공지 webhook, 사용자용 [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
 - [ ] **(선택) 오버레이 숙련도/난이도 표시**
-
-### Phase 5 — 멜로밍 신청곡 관리 (Song Request)
-
-멜로밍 채널로 **들어온 신청곡**을 앱에서 조회·정리·처리하는 기능. 노래책(Pull/Push)과 별도 — **신청 큐·상태·라이브러리 연동** 중심. (P1: 음원은 로컬만, 멜로밍에는 메타·상태만)
-
-- [ ] **멜로밍 OpenAPI 조사**: 신청곡 목록·상태·승인/거절·완료(처리됨) 등 제공 API·OAuth scope 확인
-- [ ] **Rust `meloming` 신청곡 모듈**: 목록 Pull, 상태 변경(PATCH 등), 채널·기간 필터
-- [ ] **신청곡 UI**: 대기/처리중/완료 탭 또는 필터, 신청자·곡명·URL·신청 시각 표시
-- [ ] **로컬 라이브러리 연동**: 신청 URL/제목으로 기존 곡 매칭, 없으면 「라이브러리에 추가」·「노래책에 보내기」 단축 동작
-- [ ] **방송 워크플로우**: 신청곡 → 재생 큐 또는 「다음 곡」 후보, 처리 완료 시 멜로밍 상태 반영
-- [ ] **(선택) OBS·토스트 알림**: 새 신청 수신 시 앱 내 알림 또는 오버레이 표시
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지), **v0.4.15**는 2026-06-27(노래책 동기화 UI 업데이트 예정·OpenAPI 대기), **v0.4.16**은 2026-07-05(MP3 MR ffmpeg PATH 핫픽스·멜로밍 동기화 안내), **v0.5.0**은 2026-07-05(노래책 가져오기·보내기 재개·Push Diff·별점 UI), **v0.5.1**은 2026-07-13(멜로밍 OAuth 배포 로그인 핫픽스)입니다. **Unreleased(v0.5.2+ 예정)**에는 노래 추가 모달·소스 칩, 커스텀 모델 URL·가사 3줄 모드·BPM/AI 싱크·일괄 정렬·랩 정렬·설정 톤앤매너·라이선스 문서 정비가 포함됩니다([`RELEASE_NOTES.md`](RELEASE_NOTES.md)). 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. **v0.6.0**(2026-08-01)에서 멜로밍 연동을 제거하고 노래 추가 모달·커스텀 모델 URL·가사 싱크/AI 정렬 등을 포함했습니다([RELEASE_NOTES.md](RELEASE_NOTES.md)).

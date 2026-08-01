@@ -15,13 +15,6 @@ export function getSongCategoryFromMetadata(song) {
   return "";
 }
 
-export function isMelomingLinkedSong(song) {
-  if (!song) return false;
-  if (song.source === "meloming") return true;
-  const songId = song.melomingSongId ?? song.meloming_song_id;
-  return songId != null && songId !== "";
-}
-
 /** 곡의 가사 싱크 상태를 "synced"|"unsynced"|"none"으로 반환.
  *  백엔드의 lyricSyncStatus를 우선 쓰고, 없으면 hasLyrics로 대신한다. */
 export function getLyricSyncStatus(song) {
@@ -47,13 +40,10 @@ export function filterSongLibrary(songs, {
   // sourceFilter (library chips) takes precedence; currentTab kept for legacy callers/tests.
   const source = sourceFilter && sourceFilter !== "all"
     ? sourceFilter
-    : (currentTab === "youtube" || currentTab === "local" || currentTab === "meloming"
-      ? currentTab
-      : "all");
+    : (currentTab === "youtube" || currentTab === "local" ? currentTab : "all");
 
   if (source === "youtube") filtered = filtered.filter(s => s.source === "youtube");
   else if (source === "local") filtered = filtered.filter(s => s.source === "local");
-  else if (source === "meloming") filtered = filtered.filter(isMelomingLinkedSong);
 
   if (syncFilter !== "all" && syncFilter !== "") {
     filtered = filtered.filter(s => getLyricSyncStatus(s) === syncFilter);

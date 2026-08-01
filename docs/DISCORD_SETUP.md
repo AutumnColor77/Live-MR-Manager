@@ -16,7 +16,7 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 | 채널 | 용도 |
 |------|------|
 | `#공지` | 릴리즈, 알려진 이슈, FAQ·앱 설정 경로 |
-| `#질문-답변` | 설치·사용법·멜로밍 연동 (주 활동) |
+| `#질문-답변` | 설치·사용법 (주 활동) |
 | `#버그-제보` | 증상 공유 → GitHub Issues template 유도 |
 | `#건의` | 기능 제안 (선택) |
 

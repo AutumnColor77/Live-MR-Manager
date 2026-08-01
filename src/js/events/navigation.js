@@ -37,12 +37,10 @@ export function initNavigation() {
 }
 
 export function switchTab(tabId) {
-  // Legacy youtube/local/meloming nav removed — keep library as the music home.
-  if (tabId === "youtube" || tabId === "local" || tabId === "meloming") {
-    if (tabId === "youtube" || tabId === "local") {
-      state.sourceFilter = tabId;
-      syncSourceFilterChips();
-    }
+  // Legacy youtube/local nav removed — keep library as the music home.
+  if (tabId === "youtube" || tabId === "local") {
+    state.sourceFilter = tabId;
+    syncSourceFilterChips();
     tabId = "library";
   }
 

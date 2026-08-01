@@ -15,7 +15,6 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
-mod meloming;
 mod key_bpm;
 mod audio_commands;
 mod mr_cache;
@@ -49,11 +48,7 @@ pub fn run() {
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            crate::audio_player::sys_log(&format!(
-                "[App] deep-link forwarded to running instance (argv={argv:?})"
-            ));
-            // deep-link 플러그인이 on_open_url로 OAuth URL을 전달하므로 argv는 여기서 다시 처리하지 않음
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             focus_main_window(app);
         }));
     }
@@ -61,39 +56,9 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
-            crate::meloming::oauth::sync_credentials_from_env();
             if let Some(window) = app.get_webview_window("main") {
                 *crate::state::MAIN_WINDOW.lock() = Some(window);
-            }
-
-            #[cfg(desktop)]
-            {
-                use tauri_plugin_deep_link::DeepLinkExt;
-                let handle = app.handle().clone();
-
-                #[cfg(any(windows, target_os = "linux"))]
-                {
-                    app.deep_link().register_all()?;
-                }
-                #[cfg(not(any(windows, target_os = "linux")))]
-                {
-                    let _ = app.deep_link().register("live-mr-manager");
-                }
-
-                if let Ok(Some(urls)) = app.deep_link().get_current() {
-                    for url in urls {
-                        crate::meloming::oauth::handle_deep_link(&handle, url.as_ref());
-                    }
-                }
-
-                app.deep_link().on_open_url(move |event| {
-                    focus_main_window(&handle);
-                    for url in event.urls() {
-                        crate::meloming::oauth::handle_deep_link(&handle, url.as_ref());
-                    }
-                });
             }
 
             let paths = crate::state::AppPaths::from_handle(app.handle());
@@ -190,19 +155,7 @@ pub fn run() {
             cache_settings::set_mr_cache_path,
             cache_settings::pick_mr_cache_folder,
             cache_settings::get_overlay_lan_setting,
-            cache_settings::set_overlay_lan_setting,
-            meloming::meloming_get_user_profile,
-            meloming::meloming_get_channel_id,
-            meloming::meloming_set_channel_id,
-            meloming::meloming_test_connection,
-            meloming::meloming_pull_songs,
-            meloming::meloming_get_credentials,
-            meloming::meloming_set_credentials,
-            meloming::meloming_oauth_status,
-            meloming::meloming_oauth_start,
-            meloming::meloming_oauth_finish,
-            meloming::meloming_oauth_logout,
-            meloming::meloming_push_songs
+            cache_settings::set_overlay_lan_setting
         ])
 
         .run(tauri::generate_context!())
