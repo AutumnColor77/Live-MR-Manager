@@ -14,7 +14,7 @@ import { showNotification } from './js/utils.js';
 import { initUpdateChecker } from './js/update-check.js';
 import { registerAppHandler } from './js/app-context.js';
 
-import { invoke, appWindow, toggleWindowMaximize } from './js/tauri-bridge.js';
+import { invoke, appWindow, toggleWindowMaximize, getAppVersion } from './js/tauri-bridge.js';
 
 const THEME_STORAGE_KEY = 'themeMode';
 const THEME_OPTIONS = new Set(['dark', 'light', 'pink', 'sky']);
@@ -211,6 +211,16 @@ function setupTitlebar() {
     console.log("[Titlebar] Close clicked");
     try { await appWindow.close(); } catch (e) { console.error(e); }
   });
+
+  applyAppVersionLabel();
+}
+
+async function applyAppVersionLabel() {
+  const version = await getAppVersion();
+  if (!version) return;
+  const label = document.getElementById('titlebar-version');
+  if (label) label.textContent = `v${version}`;
+  document.title = `Live MR Manager(Beta) v${version} | Performer Dash`;
 }
 
 function blockNativeContextMenu() {

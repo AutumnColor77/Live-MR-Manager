@@ -39,6 +39,17 @@ export async function invoke(command, args = {}) {
   }
 }
 
+/** Reads the version from tauri.conf.json so the UI never hardcodes it. */
+export async function getAppVersion() {
+  if (!isTauri) return null;
+  try {
+    return await window.__TAURI__.app.getVersion();
+  } catch (error) {
+    console.warn("[Tauri-Bridge] getVersion failed:", error);
+    return null;
+  }
+}
+
 /**
  * Safe event listener wrapper
  */
