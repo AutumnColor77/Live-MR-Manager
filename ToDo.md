@@ -119,12 +119,23 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 - [X] **Companion OAuth 제거**: /login·/account·/api/oauth/*·약관·FAQ 멜로밍 절 삭제
 - [ ] **(수동) Vercel/GitHub MELOMING_* secret 삭제**, 멜로밍 개발자 센터 Redirect URI 정리
 
+## 📖 8. Live MR Songbook 연동 (Unreleased)
+
+멜로밍 대체용 자체 Songbook(Cloudflare Workers) 연동입니다. 음원은 로컬만, 메타·썸네일만 Push.
+
+- [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타
+- [X] **라이브러리 보내기**: 본인 채널 Push(POST/PATCH), demo 제외, 채널 없으면 생성
+- [X] **썸네일 축소 업로드**: 동기화 전 JPEG data URL 압축
+- [X] **서버 로그아웃·401 처리**: `/api/auth/logout`, 만료 시 재로그인 유도
+- [ ] **가져오기(Pull)** / 원격 삭제 양방향
+- [ ] **카테고리 매핑 UI** (앱 freeform ↔ Songbook KPOP|POP|JPOP|OST)
+
 ### Companion 확장 (연동 무관)
 
 - [ ] **Vercel /changelog**, /qa 본문 보강
-- [X] **Discord 릴리즈 공지 (v0.5.0+)**: * 태그 push → #공지 webhook, 사용자용 [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
+- [X] **Discord 릴리즈 공지 (v0.5.0+)**: 태그 push → #공지 webhook, 사용자용 [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
 - [ ] **(선택) 오버레이 숙련도/난이도 표시**
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. **v0.6.0**(2026-08-01)에서 멜로밍 연동을 제거하고 노래 추가 모달·커스텀 모델 URL·가사 싱크/AI 정렬 등을 포함했습니다. **v0.6.1**(2026-08-04)에서 **유튜브 검색**(하이브리드)·오버레이 상시 표시 테마 적용을 추가했습니다([RELEASE_NOTES.md](RELEASE_NOTES.md)).
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. **v0.6.0**(2026-08-01)에서 멜로밍 연동을 제거하고 노래 추가 모달·커스텀 모델 URL·가사 싱크/AI 정렬 등을 포함했습니다. **v0.6.1**(2026-08-04)에서 **유튜브 검색**(하이브리드)·오버레이 상시 표시 테마를 추가했습니다. **Unreleased**에서 **Live MR Songbook** 로그인·라이브러리 보내기·썸네일 축소를 추가했습니다([RELEASE_NOTES.md](RELEASE_NOTES.md)).

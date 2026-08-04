@@ -7,6 +7,7 @@ import { initModalListeners } from './modals.js';
 import { setupBackendListeners } from './backend.js';
 import { initAddSongModal } from '../add-song-modal.js';
 import { initSongbookAuth } from './songbook-auth.js';
+import { initSongbookSync } from '../songbook-sync.js';
 
 export { switchTab };
 
@@ -16,5 +17,6 @@ export async function initAllEvents() {
   initControlListeners();
   initModalListeners();
   initSongbookAuth();
+  initSongbookSync();
   await setupBackendListeners();
 }

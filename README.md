@@ -123,6 +123,15 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 Unreleased — Live MR Songbook (2026-08-04)
+
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) Unreleased 절 · 사용자 안내 [UserManual.md](UserManual.md) §6 Songbook.
+
+- **Songbook 로그인**: Google/네이버, 웹 세션 재사용(`desktop-connect`), 헤더 프로필 아바타.
+- **라이브러리 보내기**: 본인 채널로 Push(POST/PATCH). 채널 없으면 생성. 공유 demo 제외.
+- **썸네일**: 동기화 전 작게 줄여 업로드. 음원 파일은 올리지 않음(메타만).
+- **기본 URL**: 프로덕션 Workers. 로컬은 `localStorage.songbook_base`로 지정.
+
 ### 🆕 v0.6.1 업데이트 (2026-08-04)
 
 상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.6.1 절.
@@ -206,7 +215,21 @@
 
 ---
 
-## 🔗 예정: 멜로밍 노래책 연동 (Roadmap)
+## 🔗 Live MR Songbook
+
+멜로밍 연동(v0.6.0에서 제거)을 대체하는 **자체 Songbook**([live-mr-songbook](https://live-mr-songbook.boohun2771.workers.dev)) 연동입니다.
+
+| 원칙 | 내용 |
+| --- | --- |
+| 음원 | 로컬만. Songbook에는 제목·아티스트·카테고리·태그·KEY/BPM·썸네일 등 **메타만** |
+| 로그인 | Google / 네이버 · deep-link 세션 |
+| 동기화 | 앱 → Songbook **보내기**(본인 채널). Pull은 미구현 |
+
+사용자 절차: [UserManual.md](UserManual.md) 「Live MR Songbook」.
+
+---
+
+## 🔗 참고: 멜로밍 노래책 연동 (제거됨)
 
 로컬 MR 라이브러리와 [멜로밍 OpenAPI](https://developers.meloming.com/docs/openapi) 채널 노래책을 **양방향으로 메타데이터만** 맞추는 기능입니다. ([노래책 API 레퍼런스](https://developers.meloming.com/docs/openapi/reference/songbook))
 

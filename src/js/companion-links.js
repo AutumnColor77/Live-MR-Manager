@@ -21,8 +21,12 @@ export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';
 
 /** Live MR Songbook (Google/Naver 로그인 · 채널 운영) */
 export const SONGBOOK_PROD = 'https://live-mr-songbook.boohun2771.workers.dev';
-/** 기본: 로컬 Songbook. 프로덕션은 localStorage.setItem('songbook_base', SONGBOOK_PROD) */
-export const SONGBOOK_BASE = 'http://localhost:5173';
+/** 로컬 개발: localStorage.setItem('songbook_base', 'http://localhost:5173') */
+export const SONGBOOK_BASE = SONGBOOK_PROD;
+
+/** Songbook SLUG_RE 와 동일 */
+export const SONGBOOK_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
 export function songbookBase() {
   try {
     const override = localStorage.getItem('songbook_base');
@@ -32,6 +36,7 @@ export function songbookBase() {
   }
   return SONGBOOK_BASE;
 }
+
 export function songbookOAuthLoginUrl(provider = 'google', next = '/me') {
   const q = new URLSearchParams({ next });
   return `${songbookBase()}/api/auth/${provider}?${q}`;
@@ -53,15 +58,16 @@ export function songbookDemoAdminUrl() {
   return `${songbookBase()}/c/${songbookChannelSlug()}/admin`;
 }
 
-/** 로그인 계정에 연결된 채널 중 우선 채널 (비-demo 우선) */
+/** 동기화 대상: 본인 소유 채널만 (demo 제외) */
+export function pickOwnChannel(channels) {
+  if (!Array.isArray(channels)) return null;
+  return channels.find((c) => c?.slug && c.slug !== 'demo') || null;
+}
+
+/** UI 표시용: 본인 채널 우선, 없으면 demo */
 export function pickPrimaryChannel(channels) {
   if (!Array.isArray(channels) || channels.length === 0) return null;
-  return (
-    channels.find((c) => c?.slug && c.slug !== 'demo') ||
-    channels.find((c) => c?.slug === 'demo') ||
-    channels[0] ||
-    null
-  );
+  return pickOwnChannel(channels) || channels.find((c) => c?.slug === 'demo') || channels[0] || null;
 }
 
 export function getSongbookChannels() {
@@ -75,7 +81,7 @@ export function getSongbookChannels() {
   }
 }
 
-/** /api/auth/me 의 channels 반영 → 기본 slug 자동 설정 */
+/** /api/auth/me 의 channels 반영 → 기본 slug 자동 설정(본인 채널만) */
 export function applySongbookChannels(channels) {
   const list = Array.isArray(channels)
     ? channels.filter((c) => c && typeof c.slug === 'string')
@@ -85,33 +91,62 @@ export function applySongbookChannels(channels) {
   } catch {
     /* ignore */
   }
-  const primary = pickPrimaryChannel(list);
-  if (primary?.slug) setSongbookChannelSlug(primary.slug);
-  return primary;
+  const own = pickOwnChannel(list);
+  if (own?.slug) {
+    setSongbookChannelSlug(own.slug);
+  } else {
+    try {
+      localStorage.removeItem('songbook_channel');
+    } catch {
+      /* ignore */
+    }
+  }
+  return own || pickPrimaryChannel(list);
 }
 
-/** 동기화 대상 채널 slug (로그인 후 /me 채널에서 자동 설정) */
+export function clearSongbookChannelCache() {
+  try {
+    localStorage.removeItem('songbook_channels');
+    localStorage.removeItem('songbook_channel');
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 동기화 대상 채널 slug (본인 채널). 없으면 빈 문자열 */
 export function songbookChannelSlug() {
   try {
     const override = localStorage.getItem('songbook_channel');
-    if (override) return override.trim().toLowerCase().replace(/\/$/, '') || 'demo';
+    if (override) {
+      const slug = override.trim().toLowerCase().replace(/\/$/, '');
+      if (slug && slug !== 'demo') return slug;
+    }
   } catch {
     /* ignore */
   }
-  return 'demo';
+  const own = pickOwnChannel(getSongbookChannels());
+  return own?.slug || '';
 }
 
 export function setSongbookChannelSlug(slug) {
-  const next = String(slug || 'demo')
+  const next = String(slug || '')
     .trim()
     .toLowerCase()
     .replace(/\/$/, '');
+  if (!next || next === 'demo' || !SONGBOOK_SLUG_RE.test(next)) {
+    try {
+      localStorage.removeItem('songbook_channel');
+    } catch {
+      /* ignore */
+    }
+    return '';
+  }
   try {
-    localStorage.setItem('songbook_channel', next || 'demo');
+    localStorage.setItem('songbook_channel', next);
   } catch {
     /* ignore */
   }
-  return next || 'demo';
+  return next;
 }
 
 export function songbookAdminSongsUrl(slug = songbookChannelSlug()) {

@@ -1,0 +1,153 @@
+/* Songbook 헤더 로그인·동기화 — layout.css 와 분리해 유실 방지 */
+
+.songbook-auth-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1400;
+}
+
+.songbook-login-btn,
+.songbook-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 36px;
+  max-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  color: var(--text-main, #f8fafc);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+  position: relative;
+  z-index: 1400;
+  pointer-events: auto;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.songbook-login-btn {
+  overflow: hidden;
+}
+
+.songbook-login-btn:hover:not(:disabled),
+.songbook-sync-btn:hover:not(:disabled) {
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.songbook-login-btn:disabled,
+.songbook-sync-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.songbook-sync-btn[hidden] {
+  display: none !important;
+}
+
+.songbook-login-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* 고정 슬롯 — img 원본 비율이 레이아웃을 밀지 못함 */
+.songbook-login-avatar-wrap {
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
+  flex: 0 0 36px;
+  overflow: hidden;
+  align-self: center;
+  line-height: 0;
+}
+
+.songbook-login-avatar-wrap[hidden] {
+  display: none !important;
+}
+
+.songbook-login-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  object-fit: cover !important;
+  display: block !important;
+  flex-shrink: 0;
+  border: 0;
+}
+
+.songbook-login-btn.has-avatar {
+  padding-left: 0;
+  gap: 10px;
+}
+
+.songbook-login-btn.has-avatar .songbook-login-icon {
+  display: none !important;
+}
+
+.songbook-login-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  background: var(--menu-bg, rgba(20, 20, 28, 0.96));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.songbook-login-menu[hidden] {
+  display: none;
+}
+
+.songbook-login-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main, #f8fafc);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+}
+
+.songbook-login-menu-item:hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
+}
+
+.songbook-channel-label {
+  margin: 6px 0 0;
+  padding: 10px 14px;
+  max-width: 360px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-1);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 650;
+  word-break: break-all;
+}

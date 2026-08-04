@@ -3,6 +3,7 @@
  */
 import {
   applySongbookChannels,
+  clearSongbookChannelCache,
   songbookBase,
   songbookDesktopConnectUrl,
 } from '../companion-links.js';
@@ -38,12 +39,52 @@ function setMenuOpen(open) {
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
+function setLoginAvatar(avatar, wrap, btn, { picture, name }) {
+  if (!avatar || !btn) return;
+  const show = Boolean(picture);
+  if (show) {
+    avatar.width = 36;
+    avatar.height = 36;
+    avatar.style.width = '36px';
+    avatar.style.height = '36px';
+    avatar.style.maxWidth = '36px';
+    avatar.style.maxHeight = '36px';
+    avatar.style.objectFit = 'cover';
+    avatar.style.display = 'block';
+    avatar.onerror = () => {
+      setLoginAvatar(avatar, wrap, btn, { picture: '', name: '' });
+    };
+    avatar.src = picture;
+    avatar.alt = name || '';
+    if (wrap) {
+      wrap.hidden = false;
+      wrap.removeAttribute('hidden');
+      wrap.style.display = 'block';
+      wrap.style.width = '36px';
+      wrap.style.height = '36px';
+      wrap.style.overflow = 'hidden';
+      wrap.style.flex = '0 0 36px';
+    }
+    btn.classList.add('has-avatar');
+  } else {
+    avatar.onerror = null;
+    avatar.removeAttribute('src');
+    avatar.alt = '';
+    if (wrap) {
+      wrap.hidden = true;
+      wrap.style.display = 'none';
+    }
+    btn.classList.remove('has-avatar');
+  }
+}
+
 function renderAuthButton(state) {
   const btn = document.getElementById('songbook-login-btn');
   const menu = document.getElementById('songbook-login-menu');
   const avatar = document.getElementById('songbook-login-avatar');
+  const wrap = document.getElementById('songbook-login-avatar-wrap');
   if (!btn) return;
-  const label = btn.querySelector('span');
+  const label = btn.querySelector('.songbook-login-label');
   const loggedIn = Boolean(state?.loggedIn);
   const name = state?.user?.name || state?.user?.email || '로그인됨';
   const picture = String(state?.user?.picture || '').trim();
@@ -53,32 +94,13 @@ function renderAuthButton(state) {
     btn.title = `${state.user?.email || name} · 클릭하여 로그아웃`;
     btn.dataset.loggedIn = '1';
     if (menu) menu.hidden = true;
-    if (avatar) {
-      if (picture) {
-        avatar.onerror = () => {
-          avatar.hidden = true;
-          avatar.removeAttribute('src');
-        };
-        avatar.src = picture;
-        avatar.alt = name;
-        avatar.hidden = false;
-      } else {
-        avatar.onerror = null;
-        avatar.removeAttribute('src');
-        avatar.alt = '';
-        avatar.hidden = true;
-      }
-    }
+    setLoginAvatar(avatar, wrap, btn, { picture, name });
     setSongbookSyncVisible(true);
   } else {
     if (label) label.textContent = '로그인';
     btn.title = 'Songbook 로그인';
     btn.dataset.loggedIn = '0';
-    if (avatar) {
-      avatar.removeAttribute('src');
-      avatar.alt = '';
-      avatar.hidden = true;
-    }
+    setLoginAvatar(avatar, wrap, btn, { picture: '', name: '' });
     setSongbookSyncVisible(false);
   }
 }
@@ -89,15 +111,17 @@ async function refreshProfile(token) {
   const res = await fetch(`${base}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (res.status === 401) {
+    const err = new Error('AUTH_EXPIRED');
+    err.code = 'AUTH_EXPIRED';
+    throw err;
+  }
   if (!res.ok) throw new Error(`me failed (${res.status})`);
   const data = await res.json();
   if (!data.user) throw new Error('no user');
-  const primary = applySongbookChannels(
-    Array.isArray(data.channels)
-      ? data.channels
-      : [{ slug: 'demo', name: 'Demo', role: 'admin' }],
-  );
-  updateSongbookChannelLabel(primary);
+  const channels = Array.isArray(data.channels) ? data.channels : [];
+  const primary = applySongbookChannels(channels);
+  updateSongbookChannelLabel(primary, channels);
   await invoke('set_songbook_user', {
     user: {
       id: data.user.id,
@@ -106,7 +130,7 @@ async function refreshProfile(token) {
       picture: data.user.picture,
     },
   });
-  return { ...data.user, channels: data.channels || [], primaryChannel: primary };
+  return { ...data.user, channels, primaryChannel: primary };
 }
 
 function normalizeAuthPayload(payload) {
@@ -129,8 +153,16 @@ async function syncAuthUi(payload) {
       const user = await refreshProfile(state.token);
       state = { ...state, user };
     } catch (err) {
-      console.warn('[SongbookAuth] profile refresh failed (keeping session)', err);
-      updateSongbookChannelLabel(null);
+      console.warn('[SongbookAuth] profile refresh failed', err);
+      if (err?.code === 'AUTH_EXPIRED' || err?.message === 'AUTH_EXPIRED') {
+        await invoke('clear_songbook_auth').catch(() => {});
+        clearSongbookChannelCache();
+        state = { loggedIn: false, token: null, user: null };
+        updateSongbookChannelLabel(null);
+        showNotification('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
+      } else {
+        updateSongbookChannelLabel(null);
+      }
     }
   } else {
     updateSongbookChannelLabel(null);
@@ -179,6 +211,28 @@ async function startProviderLogin(provider) {
   }
 }
 
+async function logoutSongbook() {
+  const current = await invoke('get_songbook_auth').catch(() => null);
+  const token = current?.token;
+  if (token) {
+    try {
+      await fetch(`${songbookBase()}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.warn('[SongbookAuth] server logout failed', err);
+    }
+  }
+  await invoke('clear_songbook_auth');
+  clearSongbookChannelCache();
+  renderAuthButton({ loggedIn: false });
+  setSongbookSyncVisible(false);
+  updateSongbookChannelLabel(null);
+  setMenuOpen(false);
+  showNotification('Songbook 로그아웃되었습니다.', 'info');
+}
+
 export function initSongbookAuth() {
   const btn = document.getElementById('songbook-login-btn');
   const menu = document.getElementById('songbook-login-menu');
@@ -201,11 +255,7 @@ export function initSongbookAuth() {
     e.stopPropagation();
     const current = await invoke('get_songbook_auth').catch(() => null);
     if (current?.loggedIn) {
-      await invoke('clear_songbook_auth');
-      renderAuthButton({ loggedIn: false });
-      setSongbookSyncVisible(false);
-      setMenuOpen(false);
-      showNotification('Songbook 로그아웃되었습니다.', 'info');
+      await logoutSongbook();
       return;
     }
     setMenuOpen(menu?.hidden !== false);

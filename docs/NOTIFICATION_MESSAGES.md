@@ -2,13 +2,13 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-08-04 (유튜브 검색·추가 토스트/백엔드 문구 보강)
-- 고유 문구 수: **약 155+** (자동 수집 + 동적 문구 보강, 중복 제거)
+- 수집일: 2026-08-04 (Songbook 동기화·로그인 토스트 보강)
+- 고유 문구 수: **약 170+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.6.1·v0.6.0), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (Unreleased·v0.6.1·v0.6.0), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 
@@ -184,6 +184,29 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | YouTube 오디오 파일 생성 실패: {} | `src-tauri/src/youtube.rs` |
 | 오류 | YouTube 오디오 파일을 완전히 다운로드하지 못했습니다 | `src-tauri/src/youtube.rs` |
 | 오류 | YouTube 오디오 파일이 생성되지 않았습니다 (Timeout) | `src-tauri/src/youtube.rs` |
+
+## Live MR Songbook · 홍보 데모 (`showNotification`)
+
+| 유형 | 문구 | 출처 |
+| --- | --- | --- |
+| 안내 | 브라우저에서 연결 중… | `src/js/events/songbook-auth.js` |
+| 성공 | Songbook 로그인 완료 | `src/js/events/songbook-auth.js` |
+| 오류 | 로그인 창을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
+| 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
+| 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
+| 안내 | Songbook으로 목록을 보내는 중… | `src/js/songbook-sync.js` |
+| 성공 / 경고 | Songbook 동기화 완료 ({slug}): 추가 {n} · 갱신 {n} · 그대로 {n}[ · 실패 {n}] | `src/js/songbook-sync.js` |
+| 오류 | Songbook 동기화에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
+| 안내 | 이미 채널이 있습니다: /c/{slug} | `src/js/songbook-sync.js` |
+| 성공 | 채널 생성 완료: /c/{slug} | `src/js/songbook-sync.js` |
+| 오류 | 채널 생성에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
+| 오류 | Songbook 로그인이 필요합니다. | `src/js/songbook-sync.js` (throw → 토스트) |
+| 오류 | 동기화하려면 내 Songbook 채널이 필요합니다. | `src/js/songbook-sync.js` |
+| 오류 | 채널 생성을 취소했습니다. | `src/js/songbook-sync.js` |
+| confirm | Songbook 채널 만들기 / 동기화하려면 채널이 필요합니다. 지금 만들까요? | `src/js/songbook-sync.js` |
+| confirm | Songbook 채널 만들기 / 닉네임으로 채널을 만들까요? | `src/js/songbook-sync.js` |
+| 안내 | 홍보 데모 모드입니다. 재생·AI·편집이 가상으로 동작합니다. 다시 #promo 로 해제하세요. | `src/js/events/controls/library.js` |
+| 안내 | 원래 노래 목록으로 돌아왔습니다. | `src/js/events/controls/library.js` |
 
 ## 유형 범
 

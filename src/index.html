@@ -183,12 +183,21 @@
           <div id="view-subtitle" class="view-subtitle"></div>
         </div>
         <div class="songbook-auth-group">
+          <button type="button" id="songbook-sync-btn" class="songbook-sync-btn" data-songbook-sync data-songbook-sync-visible title="라이브러리를 Songbook으로 보내기" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-3-6.7"/>
+              <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="21 3 21 9 15 9"/>
+            </svg>
+            <span>동기화</span>
+          </button>
           <button type="button" id="songbook-login-btn" class="songbook-login-btn" title="Songbook 로그인" aria-haspopup="menu" aria-expanded="false">
-            <img id="songbook-login-avatar" class="songbook-login-avatar" alt="" hidden referrerpolicy="no-referrer" />
+            <span id="songbook-login-avatar-wrap" class="songbook-login-avatar-wrap" hidden aria-hidden="true">
+              <img id="songbook-login-avatar" class="songbook-login-avatar" width="36" height="36" alt="" referrerpolicy="no-referrer" decoding="async" />
+            </span>
             <svg class="songbook-login-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path fill="currentColor" d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4 0-8 2-8 4v1h16v-1c0-2-4-4-8-4z"/>
             </svg>
-            <span>로그인</span>
+            <span class="songbook-login-label">로그인</span>
           </button>
           <div id="songbook-login-menu" class="songbook-login-menu" hidden role="menu">
             <button type="button" class="songbook-login-menu-item" data-provider="google" role="menuitem">
@@ -695,6 +704,31 @@
                   <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
                   <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
                   <button id="btn-run-rescue" class="btn-ai-action secondary">목록 자동 복구</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12a9 9 0 1 1-3-6.7"></path>
+                  <polyline points="21 3 21 9 15 9"></polyline>
+                </svg>
+                <h3>Songbook 동기화</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">라이브러리 보내기</h2>
+                  <div class="ai-model-desc">
+                    앱 곡 목록을 Songbook 채널로 올립니다. 새 곡은 추가하고, 같은 제목·아티스트는 키·BPM·태그 등을 갱신합니다.
+                  </div>
+                  <p class="settings-sublabel" style="margin-top:10px;">연결된 채널</p>
+                  <p id="songbook-channel-label" class="songbook-channel-label">로그인하면 연결된 채널이 표시됩니다.</p>
+                </div>
+                <div class="ai-actions-right">
+                  <button type="button" id="btn-songbook-create-channel" class="btn-ai-action secondary" data-songbook-create-channel hidden>채널 만들기</button>
+                  <button type="button" id="btn-songbook-sync-push" class="btn-ai-action" data-songbook-sync data-songbook-sync-visible hidden>보내기</button>
                 </div>
               </div>
             </section>

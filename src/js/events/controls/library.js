@@ -125,7 +125,34 @@ export function initLibraryListeners(updateViewMode) {
   };
 
   if (elements.libSearchInput) {
-    elements.libSearchInput.addEventListener("input", renderLibraryDeferred);
+    elements.libSearchInput.addEventListener("input", async () => {
+      const value = elements.libSearchInput.value;
+      const { isPromoSecretKey, togglePromoMode } = await import('../../screenshot-library.js');
+      if (isPromoSecretKey(value)) {
+        elements.libSearchInput.value = "";
+        const active = await togglePromoMode();
+        const { showNotification } = await import('../../utils.js');
+        showNotification(
+          active
+            ? "홍보 데모 모드입니다. 재생·AI·편집이 가상으로 동작합니다. 다시 #promo 로 해제하세요."
+            : "원래 노래 목록으로 돌아왔습니다.",
+          "info"
+        );
+        try {
+          const { refreshFilterDropdowns } = await import('../../ui/core.js');
+          await refreshFilterDropdowns();
+        } catch (_) { /* ignore */ }
+        try {
+          const { updateTaskUI, updateThumbnailOverlay, updatePlayButton } = await import('../../ui/components.js');
+          updateTaskUI?.();
+          updateThumbnailOverlay?.();
+          updatePlayButton?.();
+        } catch (_) { /* ignore */ }
+        renderLibraryDeferred();
+        return;
+      }
+      renderLibraryDeferred();
+    });
   }
   if (elements.libGenreFilter) {
     elements.libGenreFilter.addEventListener("change", renderLibraryDeferred);

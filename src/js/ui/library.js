@@ -19,6 +19,7 @@ export function getSongCategory(song) {
 }
 
 export function getFilteredSongs() {
+  // Promo mode swaps state.songLibrary with an in-memory session copy.
   const filtered = filterSongLibrary(state.songLibrary, {
     query: elements.libSearchInput?.value || "",
     genreFilter: elements.libGenreFilter?.value || "all",
@@ -218,7 +219,7 @@ export function addSongCard(song, index) {
 
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    e.stopPropagation(); 
+    e.stopPropagation();
     invoke('remote_js_log', { msg: `[Card] contextmenu triggered for path: ${song.path}` }).catch(() => {});
     showSongContextMenu(e, song, index);
   });

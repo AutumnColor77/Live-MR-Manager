@@ -1,5 +1,6 @@
 @import "./styles/base.css?v=6.1";
 @import "./styles/layout.css?v=6.1";
+@import "./styles/songbook-auth.css?v=6.1";
 @import "./styles/components.css?v=6.1";
 @import "./styles/library-common.css?v=6.1";
 @import "./styles/library-controls.css?v=6.1";

@@ -4,10 +4,18 @@
 import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
 import { registerAppHandler, callAppHandler } from './app-context.js';
-import { getDisplayLines } from './lrc-parser.js';
+import { getDisplayLines, parseLrc } from './lrc-parser.js';
+import { getPromoOverlayLyrics, isPromoSongPath } from './screenshot-library.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
+
+function getOverlaySegments(fallbackSegments) {
+    const path = state.currentTrack?.path;
+    if (!isPromoSongPath(path)) return fallbackSegments || [];
+    const duration = (state.trackDurationMs || 0) / 1000;
+    return parseLrc(getPromoOverlayLyrics(path), duration);
+}
 
 function updateDrawerTrackTitle() {
     const titleEl = document.getElementById('lyric-drawer-track-title');
@@ -240,7 +248,7 @@ export function updateLyrics(segments) {
     // (마크업 없음), 여러 줄은 `\n`으로만 구분 — 수신측이 안전하게 DOM으로
     // 조립한다 (overlay-lyrics.html / lyrics-view.html).
     invoke('update_overlay_lyrics_full', {
-        lines: (segments || []).map((seg) => joinLinesForTransport(displayLines(seg, 'app'))),
+        lines: getOverlaySegments(segments).map((seg) => joinLinesForTransport(displayLines(seg, 'overlay'))),
     }).catch(() => {});
 }
 
@@ -306,17 +314,27 @@ function syncLyricsWithTime(currentTime) {
         }
     }
 
-    const current = (playingIndex !== -1) ? joinLinesForTransport(displayLines(lyrics[playingIndex], 'overlay')) : "";
-    const next = (playingIndex !== -1)
-        ? ((playingIndex + 1 < lyrics.length) ? joinLinesForTransport(displayLines(lyrics[playingIndex + 1], 'overlay')) : "")
-        : ((lyrics.length > 0) ? joinLinesForTransport(displayLines(lyrics[0], 'overlay')) : "");
+    const overlayLyrics = getOverlaySegments(lyrics);
+    let overlayIndex = -1;
+    for (let i = 0; i < overlayLyrics.length; i++) {
+        const s = overlayLyrics[i];
+        if (s.start > 0 && currentTime >= s.start && (s.end === 0 || currentTime < s.end)) {
+            overlayIndex = i;
+        }
+    }
+    const current = (overlayIndex !== -1)
+        ? joinLinesForTransport(displayLines(overlayLyrics[overlayIndex], 'overlay'))
+        : "";
+    const next = (overlayIndex !== -1)
+        ? ((overlayIndex + 1 < overlayLyrics.length) ? joinLinesForTransport(displayLines(overlayLyrics[overlayIndex + 1], 'overlay')) : "")
+        : ((overlayLyrics.length > 0) ? joinLinesForTransport(displayLines(overlayLyrics[0], 'overlay')) : "");
 
     // IMPORTANT: Don't skip overlay update only because index didn't change.
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".
     const overlayPayloadChanged = current !== lastOverlayCurrent || next !== lastOverlayNext;
     if (overlayPayloadChanged) {
         // index는 가사 뷰 페이지(/lyrics-view)의 현재 줄 하이라이트용
-        invoke('update_overlay_lyrics', { current, next, index: playingIndex }).catch(err => console.error(err));
+        invoke('update_overlay_lyrics', { current, next, index: overlayIndex }).catch(err => console.error(err));
         lastOverlayCurrent = current;
         lastOverlayNext = next;
     }

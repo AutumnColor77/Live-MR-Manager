@@ -1,5 +1,31 @@
 # Release Notes
 
+## Unreleased (2026-08-04)
+
+이전 커밋(`fix(auth): Songbook 로그인 기본 next를 /me로 변경`) 대비 작업 중 변경입니다. 버전 번호는 아직 `0.6.1`입니다.
+
+### Live MR Songbook 연동
+
+- **프로필 아바타**: 로그인 시 헤더 버튼에 프로필 사진 표시. 버튼 높이(36px)에 맞춘 고정 슬롯·전용 CSS(`songbook-auth.css`)로 원본 이미지 비율 깨짐 방지.
+- **라이브러리 보내기(Push)**: 헤더 **동기화** 또는 **설정 → Songbook 동기화 → 보내기**. 로그인 계정의 **본인 채널**로만 업로드(공유 `demo` 제외).
+- **채널 자동 선택**: `/api/auth/me`의 채널 목록으로 slug 결정. 채널이 없으면 확인 후 `POST /api/me/channels`로 생성.
+- **메타 동기화**: 새 곡은 `POST`, 같은 제목·아티스트는 `PATCH`(카테고리·태그·KEY/BPM·썸네일 등).
+- **썸네일**: 업로드 전 최대 96px JPEG data URL로 축소(`songbook-thumbnail.js`). Songbook `normalizeThumbnail`은 http(s) 또는 압축 data URL 허용.
+- **세션**: 브라우저에 이미 Songbook 로그인돼 있으면 `desktop-connect`로 OAuth 생략·앱 핸드오프. 로그아웃 시 `POST /api/auth/logout` 후 로컬 세션·채널 캐시 정리. 401 시 재로그인 유도.
+- **기본 URL**: 프로덕션 Workers. 로컬 Songbook은 `localStorage.setItem('songbook_base', 'http://localhost:5173')`.
+
+### 홍보 데모 모드 (내부)
+
+- 라이브러리 검색란에 `#promo` 입력 시 세션 전용 데모 목록으로 전환. 재생·오버레이 가사 등이 가상으로 동작하며, 다시 `#promo`로 해제.
+
+### 문서
+
+- [UserManual.md](UserManual.md) Songbook 로그인·동기화 안내
+- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) Songbook·프로모 토스트 추가
+- [ToDo.md](ToDo.md) Live MR Songbook 항목
+
+---
+
 ## v0.6.1 (2026-08-04)
 
 ### 유튜브 검색 (하이브리드)
