@@ -99,6 +99,7 @@ pub fn run() {
             model_commands::delete_mr, 
             model_commands::start_mr_separation, 
             model_commands::youtube_metadata_fetcher,
+            model_commands::search_youtube,
             model_commands::list_model_presets,
             model_commands::list_all_models,
             model_commands::list_custom_models,

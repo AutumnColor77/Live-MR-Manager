@@ -44,6 +44,19 @@ static METADATA_CACHE: Lazy<RwLock<HashMap<String, (YoutubeMetadata, Instant)>>>
     Lazy::new(|| RwLock::new(HashMap::new()));
 const METADATA_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
 const METADATA_TIMEOUT: Duration = Duration::from_secs(12);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(45);
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeSearchResult {
+    pub id: String,
+    pub title: String,
+    pub uploader: Option<String>,
+    pub duration: Option<f64>,
+    pub duration_label: Option<String>,
+    pub thumbnail: Option<String>,
+    pub url: String,
+}
 
 impl YoutubeManager {
     fn extract_video_id(url: &str) -> Option<String> {
@@ -332,29 +345,176 @@ impl YoutubeManager {
                 err_msg
             })?;
 
-        let metadata = YoutubeMetadata {
-            id: v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()),
-            title: v.get("title").and_then(|x| x.as_str())
-                .or_else(|| v.get("fulltitle").and_then(|x| x.as_str()))
-                .map(|s| s.to_string()),
-            uploader: v.get("uploader").and_then(|x| x.as_str())
-                .or_else(|| v.get("channel").and_then(|x| x.as_str()))
-                .map(|s| s.to_string()),
-            duration: v.get("duration").and_then(|x| x.as_f64()),
-            thumbnail: v.get("thumbnail").and_then(|x| x.as_str())
-                .or_else(|| {
-                    v.get("thumbnails")
-                        .and_then(|x| x.as_array())
-                        .and_then(|urls| urls.last())
-                        .and_then(|t| t.get("url"))
-                        .and_then(|u| u.as_str())
-                })
-                .map(|s| s.to_string()),
-        };
+        let metadata = Self::metadata_from_json(&v);
 
         let _ = crate::audio_player::sys_log(&format!("[Youtube] Successfully fetched metadata: {:?}", metadata.title));
         Self::write_metadata_cache(&cache_key, &metadata);
         Ok(metadata)
+    }
+
+    fn metadata_from_json(v: &Value) -> YoutubeMetadata {
+        let id = v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let thumbnail = v
+            .get("thumbnail")
+            .and_then(|x| x.as_str())
+            .or_else(|| {
+                v.get("thumbnails")
+                    .and_then(|x| x.as_array())
+                    .and_then(|urls| urls.last())
+                    .and_then(|t| t.get("url"))
+                    .and_then(|u| u.as_str())
+            })
+            .map(|s| s.to_string())
+            .or_else(|| {
+                id.as_ref()
+                    .map(|vid| format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid))
+            });
+
+        YoutubeMetadata {
+            id,
+            title: v
+                .get("title")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("fulltitle").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()),
+            uploader: v
+                .get("uploader")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("channel").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()),
+            duration: v.get("duration").and_then(|x| {
+                x.as_f64()
+                    .or_else(|| x.as_i64().map(|n| n as f64))
+                    .or_else(|| x.as_u64().map(|n| n as f64))
+            }),
+            thumbnail,
+        }
+    }
+
+    fn format_duration_label(secs: f64) -> String {
+        if !secs.is_finite() || secs < 0.0 {
+            return String::new();
+        }
+        let total = secs.round() as u64;
+        let h = total / 3600;
+        let m = (total % 3600) / 60;
+        let s = total % 60;
+        if h > 0 {
+            format!("{}:{:02}:{:02}", h, m, s)
+        } else {
+            format!("{}:{:02}", m, s)
+        }
+    }
+
+    /// Keyword search via yt-dlp `ytsearchN:` (no YouTube Data API key).
+    pub async fn search_videos(query: &str, limit: usize) -> Result<Vec<YoutubeSearchResult>, String> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Err("검색어를 입력하세요.".into());
+        }
+        let limit = limit.clamp(1, 20);
+        let search_arg = format!("ytsearch{}:{}", limit, q);
+        let exe = Self::find_yt_dlp().await;
+        let _ = crate::audio_player::sys_log(&format!(
+            "[Youtube] Searching via {}: {}",
+            exe, search_arg
+        ));
+
+        let mut cmd = Command::new(&exe);
+        cmd.creation_flags(0x08000000);
+        let output = tokio::time::timeout(
+            SEARCH_TIMEOUT,
+            cmd.args(&[
+                "-j",
+                "--flat-playlist",
+                "--skip-download",
+                "--no-warnings",
+                "--no-check-certificates",
+                "--socket-timeout",
+                "10",
+                "--extractor-retries",
+                "1",
+                &search_arg,
+            ])
+            .output(),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "유튜브 검색 시간이 초과되었습니다 ({}초).",
+                SEARCH_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| {
+            let err_msg = format!("yt-dlp 실행 실패 ({}): {}", exe, e);
+            let _ = crate::audio_player::sys_log(&err_msg);
+            "유튜브 검색을 시작할 수 없습니다. yt-dlp 설치 상태를 확인하세요.".to_string()
+        })?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Youtube] search failed: {}",
+                err
+            ));
+            return Err("유튜브 검색에 실패했습니다.".into());
+        }
+
+        let raw_stdout = String::from_utf8_lossy(&output.stdout);
+        let mut results = Vec::new();
+        for line in raw_stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let json_content = if let Some(start_idx) = trimmed.find('{') {
+                &trimmed[start_idx..]
+            } else {
+                continue;
+            };
+            let v: Value = match serde_json::from_str(json_content) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::audio_player::sys_log(&format!(
+                        "[Youtube] search JSON skip: {}",
+                        e
+                    ));
+                    continue;
+                }
+            };
+            let meta = Self::metadata_from_json(&v);
+            let id = match meta.id.filter(|s| !s.is_empty()) {
+                Some(id) => id,
+                None => continue,
+            };
+            let title = meta
+                .title
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| "제목 없음".into());
+            let duration_label = meta
+                .duration
+                .map(Self::format_duration_label)
+                .filter(|s| !s.is_empty());
+            results.push(YoutubeSearchResult {
+                url: format!("https://youtu.be/{}", id),
+                id,
+                title,
+                uploader: meta.uploader,
+                duration: meta.duration,
+                duration_label,
+                thumbnail: meta.thumbnail,
+            });
+            if results.len() >= limit {
+                break;
+            }
+        }
+
+        let _ = crate::audio_player::sys_log(&format!(
+            "[Youtube] Search returned {} result(s) for {:?}",
+            results.len(),
+            q
+        ));
+        Ok(results)
     }
 
     pub async fn download_audio(

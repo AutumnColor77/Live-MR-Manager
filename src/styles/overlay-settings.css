@@ -54,7 +54,30 @@
   background: var(--accent-primary);
   color: var(--text-inverse);
   border-color: var(--accent-primary);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgb(var(--accent-rgb) / 0.3);
+}
+
+.overlay-force-visible-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgb(var(--accent-rgb) / 0.08);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgb(var(--accent-rgb) / 0.2);
+}
+
+.overlay-force-visible-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.overlay-force-visible-switch {
+  transform: scale(0.85);
+  transform-origin: right center;
 }
 
 .val-input {

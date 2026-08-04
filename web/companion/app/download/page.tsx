@@ -23,8 +23,8 @@ export default function DownloadPage() {
         <article className="card">
           <h2>최신 버전 설치</h2>
           <p>
-            아래 버튼에서 설치 파일을 받을 수 있습니다. 설치 후 유튜브·로컬
-            음원을 추가해 라이브러리를 시작해 보세요.
+            아래 버튼에서 설치 파일을 받을 수 있습니다. 설치 후 유튜브 검색·URL
+            또는 로컬 음원을 추가해 라이브러리를 시작해 보세요.
           </p>
           <a
             href={GITHUB_RELEASES_URL}

@@ -404,13 +404,14 @@ h1 {
 }
 
 #youtube-search {
-  width: 100%;
-  /* Full width for YouTube page */
+  flex: 1;
+  min-width: 0;
 }
 
 /* Global View Content Alignment (Locked to 30px Frame) */
 .settings-container,
 .tasks-container,
+.youtube-search-page,
 #alignment-viewer-root,
 .song-grid {
   width: 100% !important;

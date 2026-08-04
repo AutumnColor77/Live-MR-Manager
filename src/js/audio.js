@@ -116,6 +116,10 @@ export async function getYoutubeMetadata(url) {
   return await invoke("youtube_metadata_fetcher", { url });
 }
 
+export async function searchYoutube(query, limit = 10) {
+  return await invoke("search_youtube", { query, limit });
+}
+
 export async function getAudioMetadata(path) {
   return await invoke("get_audio_metadata", { path });
 }

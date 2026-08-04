@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="stylesheet" href="style.css?v=6.0" />
+  <link rel="stylesheet" href="style.css?v=6.1" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live MR Manager(Beta) | Performer Dash</title>
@@ -69,6 +69,15 @@
           </svg>
         </i>
         <span>라이브러리</span>
+      </div>
+      <div class="nav-item" id="nav-youtube">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.4 19.54C5.12 20 12 20 12 20s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"></path>
+            <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"></polygon>
+          </svg>
+        </i>
+        <span>유튜브 검색</span>
       </div>
       <button type="button" id="btn-add-song" class="sidebar-add-song-btn" title="유튜브 URL 또는 로컬 파일로 곡 추가">
         <i>
@@ -249,6 +258,23 @@
             <button type="button" class="source-filter-chip" data-source="local">내 파일</button>
           </div>
         </section>
+
+        <!-- 유튜브 검색 컨트롤 (라이브러리 검색바와 동일 프레임) -->
+        <section class="library-controls youtube-controls" id="youtube-controls" style="display: none;">
+          <div class="search-bar" id="youtube-search">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input type="search" id="yt-search-input" placeholder="제목·아티스트로 유튜브 검색"
+              autocomplete="off" spellcheck="false" enterkeyhint="search">
+            <button type="button" id="yt-search-btn" class="btn-ai-action is-inline yt-search-submit">검색</button>
+          </div>
+          <label class="add-song-check yt-search-sep-opt">
+            <input type="checkbox" id="yt-search-opt-separate">
+            추가 후 MR 분리
+          </label>
+        </section>
       </div>
 
       <div class="scroll-area">
@@ -278,9 +304,9 @@
                   </svg>
                   <h3 id="overlay-settings-title">곡 정보 오버레이 설정</h3>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: rgba(59, 130, 246, 0.05); padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(59, 130, 246, 0.1);">
-                  <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-primary); letter-spacing: -0.02em;">상시 표시 (미리보기)</span>
-                  <label class="switch" style="transform: scale(0.85); transform-origin: right center;">
+                <div class="overlay-force-visible-chip">
+                  <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
+                  <label class="switch overlay-force-visible-switch">
                     <input type="checkbox" id="toggle-overlay-force-visible">
                     <span class="slider round"></span>
                   </label>
@@ -941,6 +967,14 @@
         <!-- Lyric Sync 모듈 섹션 -->
         <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
           <div id="alignment-viewer-root" style="height: 100%;"></div>
+        </div>
+
+        <!-- 유튜브 검색 페이지 -->
+        <div class="tab-content" id="youtube-page" style="display: none;">
+          <div class="youtube-search-page">
+            <p class="yt-search-hint" id="yt-search-status">곡 제목이나 아티스트를 검색해 라이브러리에 추가하세요.</p>
+            <div id="yt-search-results" class="yt-search-results" aria-live="polite"></div>
+          </div>
         </div>
       </div> <!-- End of view-main -->
 

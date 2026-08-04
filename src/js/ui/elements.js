@@ -102,6 +102,8 @@ export const elements = {
   searchSuggestions: null,
   lyricDrawer: null,
   lyricDrawerTrigger: null,
+  youtubePage: null,
+  youtubeControls: null,
 };
 
 export function initDomReferences() {
@@ -203,4 +205,6 @@ export function initDomReferences() {
   elements.searchSuggestions = document.getElementById("search-suggestions");
   elements.lyricDrawer = document.getElementById("lyric-drawer");
   elements.lyricDrawerTrigger = document.getElementById("lyric-drawer-trigger");
+  elements.youtubePage = document.getElementById("youtube-page");
+  elements.youtubeControls = document.getElementById("youtube-controls");
 }

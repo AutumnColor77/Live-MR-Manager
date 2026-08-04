@@ -1,5 +1,26 @@
 # Release Notes
 
+## v0.6.1 (2026-08-04)
+
+### 유튜브 검색 (하이브리드)
+
+- 사이드바 **미디어 → 유튜브 검색** 페이지를 추가했습니다. 제목·아티스트 키워드로 YouTube를 검색(yt-dlp `ytsearch`)하고 결과에서 라이브러리에 추가합니다.
+- **노래 추가** 모달은 기존처럼 **유튜브 URL / 로컬 파일**만 담당합니다 (하이브리드 UX).
+- 검색 결과 추가 시 video ID 중복 차단, (선택) **추가 후 MR 분리**를 지원합니다.
+- 검색바·결과 목록은 라이브러리와 동일한 `page-controls-wrapper`·30px safe-area 프레임에 맞췄습니다.
+
+### OBS 오버레이 UX
+
+- **상시 표시 (미리보기)** 토글 칩 배경·테두리를 하드코딩된 파란색에서 테마 `--accent-rgb`로 바꿔, 미드나잇/아이보리/분홍/하늘 테마에 맞게 표시됩니다.
+
+### 문서
+
+- [UserManual.md](UserManual.md) §2에 유튜브 검색·노래 추가 하이브리드 안내
+- [ToDo.md](ToDo.md) 「유튜브 노래 검색 추가」 완료 처리
+- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 검색·추가 토스트/백엔드 문구 보강
+
+---
+
 ## v0.6.0 (2026-08-01)
 
 큰 기능 업데이트와 **멜로밍 연동 제거**. Companion는 다운로드·FAQ·약관용으로 유지합니다.
@@ -61,7 +82,7 @@
 ### 문서
 
 - 알림·경고·확인 문구 목록: [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md)
-- ToDo: 유튜브 노래 검색 추가(미구현) 항목 등록
+- ToDo: 유튜브 노래 검색 추가 항목 등록(이후 v0.6.1에서 구현 완료)
 - 사용자 매뉴얼: 노래 추가 모달·소스 칩 반영 ([UserManual.md](UserManual.md) §2)
 
 ### 릴리스 준수 체크리스트 (배포 전)

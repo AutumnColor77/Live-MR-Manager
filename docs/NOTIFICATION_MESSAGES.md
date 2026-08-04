@@ -2,13 +2,13 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-07-31 (싱크 초기화 확인 모달화·확인창 X/소형화 반영)
-- 고유 문구 수: **약 150+** (자동 수집 + 동적 문구 보강, 중복 제거)
+- 수집일: 2026-08-04 (유튜브 검색·추가 토스트/백엔드 문구 보강)
+- 고유 문구 수: **약 155+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) v0.6.0, 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.6.1·v0.6.0), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 
@@ -55,7 +55,7 @@
 | 오류 | 정보를 가져오는데 실패했습니다. | `src/js/add-song-modal.js` |
 | 오류 | 파일 선택에 실패했습니다. | `src/js/add-song-modal.js` |
 | 오류 | 파일 정보를 읽지 못했습니다. | `src/js/add-song-modal.js` |
-| 오류 | 곡 추가에 실패했습니다. | `src/js/add-song-modal.js` |
+| 오류 | 곡 추가에 실패했습니다. | `src/js/add-song-modal.js`, `src/js/youtube-search.js` |
 | 오류 | 태그 목록을 불러오지 못했습니다. | `src/js/ui/manager.js` |
 | 오류 | 편집 중인 곡을 찾을 수 없습니다. | `src/js/events/modals.js` |
 | 오류 | AI 정렬 준비 실패: {err} | `src/js/alignment-viewer.js` |
@@ -78,7 +78,8 @@
 | 경고 | 음원을 먼저 불러오세요. | `src/js/alignment-viewer.js` |
 | 경고 | 음원을 먼저 선택하세요. | `src/js/alignment-viewer.js` |
 | 경고 | 이미 대기열에 있거나 처리 중인 곡입니다. | `src/js/audio.js` |
-| 경고 | 이미 등록된 곡입니다. | `src/js/add-song-modal.js` |
+| 경고 | 이미 등록된 곡입니다. | `src/js/add-song-modal.js`, `src/js/youtube-search.js` |
+| 경고 | 검색어를 입력하세요. | `src/js/youtube-search.js` |
 | 경고 | 파형 로드 실패: {err} | `src/js/alignment-viewer.js` |
 | 경고 | HTTPS URL만 사용할 수 있습니다. | `src/js/events/controls/custom-models.js` (notify()) |
 | 경고 | LAN 접속을 껐습니다. 앱을 다시 시작해야 적용됩니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
@@ -115,6 +116,7 @@
 | 성공 | 사전에 등록되었으며 곡 정보에 반영되었습니다. | `src/js/ui/manager.js` |
 | 성공 | 이미 최신 버전을 사용 중입니다. | `src/js/events/controls/settings.js` |
 | 성공 | 정보가 수정되었습니다. | `src/js/events/modals.js` |
+| 성공 | 「{title}」을(를) 추가했습니다. | `src/js/youtube-search.js` |
 | 성공 | 추가되었습니다. | `src/js/add-song-modal.js` |
 | 성공 | 추가되었습니다. (추가 파일 {n}개 포함) | `src/js/add-song-modal.js` |
 | 성공 | 커스텀 모델이 추가되었습니다. | `src/js/events/controls/custom-models.js` (notify()) |
@@ -165,6 +167,10 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 원본 오디오 파일을 찾을 수 없습니다: {} | `src-tauri/src/alignment.rs` |
 | 오류 | 원본이 온라인 곡이며 MR 파일이 없어 분석할 수 없습니다. | `src-tauri/src/key_bpm.rs` |
 | 오류 | 유튜브 오디오 경로를 해소할 수 없습니다. | `src-tauri/src/alignment.rs` |
+| 오류 | 유튜브 검색 시간이 초과되었습니다 ({}초). | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 검색을 시작할 수 없습니다. yt-dlp 설치 상태를 확인하세요. | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 검색에 실패했습니다. | `src-tauri/src/youtube.rs`, `src/js/youtube-search.js` |
+| 오류 | 검색어를 입력하세요. | `src-tauri/src/youtube.rs` |
 | 오류 | 첫 행에 'path'(경로) 열이 필요합니다. | `src-tauri/src/spreadsheet.rs` |
 | 오류 | 파일을 열 수 없습니다: {} | `src-tauri/src/audio_commands.rs` |
 | 오류 | 파일을 찾을 수 없습니다 | `src-tauri/src/audio_commands.rs` |

@@ -5,7 +5,7 @@ use ort::execution_providers::DirectMLExecutionProvider;
 use crate::model_manager::ModelManager;
 use crate::types::{Status, PlaybackStatus, SongMetadata};
 use crate::audio_player::sys_log;
-use crate::youtube::YoutubeManager;
+use crate::youtube::{YoutubeManager, YoutubeSearchResult};
 use ort::ep::ExecutionProvider;
 
 use crate::youtube_url::{cache_key_variants, normalize_cache_key};
@@ -535,6 +535,14 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
             Err(e)
         }
     }
+}
+
+#[tauri::command]
+pub async fn search_youtube(
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<YoutubeSearchResult>, String> {
+    YoutubeManager::search_videos(&query, limit.unwrap_or(10)).await
 }
 
 #[tauri::command]

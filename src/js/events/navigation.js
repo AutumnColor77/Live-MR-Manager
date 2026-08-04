@@ -37,9 +37,9 @@ export function initNavigation() {
 }
 
 export function switchTab(tabId) {
-  // Legacy youtube/local nav removed — keep library as the music home.
-  if (tabId === "youtube" || tabId === "local") {
-    state.sourceFilter = tabId;
+  // Legacy local nav → library with source filter. YouTube is a real search page again.
+  if (tabId === "local") {
+    state.sourceFilter = "local";
     syncSourceFilterChips();
     tabId = "library";
   }
@@ -63,13 +63,16 @@ export function switchTab(tabId) {
   });
 
   const isMusicTab = tabId === "library";
+  const isYoutubeTab = tabId === "youtube";
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
+  if (elements.youtubeControls) elements.youtubeControls.style.display = isYoutubeTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
   updateBroadcastTasksControlVisibility();
 
   if (elements.settingsPage) elements.settingsPage.style.display = tabId === "settings" ? "block" : "none";
   if (elements.tasksPage) elements.tasksPage.style.display = tabId === "tasks" ? "block" : "none";
   if (elements.overlayPage) elements.overlayPage.style.display = tabId === "overlay" ? "block" : "none";
+  if (elements.youtubePage) elements.youtubePage.style.display = isYoutubeTab ? "block" : "none";
 
   if (elements.lyricDrawerTrigger) {
     elements.lyricDrawerTrigger.style.display = isMusicTab ? "flex" : "none";
@@ -94,6 +97,12 @@ export function switchTab(tabId) {
       elements.viewport.setAttribute("data-view-mode", state.viewMode);
     }
     if (isMusicTab) renderLibrary();
+  }
+
+  if (isYoutubeTab) {
+    import('../youtube-search.js').then(({ focusYoutubeSearch }) => {
+      focusYoutubeSearch();
+    });
   }
 
   const alignmentPage = document.getElementById("alignment-page");
@@ -173,6 +182,7 @@ export async function openAlignmentForTrack(path, options = {}) {
 function getTabTitle(tabId) {
   const titles = {
     library: "라이브러리",
+    youtube: "유튜브 검색",
     settings: "설정",
     overlay: "OBS 오버레이",
     tasks: "AI 프로세싱",
@@ -184,6 +194,7 @@ function getTabTitle(tabId) {
 function getTabSubtitle(tabId) {
   const subtitles = {
     library: "라이브러리의 모든 곡을 관리하고 재생합니다. 사이드바의 「노래 추가」로 URL·파일을 등록하세요.",
+    youtube: "제목·아티스트로 유튜브를 검색해 라이브러리에 추가합니다. URL이 있으면 「노래 추가」를 사용하세요.",
     settings: "애플리케이션 설정을 관리합니다.",
     overlay: "방송에 송출될 오버레이의 실시간 미리보기입니다.",
     tasks: "AI 작업 진행 상태를 확인합니다.",

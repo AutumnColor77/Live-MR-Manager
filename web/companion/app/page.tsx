@@ -49,7 +49,7 @@ export default function HomePage() {
             <li>
               <strong>2. 곡 라이브러리 만들기</strong>
               <span>
-                유튜브·로컬 파일을 추가하고, 필요하면 AI로 MR을 분리해 둡니다.
+                유튜브 검색·URL 또는 로컬 파일로 곡을 추가하고, 필요하면 AI로 MR을 분리해 둡니다.
               </span>
             </li>
             <li>
