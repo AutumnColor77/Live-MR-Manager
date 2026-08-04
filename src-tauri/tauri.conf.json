@@ -33,7 +33,13 @@
       }
     }
   },
-  "plugins": {},
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["live-mr-manager"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],

@@ -131,8 +131,10 @@ pub async fn open_app_update_page(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        // One /C string with quoted URL so `?` / `&` survive cmd.exe parsing
+        let cmdline = format!("start \"\" \"{}\"", target.replace('"', ""));
         std::process::Command::new("cmd")
-            .args(["/C", "start", "", &target])
+            .args(["/C", &cmdline])
             .creation_flags(0x08000000)
             .spawn()
             .map_err(|e| e.to_string())?;

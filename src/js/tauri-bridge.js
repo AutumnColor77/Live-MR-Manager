@@ -1,39 +1,57 @@
 /**
  * tauri-bridge.js
- * 
+ *
  * Provides a safe abstraction layer between the frontend and Tauri APIs.
  * When running in a standard browser environment, it provides Mocks to prevent crashes.
+ * When promo demo mode is active, write/playback/AI commands are simulated in-memory.
  */
 
-const isTauri = !!window.__TAURI__;
+const isTauri = typeof window !== "undefined" && !!window.__TAURI__;
 
 if (!isTauri) {
-  console.warn("[Tauri-Bridge] window.__TAURI__ is not defined. Running in Browser/Mock mode.");
+  if (typeof window !== "undefined") {
+    console.warn("[Tauri-Bridge] window.__TAURI__ is not defined. Running in Browser/Mock mode.");
+  }
 }
 
 /**
  * Safe invoke wrapper
  */
 export async function invoke(command, args = {}) {
+  try {
+    const { tryHandleDemoInvoke } = await import("./promo-demo.js");
+    const demo = await tryHandleDemoInvoke(command, args);
+    if (demo.handled) return demo.value;
+  } catch (err) {
+    // Re-throw intentional demo errors (e.g. ALREADY_PROCESSING)
+    if (err === "ALREADY_PROCESSING") throw err;
+    console.warn("[Tauri-Bridge] promo demo invoke failed, falling through:", err);
+  }
+
   if (isTauri) {
     return await window.__TAURI__.core.invoke(command, args);
   }
-  
+
   console.log(`[Mock-Invoke] ${command}`, args);
-  
+
   // Provide mock responses for common initialization calls
   switch (command) {
-    case 'load_library':
+    case "load_library":
       return [];
-    case 'check_model_ready':
+    case "check_model_ready":
       return false;
-    case 'get_gpu_recommendation':
+    case "get_gpu_recommendation":
       return { recommendation: "Browser Mock", gpu: "None" };
-    case 'set_master_volume':
-    case 'set_volume':
+    case "set_master_volume":
+    case "set_volume":
       return;
-    case 'analyze_key_bpm':
-      return { key: 'C', bpm: 120 };
+    case "get_songbook_auth":
+      return { loggedIn: false, token: null, user: null };
+    case "clear_songbook_auth":
+    case "set_songbook_user":
+      return;
+    case "analyze_key_bpm":
+      return { key: "C", bpm: 120 };
     default:
       return null;
   }
@@ -51,15 +69,36 @@ export async function getAppVersion() {
 }
 
 /**
- * Safe event listener wrapper
+ * Safe event listener wrapper.
+ * Also wires promo-demo local events so simulated progress reaches real handlers.
  */
 export async function listen(event, handler) {
-  if (isTauri) {
-    return await window.__TAURI__.event.listen(event, handler);
+  let unlistenDemo = () => {};
+  let realEventBlocked = () => false;
+  try {
+    const promo = await import("./promo-demo.js");
+    unlistenDemo = promo.subscribeDemoEvent(event, handler);
+    realEventBlocked = () => promo.isDemoOwnedEvent(event);
+  } catch (_) {
+    /* ignore */
   }
-  
+
+  if (isTauri) {
+    const unlistenTauri = await window.__TAURI__.event.listen(event, (payload) => {
+      if (realEventBlocked()) return;
+      handler(payload);
+    });
+    return () => {
+      try { unlistenDemo(); } catch (_) {}
+      try { unlistenTauri(); } catch (_) {}
+    };
+  }
+
   console.log(`[Mock-Listen] Subscribed to: ${event}`);
-  return () => console.log(`[Mock-Unlisten] ${event}`);
+  return () => {
+    try { unlistenDemo(); } catch (_) {}
+    console.log(`[Mock-Unlisten] ${event}`);
+  };
 }
 
 /**

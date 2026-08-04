@@ -12,6 +12,18 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://live-mr-songbook.boohun2771.workers.dev/*" },
+        { "url": "http://localhost:5173/*" },
+        { "url": "https://accounts.google.com/*" },
+        { "url": "https://github.com/*" },
+        { "url": "https://lmrm.vercel.app/*" },
+        { "url": "https://discord.gg/*" }
+      ]
+    },
+    "deep-link:default",
     "window-state:default"
   ]
 }

@@ -19,6 +19,33 @@ export const YTDLP_SOURCE_URL = 'https://github.com/yt-dlp/yt-dlp';
 /** Discord 초대 링크 — [LMRM] Live MR Manager */
 export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';
 
+/** Live MR Songbook (Google/Naver 로그인 · 채널 운영) */
+export const SONGBOOK_PROD = 'https://live-mr-songbook.boohun2771.workers.dev';
+/** 기본: 로컬 Songbook. 프로덕션은 localStorage.setItem('songbook_base', SONGBOOK_PROD) */
+export const SONGBOOK_BASE = 'http://localhost:5173';
+export function songbookBase() {
+  try {
+    const override = localStorage.getItem('songbook_base');
+    if (override) return override.replace(/\/$/, '');
+  } catch {
+    /* ignore */
+  }
+  return SONGBOOK_BASE;
+}
+export function songbookOAuthLoginUrl(provider = 'google', next = '/c/demo/admin') {
+  const q = new URLSearchParams({ next });
+  return `${songbookBase()}/api/auth/${provider}?${q}`;
+}
+export function songbookGoogleLoginUrl(next = '/c/demo/admin') {
+  return songbookOAuthLoginUrl('google', next);
+}
+export function songbookNaverLoginUrl(next = '/c/demo/admin') {
+  return songbookOAuthLoginUrl('naver', next);
+}
+export function songbookDemoAdminUrl() {
+  return `${songbookBase()}/c/demo/admin`;
+}
+
 const issuesBase = `https://github.com/${GITHUB_REPO}/issues`;
 
 export const GITHUB_ISSUES_BUG_URL = `${issuesBase}/new?template=bug_report.yml`;

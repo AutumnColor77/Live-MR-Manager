@@ -27,6 +27,7 @@ mod rescue;
 mod overlay_server;
 mod cache_settings;
 mod updater;
+mod songbook_auth;
 
 fn load_env_files() {
     let manifest_env = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env");
@@ -48,14 +49,16 @@ pub fn run() {
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             focus_main_window(app);
+            crate::songbook_auth::handle_deep_link_urls(app, &argv);
         }));
     }
 
     builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 *crate::state::MAIN_WINDOW.lock() = Some(window);
@@ -68,16 +71,33 @@ pub fn run() {
             crate::audio_player::sys_log("[App] Startup complete");
             let _ = &*crate::state::DB;
             crate::mr_cache::load_persisted_format();
-            
+
             crate::audio_commands::start_playback_progress_loop(app.handle().clone());
-            
-            // Start the OBS Overlay WebSocket server. LAN exposure is opt-in
-            // (see cache_settings::set_overlay_lan_setting) and only applied
-            // at startup, so read it once here.
+
             crate::overlay_server::init(app.handle().clone());
             tauri::async_runtime::spawn(crate::overlay_server::start_overlay_server(overlay_allow_lan));
 
             crate::updater::start_update_checker(app.handle().clone());
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+                if let Err(err) = app.deep_link().register_all() {
+                    crate::audio_player::sys_log(&format!(
+                        "[SongbookAuth] deep-link register_all: {err}"
+                    ));
+                }
+                app.deep_link().on_open_url(move |event| {
+                    let urls: Vec<String> =
+                        event.urls().into_iter().map(|u| u.to_string()).collect();
+                    crate::songbook_auth::handle_deep_link_urls(&handle, &urls);
+                });
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    let urls: Vec<String> = urls.into_iter().map(|u| u.to_string()).collect();
+                    crate::songbook_auth::handle_deep_link_urls(app.handle(), &urls);
+                }
+            }
 
             tauri::async_runtime::spawn(async {
                 if let Some(path) = crate::ffmpeg_tools::ensure_managed_ffmpeg().await {
@@ -93,11 +113,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             audio_commands::get_model_settings, audio_commands::update_model_settings,
             audio_commands::play_track, audio_commands::toggle_playback, audio_commands::stop_playback, audio_commands::seek_to, audio_commands::set_pitch, audio_commands::set_tempo, audio_commands::set_volume, audio_commands::set_master_volume,
-            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature, 
+            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature,
             model_commands::check_mr_separated,
             model_commands::get_separation_info,
-            model_commands::delete_mr, 
-            model_commands::start_mr_separation, 
+            model_commands::delete_mr,
+            model_commands::start_mr_separation,
             model_commands::youtube_metadata_fetcher,
             model_commands::search_youtube,
             model_commands::list_model_presets,
@@ -105,22 +125,22 @@ pub fn run() {
             model_commands::list_custom_models,
             model_commands::add_custom_model,
             model_commands::remove_custom_model,
-            library::get_audio_metadata, audio_commands::get_playback_state, 
-            model_commands::check_ai_runtime, model_commands::check_model_ready, model_commands::download_ai_model, 
-            library::save_library, library::load_library, library::get_songs, library::get_categories, library::get_genres, 
-            library::get_track_count, 
-            model_commands::cancel_separation, 
+            library::get_audio_metadata, audio_commands::get_playback_state,
+            model_commands::check_ai_runtime, model_commands::check_model_ready, model_commands::download_ai_model,
+            library::save_library, library::load_library, library::get_songs, library::get_categories, library::get_genres,
+            library::get_track_count,
+            model_commands::cancel_separation,
             model_commands::set_broadcast_mode,
             model_commands::get_mr_cache_format,
             model_commands::set_mr_cache_format,
-            system::get_audio_devices, 
-            system::open_cache_folder, 
-            model_commands::delete_ai_model, 
-            model_commands::get_gpu_recommendation, 
+            system::get_audio_devices,
+            system::open_cache_folder,
+            model_commands::delete_ai_model,
+            model_commands::get_gpu_recommendation,
             library::add_category, library::delete_category,
-            library::delete_song, library::map_track_to_categories, 
-            system::get_app_paths, 
-            system::export_backup, 
+            library::delete_song, library::map_track_to_categories,
+            system::get_app_paths,
+            system::export_backup,
             system::import_backup,
             system::export_library_spreadsheet,
             system::import_library_spreadsheet,
@@ -128,7 +148,7 @@ pub fn run() {
             rescue::run_cache_rescue,
             rescue::run_local_rescue,
             model_commands::get_active_separations,
-            audio_commands::get_ai_engine_status, 
+            audio_commands::get_ai_engine_status,
             library::update_song_metadata,
             key_bpm::analyze_key_bpm,
             audio_commands::get_alignment_sync_state,
@@ -156,7 +176,10 @@ pub fn run() {
             cache_settings::set_mr_cache_path,
             cache_settings::pick_mr_cache_folder,
             cache_settings::get_overlay_lan_setting,
-            cache_settings::set_overlay_lan_setting
+            cache_settings::set_overlay_lan_setting,
+            songbook_auth::get_songbook_auth,
+            songbook_auth::set_songbook_user,
+            songbook_auth::clear_songbook_auth
         ])
 
         .run(tauri::generate_context!())
