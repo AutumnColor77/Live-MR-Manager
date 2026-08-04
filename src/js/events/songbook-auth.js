@@ -2,10 +2,11 @@
  * Songbook 로그인 — 단일 버튼 + 프로바이더 메뉴, OAuth 후 deep-link로 앱 세션 수신
  */
 import {
+  applySongbookChannels,
   songbookBase,
-  songbookGoogleLoginUrl,
-  songbookNaverLoginUrl,
+  songbookDesktopConnectUrl,
 } from '../companion-links.js';
+import { setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
 import { invoke, listen } from '../tauri-bridge.js';
 import { showNotification } from '../utils.js';
 
@@ -68,6 +69,7 @@ function renderAuthButton(state) {
         avatar.hidden = true;
       }
     }
+    setSongbookSyncVisible(true);
   } else {
     if (label) label.textContent = '로그인';
     btn.title = 'Songbook 로그인';
@@ -77,6 +79,7 @@ function renderAuthButton(state) {
       avatar.alt = '';
       avatar.hidden = true;
     }
+    setSongbookSyncVisible(false);
   }
 }
 
@@ -89,6 +92,12 @@ async function refreshProfile(token) {
   if (!res.ok) throw new Error(`me failed (${res.status})`);
   const data = await res.json();
   if (!data.user) throw new Error('no user');
+  const primary = applySongbookChannels(
+    Array.isArray(data.channels)
+      ? data.channels
+      : [{ slug: 'demo', name: 'Demo', role: 'admin' }],
+  );
+  updateSongbookChannelLabel(primary);
   await invoke('set_songbook_user', {
     user: {
       id: data.user.id,
@@ -97,7 +106,7 @@ async function refreshProfile(token) {
       picture: data.user.picture,
     },
   });
-  return data.user;
+  return { ...data.user, channels: data.channels || [], primaryChannel: primary };
 }
 
 function normalizeAuthPayload(payload) {
@@ -115,38 +124,34 @@ async function syncAuthUi(payload) {
   if (!state) {
     state = normalizeAuthPayload(await invoke('get_songbook_auth'));
   }
-  if (state?.loggedIn && state.token && (!state.user || !state.user.picture)) {
+  if (state?.loggedIn && state.token) {
     try {
       const user = await refreshProfile(state.token);
       state = { ...state, user };
     } catch (err) {
       console.warn('[SongbookAuth] profile refresh failed (keeping session)', err);
+      updateSongbookChannelLabel(null);
     }
+  } else {
+    updateSongbookChannelLabel(null);
   }
   renderAuthButton(state);
   return state;
 }
 
-function desktopLoginUrl(builder) {
-  const u = new URL(builder('/c/demo/admin'));
-  u.searchParams.set('client', 'desktop');
-  return u.toString();
+function desktopLoginUrl(provider) {
+  return songbookDesktopConnectUrl(provider, '/me');
 }
 
 async function startProviderLogin(provider) {
-  const builder = provider === 'naver' ? songbookNaverLoginUrl : songbookGoogleLoginUrl;
-  const label = provider === 'naver' ? '네이버' : 'Google';
   const btn = document.getElementById('songbook-login-btn');
-  const desktopUrl = desktopLoginUrl(builder);
+  const desktopUrl = desktopLoginUrl(provider);
   console.log('[SongbookAuth] opening', desktopUrl);
   if (btn) btn.disabled = true;
   setMenuOpen(false);
   try {
     await openExternalUrl(desktopUrl);
-    showNotification(
-      `브라우저에서 ${label} 로그인 후 프로필 설정·앱 열기를 완료해 주세요.`,
-      'info',
-    );
+    showNotification('브라우저에서 연결 중…', 'info');
     const started = Date.now();
     const poll = window.setInterval(async () => {
       if (Date.now() - started > 120_000) {
@@ -198,6 +203,7 @@ export function initSongbookAuth() {
     if (current?.loggedIn) {
       await invoke('clear_songbook_auth');
       renderAuthButton({ loggedIn: false });
+      setSongbookSyncVisible(false);
       setMenuOpen(false);
       showNotification('Songbook 로그아웃되었습니다.', 'info');
       return;

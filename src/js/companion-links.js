@@ -32,18 +32,90 @@ export function songbookBase() {
   }
   return SONGBOOK_BASE;
 }
-export function songbookOAuthLoginUrl(provider = 'google', next = '/c/demo/admin') {
+export function songbookOAuthLoginUrl(provider = 'google', next = '/me') {
   const q = new URLSearchParams({ next });
   return `${songbookBase()}/api/auth/${provider}?${q}`;
 }
-export function songbookGoogleLoginUrl(next = '/c/demo/admin') {
+
+/** 앱 로그인 진입점 — 브라우저에 Songbook 세션이 있으면 OAuth 없이 바로 앱으로 핸드오프 */
+export function songbookDesktopConnectUrl(provider = 'google', next = '/me') {
+  const q = new URLSearchParams({ provider, next, client: 'desktop' });
+  return `${songbookBase()}/api/auth/desktop-connect?${q}`;
+}
+
+export function songbookGoogleLoginUrl(next = '/me') {
   return songbookOAuthLoginUrl('google', next);
 }
-export function songbookNaverLoginUrl(next = '/c/demo/admin') {
+export function songbookNaverLoginUrl(next = '/me') {
   return songbookOAuthLoginUrl('naver', next);
 }
 export function songbookDemoAdminUrl() {
-  return `${songbookBase()}/c/demo/admin`;
+  return `${songbookBase()}/c/${songbookChannelSlug()}/admin`;
+}
+
+/** 로그인 계정에 연결된 채널 중 우선 채널 (비-demo 우선) */
+export function pickPrimaryChannel(channels) {
+  if (!Array.isArray(channels) || channels.length === 0) return null;
+  return (
+    channels.find((c) => c?.slug && c.slug !== 'demo') ||
+    channels.find((c) => c?.slug === 'demo') ||
+    channels[0] ||
+    null
+  );
+}
+
+export function getSongbookChannels() {
+  try {
+    const raw = localStorage.getItem('songbook_channels');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** /api/auth/me 의 channels 반영 → 기본 slug 자동 설정 */
+export function applySongbookChannels(channels) {
+  const list = Array.isArray(channels)
+    ? channels.filter((c) => c && typeof c.slug === 'string')
+    : [];
+  try {
+    localStorage.setItem('songbook_channels', JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+  const primary = pickPrimaryChannel(list);
+  if (primary?.slug) setSongbookChannelSlug(primary.slug);
+  return primary;
+}
+
+/** 동기화 대상 채널 slug (로그인 후 /me 채널에서 자동 설정) */
+export function songbookChannelSlug() {
+  try {
+    const override = localStorage.getItem('songbook_channel');
+    if (override) return override.trim().toLowerCase().replace(/\/$/, '') || 'demo';
+  } catch {
+    /* ignore */
+  }
+  return 'demo';
+}
+
+export function setSongbookChannelSlug(slug) {
+  const next = String(slug || 'demo')
+    .trim()
+    .toLowerCase()
+    .replace(/\/$/, '');
+  try {
+    localStorage.setItem('songbook_channel', next || 'demo');
+  } catch {
+    /* ignore */
+  }
+  return next || 'demo';
+}
+
+export function songbookAdminSongsUrl(slug = songbookChannelSlug()) {
+  return `${songbookBase()}/api/c/${encodeURIComponent(slug)}/admin/songs`;
 }
 
 const issuesBase = `https://github.com/${GITHUB_REPO}/issues`;
