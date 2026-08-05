@@ -91,7 +91,6 @@ const LIBRARY_H_PADDING = 60;
 
 function computeGridColumns(containerWidth) {
   const isDrawerOpen = document.body.classList.contains('drawer-open');
-  // 30px left + (10px right if drawer open, else 30px right)
   const currentPadding = isDrawerOpen ? 40 : LIBRARY_H_PADDING;
   const inner = Math.max(0, containerWidth - currentPadding);
   const slot = CARD_WIDTH + GRID_GAP;

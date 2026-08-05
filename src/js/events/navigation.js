@@ -64,6 +64,8 @@ export function switchTab(tabId) {
 
   const isMusicTab = tabId === "library";
   const isYoutubeTab = tabId === "youtube";
+  const isRequestsTab = tabId === "requests";
+  const showLyricDrawer = isMusicTab || isRequestsTab;
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.youtubeControls) elements.youtubeControls.style.display = isYoutubeTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
@@ -73,13 +75,28 @@ export function switchTab(tabId) {
   if (elements.tasksPage) elements.tasksPage.style.display = tabId === "tasks" ? "block" : "none";
   if (elements.overlayPage) elements.overlayPage.style.display = tabId === "overlay" ? "block" : "none";
   if (elements.youtubePage) elements.youtubePage.style.display = isYoutubeTab ? "block" : "none";
+  if (elements.requestsPage) elements.requestsPage.style.display = isRequestsTab ? "block" : "none";
+
+  if (isRequestsTab) {
+    import('../songbook-requests.js').then(({ onRequestsTabShown, initSongbookRequestsPage }) => {
+      initSongbookRequestsPage();
+      onRequestsTabShown();
+    });
+  } else {
+    import('../songbook-requests.js').then(({ onRequestsTabHidden }) => {
+      onRequestsTabHidden();
+    }).catch(() => {});
+  }
 
   if (elements.lyricDrawerTrigger) {
-    elements.lyricDrawerTrigger.style.display = isMusicTab ? "flex" : "none";
+    elements.lyricDrawerTrigger.style.display = showLyricDrawer ? "flex" : "none";
   }
-  if (!isMusicTab && document.body.classList.contains('drawer-open')) {
+  if (!showLyricDrawer && document.body.classList.contains('drawer-open')) {
     document.body.classList.remove('drawer-open');
   }
+  import('../lyric-drawer.js').then(({ refreshLyricDrawerLayout }) => {
+    refreshLyricDrawerLayout();
+  }).catch(() => {});
 
   if (elements.songGrid) {
     const isFlexMode = (state.viewMode === "list");
@@ -183,6 +200,7 @@ function getTabTitle(tabId) {
   const titles = {
     library: "라이브러리",
     youtube: "유튜브 검색",
+    requests: "신청목록",
     settings: "설정",
     overlay: "OBS 오버레이",
     tasks: "AI 프로세싱",
@@ -195,6 +213,7 @@ function getTabSubtitle(tabId) {
   const subtitles = {
     library: "라이브러리의 모든 곡을 관리하고 재생합니다. 사이드바의 「노래 추가」로 URL·파일을 등록하세요.",
     youtube: "제목·아티스트로 유튜브를 검색해 라이브러리에 추가합니다. URL이 있으면 「노래 추가」를 사용하세요.",
+    requests: "시청자 신청 대기열을 운영합니다.",
     settings: "애플리케이션 설정을 관리합니다.",
     overlay: "방송에 송출될 오버레이의 실시간 미리보기입니다.",
     tasks: "AI 작업 진행 상태를 확인합니다.",

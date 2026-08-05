@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Live MR Queue Overlay</title>
+  <script>
+    if (/(?:^|[?&])preview=true(?:&|$)/.test(location.search)) {
+      document.documentElement.setAttribute('data-preview', 'true');
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+
+    :root {
+      --accent-color: #3b82f6;
+      --overlay-scale: 1;
+      --overlay-font: 'Inter', 'Noto Sans KR', sans-serif;
+      --overlay-rounding: 20px;
+      --queue-font-size: 16px;
+      --glass-bg: rgba(15, 15, 20, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.15);
+      --text-main: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.6);
+      --thumb-fallback: #222;
+      --enter-gap-x: 120px;
+      --enter-gap-y: 80px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: transparent;
+      color: var(--text-main);
+      font-family: var(--overlay-font);
+      overflow: hidden;
+      width: 1500px;
+      height: 1000px;
+      position: relative;
+    }
+
+    html[data-preview],
+    html[data-preview] body {
+      width: 1500px !important;
+      height: 1000px !important;
+    }
+    html[data-preview] body {
+      /* OBS와 동일: absolute 중앙 + dir-* 등장 애니 */
+      display: block;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html[data-preview] .overlay-container,
+    html[data-preview] .overlay-container.dir-left,
+    html[data-preview] .overlay-container.dir-right,
+    html[data-preview] .overlay-container.dir-top,
+    html[data-preview] .overlay-container.dir-bottom {
+      position: absolute !important;
+      left: 50% !important;
+      top: 50% !important;
+      right: auto !important;
+      width: min(400px, calc(100% - 64px));
+      max-width: min(400px, calc(100% - 64px));
+    }
+
+    .overlay-container {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: transparent;
+      border: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      padding: 0;
+      border-radius: var(--overlay-rounding);
+      box-shadow: 0 15px 50px rgba(0, 0, 0, 0.6);
+      width: min(400px, calc(100vw - 32px));
+      max-width: min(400px, calc(100vw - 32px));
+      min-width: 0;
+      transition:
+        transform 0.62s cubic-bezier(0.18, 1.32, 0.38, 1),
+        opacity 0.32s ease;
+      will-change: transform, opacity;
+      opacity: 0;
+    }
+
+    .overlay-glass {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      padding: 16px 24px;
+      border-radius: inherit;
+      width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+
+    /* 스테이지(1500×1000) 정중앙 기준 등장 — 늘어남 방향과 무관하게 위치는 동일 */
+    .overlay-container.dir-right {
+      transform-origin: center center;
+      transform: translate(calc(-50% + var(--enter-gap-x)), -50%) scale(0.93);
+    }
+    .overlay-container.dir-right.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+    }
+
+    .overlay-container.dir-left {
+      transform-origin: center center;
+      transform: translate(calc(-50% - var(--enter-gap-x)), -50%) scale(0.93);
+    }
+    .overlay-container.dir-left.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+    }
+
+    .overlay-container.dir-top {
+      transform-origin: center center;
+      transform: translate(-50%, calc(-50% - var(--enter-gap-y))) scale(0.93);
+    }
+    .overlay-container.dir-top.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+    }
+
+    .overlay-container.dir-bottom {
+      transform-origin: center center;
+      transform: translate(-50%, calc(-50% + var(--enter-gap-y))) scale(0.93);
+    }
+    .overlay-container.dir-bottom.visible {
+      transform: translate(-50%, -50%) scale(var(--overlay-scale));
+      opacity: 1;
+    }
+
+    /* 늘어나는 방향: 레이아웃(UP NEXT 위/아래)만 바꾸고, 카드 앵커는 항상 중앙 */
+    .overlay-container.expand-down,
+    .overlay-container.expand-up,
+    .overlay-container.expand-both {
+      transform-origin: center center;
+    }
+    .overlay-container.expand-up .overlay-glass {
+      flex-direction: column-reverse;
+    }
+    .overlay-container.expand-up .queue-block {
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    .overlay-container.expand-up .queue-divider {
+      margin: 12px 0 14px;
+    }
+    .overlay-container.expand-up .queue-section-label {
+      margin-bottom: 0;
+      margin-top: 10px;
+    }
+
+    .now-playing {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      min-width: 0;
+    }
+
+    .thumbnail-wrapper {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      flex-shrink: 0;
+    }
+
+    .thumbnail {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      object-fit: cover;
+      background: var(--thumb-fallback);
+    }
+
+    .now-playing-info {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .label {
+      font-size: 11px;
+      font-weight: 900;
+      color: var(--accent-color);
+      letter-spacing: 2px;
+      margin-bottom: 5px;
+    }
+
+    .now-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--text-main);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .now-artist {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-muted);
+      line-height: 1.2;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .queue-divider {
+      height: 1px;
+      width: 100%;
+      background: var(--glass-border);
+      margin: 14px 0 12px;
+    }
+
+    .queue-section-label {
+      font-size: 11px;
+      font-weight: 900;
+      color: var(--accent-color);
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .queue-item {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .queue-index {
+      flex-shrink: 0;
+      font-size: calc(var(--queue-font-size) * 0.75);
+      font-weight: 800;
+      color: var(--accent-color);
+      opacity: 0.85;
+      min-width: 1.1em;
+    }
+
+    .queue-item-body {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .queue-title {
+      font-size: var(--queue-font-size);
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .queue-artist {
+      font-size: calc(var(--queue-font-size) * 0.78);
+      font-weight: 600;
+      color: var(--text-muted);
+      line-height: 1.25;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .queue-empty {
+      font-size: calc(var(--queue-font-size) * 0.9);
+      font-weight: 600;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-container dir-left expand-both" id="container">
+    <div class="overlay-glass">
+      <div class="now-playing-block">
+        <div class="now-playing">
+          <div class="thumbnail-wrapper">
+            <img src="" alt="" class="thumbnail" id="thumb">
+          </div>
+          <div class="now-playing-info">
+            <div class="label">NOW PLAYING</div>
+            <div class="now-title" id="now-title">Title</div>
+            <div class="now-artist" id="now-artist">Artist</div>
+          </div>
+        </div>
+      </div>
+      <div class="queue-block">
+        <div class="queue-divider" aria-hidden="true"></div>
+        <div class="queue-section-label">UP NEXT</div>
+        <div id="queue-lines" class="queue-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/overlay/shared.js"></script>
+  <script>
+    const container = document.getElementById('container');
+    const queueLines = document.getElementById('queue-lines');
+    const thumb = document.getElementById('thumb');
+    const nowTitle = document.getElementById('now-title');
+    const nowArtist = document.getElementById('now-artist');
+    const { hexToRgb, connectWS, applyPreviewFitScale, bindPreviewFit } = window.OverlayShared;
+    const isPreviewMode = window.location.search.includes('preview=true');
+    const DEFAULT_THUMB_URL = `${window.location.origin}/assets/images/app-icon.png`;
+    let lastUserScale = 1;
+    let lastAnimDirection = '';
+    let pendingAnimReplay = null;
+
+    const PREVIEW_SAMPLES = [
+      { title: '다음 신청곡', artist: '아티스트' },
+      { title: '그 다음 곡', artist: '아티스트' },
+      { title: '세 번째 곡', artist: '아티스트' },
+    ];
+
+    function escapeText(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function replayEntranceAnimation() {
+      if (pendingAnimReplay) {
+        clearTimeout(pendingAnimReplay);
+        pendingAnimReplay = null;
+      }
+      container.classList.remove('visible');
+      void container.offsetWidth;
+      pendingAnimReplay = setTimeout(() => {
+        container.classList.add('visible');
+        pendingAnimReplay = null;
+      }, 40);
+    }
+
+    function applyStyle(style) {
+      if (!style) return;
+      const scale = Number(style.scale) || 1;
+      const font = style.font || 'Inter';
+      const rounding = style.rounding !== undefined ? style.rounding : 20;
+      const color = String(style.color || '3b82f6').replace('#', '');
+      const textColor = String(style.text_color || style.textColor || 'ffffff').replace('#', '');
+      const bgColor = String(style.bg_color || style.bgColor || '0f0f14').replace('#', '');
+      const bgOpacity = style.bg_opacity ?? style.bgOpacity ?? 0.85;
+      const fontSize = Number(style.font_size ?? style.fontSize) || 16;
+      const direction = style.animation_direction || style.animationDirection || 'left';
+      const expandRaw = style.queue_expand_direction || style.queueExpandDirection || 'both';
+      const expand = (expandRaw === 'up' || expandRaw === 'both' || expandRaw === 'down')
+        ? expandRaw
+        : 'both';
+      const directionChanged = !!lastAnimDirection && lastAnimDirection !== direction;
+      lastAnimDirection = direction;
+
+      lastUserScale = scale;
+      if (isPreviewMode) {
+        applyPreviewFitScale(container, lastUserScale);
+      } else {
+        document.documentElement.style.setProperty('--overlay-scale', String(scale));
+      }
+      document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
+      document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
+      document.documentElement.style.setProperty('--queue-font-size', `${fontSize}px`);
+      document.documentElement.style.setProperty('--accent-color', `#${color}`);
+      document.documentElement.style.setProperty('--text-main', `#${textColor}`);
+      document.documentElement.style.setProperty('--text-muted', `rgba(${hexToRgb(textColor)}, 0.6)`);
+      document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
+      document.body.style.fontFamily = `"${font}", 'Noto Sans KR', sans-serif`;
+
+      container.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
+      container.classList.add(`dir-${direction}`);
+      container.classList.remove('expand-up', 'expand-both', 'expand-down');
+      container.classList.add(`expand-${expand}`);
+
+      if (directionChanged && (container.classList.contains('visible') || isPreviewMode)) {
+        replayEntranceAnimation();
+      }
+    }
+
+    function renderNowPlaying(data, usePreviewSamples) {
+      const title = usePreviewSamples
+        ? (String(data?.title || '').trim() || '현재 곡 제목')
+        : (String(data?.title || '').trim() || 'Ready');
+      const artist = usePreviewSamples
+        ? (String(data?.artist || '').trim() || '아티스트')
+        : (String(data?.artist || '').trim() || '');
+      const hasThumb = !!(data?.thumbnail && String(data.thumbnail).length > 20);
+
+      nowTitle.textContent = title;
+      nowArtist.textContent = artist;
+      thumb.src = hasThumb ? data.thumbnail : DEFAULT_THUMB_URL;
+    }
+
+    function renderLines(items) {
+      if (!items.length) {
+        queueLines.innerHTML = '<div class="queue-empty">대기 중인 곡이 없습니다.</div>';
+        return;
+      }
+      queueLines.innerHTML = items.slice(0, 3).map((item, index) => {
+        const t = String(item?.title || '').trim() || '제목 없음';
+        const a = String(item?.artist || '').trim();
+        const artistHtml = a
+          ? `<div class="queue-artist">${escapeText(a)}</div>`
+          : '';
+        return `
+          <div class="queue-item">
+            <span class="queue-index">${index + 1}</span>
+            <div class="queue-item-body">
+              <div class="queue-title">${escapeText(t)}</div>
+              ${artistHtml}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function update(data) {
+      if (!data) return;
+      applyStyle(data.queue_style || data.queueStyle || {});
+
+      const show = data.show_queue !== false && data.showQueue !== false;
+      const playing = data.is_playing === true || data.isPlaying === true;
+      const items = Array.isArray(data.queue_up_next)
+        ? data.queue_up_next
+        : (Array.isArray(data.queueUpNext) ? data.queueUpNext : []);
+
+      // 미리보기에서는 항상 샘플/현재 상태로 표시해 등장 애니·설정을 바로 확인
+      const visible = isPreviewMode || (show && (playing || items.length > 0));
+      const usePreviewSamples = isPreviewMode && items.length === 0;
+
+      if (!visible) {
+        container.classList.remove('visible');
+        queueLines.innerHTML = '';
+        return;
+      }
+
+      renderNowPlaying(data, usePreviewSamples);
+      renderLines(usePreviewSamples ? PREVIEW_SAMPLES : items);
+
+      if (!container.classList.contains('visible') && !pendingAnimReplay) {
+        requestAnimationFrame(() => container.classList.add('visible'));
+      } else if (!pendingAnimReplay) {
+        container.classList.add('visible');
+      }
+    }
+
+    if (isPreviewMode) {
+      document.documentElement.setAttribute('data-preview', 'true');
+      bindPreviewFit(container, () => lastUserScale);
+      update({
+        show_queue: true,
+        is_playing: true,
+        title: '현재 곡 제목',
+        artist: '아티스트',
+        queue_up_next: [],
+      });
+    }
+
+    connectWS(update);
+
+    if (window.__TAURI__) {
+      window.__TAURI__.event.listen('overlay-state-update', (event) => {
+        update(event.payload);
+      });
+      window.__TAURI__.core.invoke('get_overlay_state').then(update).catch(() => {});
+    }
+  </script>
+</body>
+</html>

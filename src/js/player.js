@@ -182,7 +182,8 @@ export async function handlePlaybackToggle() {
   }
 }
 
-export async function selectTrack(index) {
+export async function selectTrack(index, options = {}) {
+  const playNow = options.playNow !== false;
   // Increment sequence for every new request
   const mySequence = ++state.playbackSequence;
 
@@ -204,11 +205,13 @@ export async function selectTrack(index) {
   if (state.currentTrack && state.currentTrack.path === song.path) {
     if (state.isLoading) state.isLoading = false;
     // Always toggle (play/pause) if clicking the already current track
-    handlePlaybackToggle();
+    if (playNow) {
+      handlePlaybackToggle();
+    }
     return;
   }
 
-  console.log(`[UI] Selecting track: ${song.title}`);
+  console.log(`[UI] Selecting track: ${song.title}${playNow ? '' : ' (paused)'}`);
 
   // CSV 등으로 최소 정보만 등록된 곡 — 재생과 병렬로 메타데이터 보강
   enrichSongMetadataIfNeeded(song);
@@ -217,7 +220,9 @@ export async function selectTrack(index) {
   state.selectedTrackIndex = index;
 
   // Update State
-  song.playCount = (song.playCount || 0) + 1;
+  if (playNow) {
+    song.playCount = (song.playCount || 0) + 1;
+  }
   state.currentTrack = song;
   state.isPlaying = false;
   state.isLoading = true;
@@ -315,18 +320,18 @@ export async function selectTrack(index) {
     await setVolume(v);
 
     await Promise.race([
-      apiPlayTrack(song.path, durationHintMs > 0 ? durationHintMs : state.trackDurationMs),
+      apiPlayTrack(song.path, durationHintMs > 0 ? durationHintMs : state.trackDurationMs, playNow),
       timeoutPromise
     ]);
 
-    state.isPlaying = true;
-    console.log("[UI] Playback started successfully.");
+    state.isPlaying = playNow;
+    console.log(playNow ? "[UI] Playback started successfully." : "[UI] Track loaded paused.");
 
     // 인트로 자동 건너뛰기: 이 곡의 LRC에 등록된 "보컬 시작" 마커가 있으면
     // 재생 시작 직후 그 지점(또는 그 앞의 전주 시작)으로 넘어간다. 재생을
     // 막지 않도록 완전히 비동기로 처리하고, 그 사이 다른 곡으로 넘어갔으면
     // (playbackSequence 변경) 조용히 무시.
-    if (state.autoSkipIntro) {
+    if (playNow && state.autoSkipIntro) {
       getIntroSkipTarget(song.path).then((target) => {
         if (mySequence !== state.playbackSequence) return;
         if (typeof target === 'number' && target > 1.5) {
@@ -345,16 +350,16 @@ export async function selectTrack(index) {
       title: song.title,
       artist: song.artist,
       thumbnail: song.thumbnail,
-      isPlaying: true
+      isPlaying: playNow
     });
 
-    state.lastRafTime = performance.now();
-    if (!state.rafId) {
-      state.rafId = requestAnimationFrame(updateProgressBar);
-    }
-
-    saveLibrary(state.songLibrary);
-  } catch (err) {
+    if (playNow) {
+      state.lastRafTime = performance.now();
+      if (!state.rafId) {
+        state.rafId = requestAnimationFrame(updateProgressBar);
+      }
+      saveLibrary(state.songLibrary);
+    }  } catch (err) {
     console.error("Playback failed:", err);
     state.isPlaying = false;
     const detail = typeof err === "string"
@@ -411,7 +416,10 @@ export function updateProgressBar(timestamp) {
   }
 }
 
-export function handleNextTrack() {
+export async function handleNextTrack() {
+  const { navigatePlaybackQueue } = await import('./playback-queue.js');
+  if (await navigatePlaybackQueue('next')) return;
+
   if (state.filteredTracks.length === 0) return;
 
   let currentIndex = state.filteredTracks.findIndex(s => s.path === (state.currentTrack?.path));
@@ -424,6 +432,11 @@ export function handleNextTrack() {
 }
 
 export async function handlePrevTrack() {
+  const { navigatePlaybackQueue } = await import('./playback-queue.js');
+  if (await navigatePlaybackQueue('prev')) return;
+
+  if (state.filteredTracks.length === 0) return;
+
   let currentIndex = state.filteredTracks.findIndex(s => s.path === (state.currentTrack?.path));
   let prevIndex = (currentIndex - 1 + state.filteredTracks.length) % state.filteredTracks.length;
 

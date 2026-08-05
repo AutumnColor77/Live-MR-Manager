@@ -168,6 +168,11 @@ async function syncAuthUi(payload) {
     updateSongbookChannelLabel(null);
   }
   renderAuthButton(state);
+  const { onSongbookAuthChanged } = await import('../songbook-request-poller.js');
+  onSongbookAuthChanged(Boolean(state?.loggedIn));
+  if (state?.loggedIn) {
+    window.dispatchEvent(new CustomEvent('songbook-auth-ready'));
+  }
   return state;
 }
 
@@ -229,6 +234,10 @@ async function logoutSongbook() {
   renderAuthButton({ loggedIn: false });
   setSongbookSyncVisible(false);
   updateSongbookChannelLabel(null);
+  const { onSongbookAuthChanged } = await import('../songbook-request-poller.js');
+  const { clearPlaybackQueue } = await import('../playback-queue.js');
+  onSongbookAuthChanged(false);
+  clearPlaybackQueue();
   setMenuOpen(false);
   showNotification('Songbook 로그아웃되었습니다.', 'info');
 }

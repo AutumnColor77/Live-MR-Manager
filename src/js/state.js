@@ -59,6 +59,9 @@ export const state = {
   // Real-time Lyrics
   currentLyrics: [],
   currentLyricIndex: -1,
+
+  // Songbook 신청 → 로컬 재생 큐 (playback-queue.js)
+  playbackQueue: [], // [{ requestId?, path, title, artist, status? }]
 };
 
 // --- Helper Functions for UI ---

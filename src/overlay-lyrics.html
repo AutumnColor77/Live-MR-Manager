@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live MR Lyrics Overlay</title>
+  <script>
+    if (/(?:^|[?&])preview=true(?:&|$)/.test(location.search)) {
+      document.documentElement.setAttribute('data-preview', 'true');
+    }
+  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+KR:wght@400;700;900&family=SUITE:wght@400;700;800&display=swap');
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -35,23 +40,50 @@
       color: var(--text-main);
       font-family: var(--overlay-font);
       overflow: hidden;
-      width: 1200px;
-      height: 300px;
+      width: 1500px;
+      height: 375px;
       position: relative;
+    }
+
+    html[data-preview],
+    html[data-preview] body {
+      width: 1500px !important;
+      height: 375px !important;
+    }
+    html[data-preview] body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      box-sizing: border-box;
+    }
+    html[data-preview] .overlay-container,
+    html[data-preview] .overlay-container.dir-left,
+    html[data-preview] .overlay-container.dir-right,
+    html[data-preview] .overlay-container.dir-top,
+    html[data-preview] .overlay-container.dir-bottom {
+      position: relative !important;
+      left: auto !important;
+      right: auto !important;
+      top: auto !important;
+      transform: scale(var(--overlay-scale, 1)) !important;
+      transform-origin: center center !important;
+      opacity: 1 !important;
+      animation: none !important;
+      width: min(400px, 100%);
+      max-width: 100%;
+      min-width: 0;
     }
 
     .overlay-container {
       position: absolute;
       left: 50%;
       top: 50%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: var(--glass-bg);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--glass-border);
-      padding: 18px 28px;
+      background: transparent;
+      border: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      padding: 0;
       border-radius: var(--overlay-rounding);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
       
@@ -60,9 +92,27 @@
       min-height: 96px;
       text-align: center;
 
-      transition: opacity 0.35s ease, border-radius 0.3s ease, background 0.3s ease;
+      transition: opacity 0.35s ease, border-radius 0.3s ease;
       will-change: transform, opacity;
       opacity: 0;
+    }
+
+    .overlay-glass {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      padding: 18px 28px;
+      border-radius: inherit;
+      min-width: 0;
+      width: 100%;
+      min-height: 96px;
+      box-sizing: border-box;
+      transition: background 0.3s ease;
     }
 
     /* RIGHT ALIGNED (comes from right) */
@@ -224,13 +274,16 @@
       100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
     }
 
+    /* 미리보기 등장은 html[data-preview] 규칙 사용 */
   </style>
 </head>
 <body>
   <div class="overlay-container" id="overlay">
-    <div class="lyrics-container" id="lyrics-area">
-      <div class="lyric-line current" id="lyric-current">&nbsp;</div>
-      <div class="lyric-line next" id="lyric-next">&nbsp;</div>
+    <div class="overlay-glass">
+      <div class="lyrics-container" id="lyrics-area">
+        <div class="lyric-line current" id="lyric-current">&nbsp;</div>
+        <div class="lyric-line next" id="lyric-next">&nbsp;</div>
+      </div>
     </div>
   </div>
 
@@ -239,8 +292,11 @@
     const urlParams = new URLSearchParams(window.location.search);
     const isPreview = urlParams.get('preview') === 'true';
     document.documentElement.setAttribute('data-theme', 'dark');
+    if (isPreview) {
+      document.documentElement.setAttribute('data-preview', 'true');
+    }
 
-    const { hexToRgb, connectWS } = window.OverlayShared;
+    const { hexToRgb, connectWS, applyPreviewFitScale, bindPreviewFit } = window.OverlayShared;
 
     const overlay = document.getElementById('overlay');
     const lyricsArea = document.getElementById('lyrics-area');
@@ -251,6 +307,7 @@
     let lineAnimTimer = null;
     let lastTrackSignature = "";
     let pendingTrackShowTimer = null;
+    let lastUserScale = 1;
 
     // Lyric text is untrusted (LRC files / forced-alignment output / fetched
     // metadata), so it's never assigned via innerHTML. Multi-line cues
@@ -320,7 +377,12 @@
       const rounding = style.rounding !== undefined ? style.rounding : 20;
       const direction = style.animation_direction || 'right';
 
-      document.documentElement.style.setProperty('--overlay-scale', scale);
+      lastUserScale = Number(scale) || 1.0;
+      if (isPreview) {
+        applyPreviewFitScale(overlay, lastUserScale);
+      } else {
+        document.documentElement.style.setProperty('--overlay-scale', lastUserScale);
+      }
       document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
       const fontSize = Number(style.font_size ?? style.fontSize) || 0;
       document.documentElement.style.setProperty('--lyric-font-size', `${fontSize > 0 ? fontSize : 22}px`);
@@ -392,6 +454,11 @@
 
     function showOverlay() { overlay.classList.add('visible'); }
     function hideOverlay() { overlay.classList.remove('visible'); }
+
+    if (isPreview) {
+      document.documentElement.setAttribute('data-preview', 'true');
+      bindPreviewFit(overlay, () => lastUserScale);
+    }
 
     connectWS(updateOverlay);
   </script>

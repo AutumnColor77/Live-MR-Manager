@@ -27,11 +27,19 @@ export function syncLyricDrawerHeader() {
     updateDrawerTrackTitle();
 }
 
+export function refreshLyricDrawerLayout() {
+    const titlebarHeight = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--titlebar-height')
+    ) || 38;
+
+    // 타이틀바 바로 아래부터 독 위까지 세로로 꽉 채움 (라이브러리·신청목록 공통)
+    document.documentElement.style.setProperty('--lyric-drawer-top', `${Math.round(titlebarHeight)}px`);
+}
+
 export function initLyricDrawer() {
     const trigger = document.getElementById('lyric-drawer-trigger');
     const closeBtn = document.getElementById('lyric-drawer-close');
     const drawer = document.getElementById('lyric-drawer');
-    const controlsWrapper = document.querySelector('.page-controls-wrapper');
     const body = document.body;
 
     if (!trigger) return;
@@ -43,12 +51,20 @@ export function initLyricDrawer() {
     const minWidth = 230;
     const initialWidth = parseInt(localStorage.getItem('lyricDrawerWidth')) || 230;
 
+    const getHandleWidth = () => {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue('--lyric-handle-width');
+        const parsed = parseFloat(raw);
+        return Number.isFinite(parsed) ? parsed : 24;
+    };
+
     const updateDrawerWidthVars = (width) => {
         if (!drawer) return;
         document.documentElement.style.setProperty('--lyric-drawer-width', `${width}px`);
-        // Subtract 30px (safe area) from reserved width.
-        // This allows the drawer to overlap the grid's padding, effectively gaining 30px of space for cards.
-        const reserved = Math.max(0, width - 30);
+        // Panel overlaps right padding by 30px; also reserve the LYRICS handle to its left.
+        const layoutGap = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--lyric-layout-gap')
+        ) || 10;
+        const reserved = Math.max(0, width - 30 + getHandleWidth() + layoutGap);
         document.documentElement.style.setProperty('--lyric-reserved-width', `${reserved}px`);
         localStorage.setItem('lyricDrawerWidth', width);
     };
@@ -56,20 +72,7 @@ export function initLyricDrawer() {
     updateDrawerWidthVars(initialWidth);
 
     const updateDrawerBounds = () => {
-        const titlebarHeight = parseFloat(
-            getComputedStyle(document.documentElement).getPropertyValue('--titlebar-height')
-        ) || 38;
-
-        let drawerTop = titlebarHeight + 120;
-
-        if (controlsWrapper) {
-            const wrapperRect = controlsWrapper.getBoundingClientRect();
-            if (wrapperRect.height > 0) {
-                drawerTop = Math.max(titlebarHeight, wrapperRect.bottom);
-            }
-        }
-
-        document.documentElement.style.setProperty('--lyric-drawer-top', `${Math.round(drawerTop)}px`);
+        refreshLyricDrawerLayout();
     };
 
     if (resizer) {
@@ -98,10 +101,17 @@ export function initLyricDrawer() {
         });
     }
 
+    const notifyDrawerLayoutChange = () => {
+        requestAnimationFrame(() => {
+            window.dispatchEvent(new Event('resize'));
+        });
+    };
+
     const openDrawer = () => {
         body.classList.add('drawer-open');
         updateDrawerBounds();
         updateDrawerTrackTitle();
+        notifyDrawerLayoutChange();
 
         // Sync with bottom toggle button if exists
         const toggle = document.getElementById('toggle-lyric');
@@ -119,6 +129,7 @@ export function initLyricDrawer() {
     const closeDrawer = () => {
         body.classList.remove('drawer-open');
         updateDrawerBounds();
+        notifyDrawerLayoutChange();
 
         // Sync with bottom toggle button if exists
         const toggle = document.getElementById('toggle-lyric');

@@ -482,6 +482,38 @@
   }
 }
 
+/* --- Songbook 신청목록 (본문 헤더 액션) --- */
+.requests-section-header {
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.requests-section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.requests-channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.requests-channel-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  max-width: min(280px, 36vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* --- Manager Modal Helpers --- */
 .footer-left-group {
   display: flex;

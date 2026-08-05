@@ -342,6 +342,7 @@ body {
   display: flex;
   position: relative;
   padding-top: var(--titlebar-height);
+  min-height: 0;
 }
 
 .bg-glow {

@@ -130,15 +130,22 @@ export async function setupBackendListeners() {
         state.currentProgressMs = 0;
         state.targetProgressMs = 0;
 
-        // Reload track in paused state at 0:00 so it can be replayed
-        const { playTrack } = await import('../audio.js');
-        await playTrack(state.currentTrack.path, state.trackDurationMs, false);
+        const { advanceQueueAfterFinished } = await import('../playback-queue.js');
+        const advanced = await advanceQueueAfterFinished();
 
-        // Force UI reset to 0:00
-        const { elements } = await import('../ui/elements.js');
-        if (elements.playbackBar) elements.playbackBar.value = 0;
-        if (elements.progressFill) elements.progressFill.style.width = "0%";
-        if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+        if (!advanced) {
+          // Reload track in paused state at 0:00 so it can be replayed
+          const { playTrack } = await import('../audio.js');
+          if (state.currentTrack?.path) {
+            await playTrack(state.currentTrack.path, state.trackDurationMs, false);
+          }
+
+          // Force UI reset to 0:00
+          const { elements } = await import('../ui/elements.js');
+          if (elements.playbackBar) elements.playbackBar.value = 0;
+          if (elements.progressFill) elements.progressFill.style.width = "0%";
+          if (elements.timeCurrent) elements.timeCurrent.textContent = "0:00";
+        }
 
         const { updateThumbnailOverlay, updatePlayButton } = await import('../ui/components.js');
         updateThumbnailOverlay();

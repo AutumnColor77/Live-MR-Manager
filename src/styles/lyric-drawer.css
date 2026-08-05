@@ -2,11 +2,12 @@
 :root {
     --lyric-card-width: 200px;
     --lyric-drawer-width: min(calc(var(--lyric-card-width) + 30px), 90vw);
-    --lyric-drawer-top: calc(var(--titlebar-height) + 120px);
+    --lyric-drawer-top: var(--titlebar-height);
     --lyric-drawer-bottom-gap: 0px;
     --lyric-handle-width: 24px;
-    /* Reserve one lane minus right safe-area already present in grid */
-    --lyric-reserved-width: max(0px, calc(var(--lyric-card-width) + var(--library-grid-gap, 12px) - var(--library-safe-area, 30px)));
+    --lyric-layout-gap: 10px;
+    /* Panel (- safe area overlap) + handle + extra gap when open */
+    --lyric-reserved-width: max(0px, calc(var(--lyric-drawer-width) - var(--library-safe-area, 30px) + var(--lyric-handle-width) + var(--lyric-layout-gap)));
 }
 
 /* 1. Floating Toggle Button (Handle) */
@@ -120,21 +121,44 @@ body.drawer-open .lyric-drawer-trigger:hover {
     padding-right: 0;
 }
 
-/* Root fix: observer uses scroll-area width to compute columns */
-.scroll-area {
-    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+/* Root fix: shrink main column when drawer is open (flex children ignore width alone) */
+.view-main {
+    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-body.drawer-open .scroll-area {
-    width: calc(100% - var(--lyric-reserved-width));
+body.drawer-open .view-main {
+    width: calc(100% - var(--lyric-reserved-width)) !important;
+    max-width: calc(100% - var(--lyric-reserved-width)) !important;
 }
 
-/* Ensure grid fits perfectly without extra gaps */
-body.drawer-open .song-grid {
+.scroll-area,
+.top-bar,
+.page-controls-wrapper {
+    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Tab content: fill the narrowed column without re-applying 1600px cap */
+body.drawer-open .song-grid,
+body.drawer-open .requests-container,
+body.drawer-open .tasks-container,
+body.drawer-open .youtube-search-page,
+body.drawer-open .settings-container {
     width: 100% !important;
     max-width: none !important;
     min-width: 0 !important;
-    padding-right: 0 !important; 
+}
+
+body.drawer-open .song-grid {
+    padding-right: 0 !important;
+}
+
+body.drawer-open .requests-container,
+body.drawer-open .tasks-container,
+body.drawer-open .youtube-search-page,
+body.drawer-open .settings-container {
+    padding-right: var(--library-safe-area, 30px) !important;
 }
 
 

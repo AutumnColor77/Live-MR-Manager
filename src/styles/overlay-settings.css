@@ -57,6 +57,42 @@
   box-shadow: 0 4px 12px rgb(var(--accent-rgb) / 0.3);
 }
 
+.overlay-animation-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overlay-animation-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overlay-animation-row.is-queue .overlay-animation-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.overlay-anim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.overlay-anim-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.overlay-anim-field .custom-select {
+  width: 100%;
+}
+
 .overlay-force-visible-chip {
   display: flex;
   align-items: center;

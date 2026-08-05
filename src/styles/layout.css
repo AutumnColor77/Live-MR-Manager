@@ -188,11 +188,10 @@
   position: relative;
   padding-bottom: var(--dock-height);
   width: 100%;
-  overflow-y: hidden;
+  min-height: 0;
   overflow-x: auto;
-  /* Allow horizontal scroll instead of breaking layout */
+  overflow-y: hidden;
   min-width: 1108px !important;
-  /* 5 grid columns: 1048px tracks + 60px library horizontal padding */
 }
 
 .view-main {
@@ -200,27 +199,35 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: 100%;
+  min-width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .top-bar {
-  min-height: 80px;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px var(--library-safe-area, 30px) !important;
+  padding: 16px var(--library-safe-area, 30px) 8px !important;
   background: linear-gradient(to bottom, var(--bg-color), transparent);
   position: relative;
   z-index: 1300;
   overflow: visible;
-  flex-wrap: wrap;
-  gap: 20px;
+  flex-wrap: nowrap;
+  gap: 12px;
   width: 100% !important;
-  /* Fluid */
   max-width: 1600px !important;
-  /* Higher ceiling */
   margin: 0 !important;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 라이브러리만 검색/필터 바 높이 때문에 타이틀 영역을 조금 더 여유 있게 */
+.viewport[data-view="library"] .top-bar,
+.viewport[data-view="youtube"] .top-bar {
+  min-height: 64px;
+  padding-top: 20px !important;
+  padding-bottom: 12px !important;
 }
 
 /* Songbook auth UI → styles/songbook-auth.css */
@@ -228,7 +235,7 @@
 .view-header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
@@ -237,6 +244,7 @@
   display: flex;
   align-items: center;
   gap: 15px;
+  min-width: 0;
 }
 
 h1 {
@@ -248,9 +256,9 @@ h1 {
 }
 
 .view-subtitle {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-dim);
-  margin-top: 4px;
+  margin-top: 0;
   font-weight: 600;
   animation: fadeIn 0.3s ease;
 }
@@ -291,13 +299,14 @@ h1 {
 
 .scroll-area {
   flex: 1;
-  overflow-y: scroll !important;
-  /* Force always on to prevent width jumps */
-  overflow-x: hidden;
+  min-height: 0;
+  height: 0;
   min-width: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
   padding: 10px 0 40px 0;
-  /* Horizontal padding handled by max-width/margin-auto */
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom Floating Scrollbar (Webkit/WebView2) */
@@ -327,7 +336,6 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  /* Anchor to left */
   gap: 20px;
   padding: 10px var(--library-safe-area, 30px);
   background: transparent;
@@ -335,11 +343,14 @@ h1 {
   -webkit-backdrop-filter: blur(12px);
   z-index: 1100;
   width: 100% !important;
-  /* Fluid */
   max-width: 1600px !important;
-  /* Higher ceiling */
   margin: 0 !important;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 검색/필터가 없는 탭에서는 컨트롤 바 자체를 제거 (빈 padding이 남는 근본 원인) */
+.viewport:not([data-view="library"]):not([data-view="youtube"]) .page-controls-wrapper {
+  display: none !important;
 }
 
 .library-controls {
@@ -413,6 +424,7 @@ h1 {
 /* Global View Content Alignment (Locked to 30px Frame) */
 .settings-container,
 .tasks-container,
+.requests-container,
 .youtube-search-page,
 #alignment-viewer-root,
 .song-grid {
@@ -450,6 +462,33 @@ h1 {
 .viewport[data-view="alignment-viewer"] .scroll-area {
   padding: 0;
   overflow: hidden;
+}
+
+/* 라이브러리 외 탭: song-grid가 display:grid !important 로 공간을 차지하지 못하게 강제 숨김 */
+.viewport:not([data-view="library"]) #song-grid {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+}
+
+/* 신청목록은 설정/AI 탭과 동일: scroll-area가 곧 스크롤 컨테이너, 내용은 위에서부터 */
+.viewport[data-view="requests"] .scroll-area {
+  display: block;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  padding: 14px 0 8px 0;
+}
+
+.viewport[data-view="requests"] #requests-page {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 @keyframes pulse {

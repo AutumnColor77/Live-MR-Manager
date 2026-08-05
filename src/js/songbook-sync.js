@@ -3,6 +3,7 @@
  * - 본인 채널만 (demo 차단)
  * - 없으면 POST /api/me/channels 로 생성 유도
  * - 신규 POST / 기존 PATCH (메타 갱신)
+ * - 로컬에 없는 원격 곡은 enabled=false (공개 목록에서 제거, 신청 이력 FK 보존)
  */
 import {
   applySongbookChannels,
@@ -254,7 +255,7 @@ async function resolveOwnChannel(token, user, { offerCreate = true } = {}) {
 }
 
 /**
- * @returns {Promise<{ added: number, updated: number, skipped: number, failed: number, total: number, slug: string }>}
+ * @returns {Promise<{ added: number, updated: number, removed: number, skipped: number, failed: number, total: number, slug: string }>}
  */
 export async function pushLibraryToSongbook({ onProgress } = {}) {
   const { token, user } = await getAuthOrThrow();
@@ -282,9 +283,11 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
 
   const localSongs = await invoke('get_songs');
   const list = Array.isArray(localSongs) ? localSongs : [];
+  const localKeys = new Set();
 
   let added = 0;
   let updated = 0;
+  let removed = 0;
   let skipped = 0;
   let failed = 0;
 
@@ -293,11 +296,20 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     const payload = await toSongPayload(song);
     if (!payload.title) {
       skipped += 1;
-      onProgress?.({ index: i + 1, total: list.length, added, updated, skipped, failed });
+      onProgress?.({
+        index: i + 1,
+        total: list.length,
+        added,
+        updated,
+        removed,
+        skipped,
+        failed,
+      });
       continue;
     }
 
     const key = normalizeKey(payload.title, payload.artist);
+    localKeys.add(key);
     const existing = remoteByKey.get(key);
 
     try {
@@ -340,13 +352,63 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
       console.warn('[SongbookSync] request error', err);
     }
 
-    onProgress?.({ index: i + 1, total: list.length, added, updated, skipped, failed });
+    onProgress?.({
+      index: i + 1,
+      total: list.length,
+      added,
+      updated,
+      removed,
+      skipped,
+      failed,
+    });
     if (i < list.length - 1) {
       await new Promise((r) => setTimeout(r, 40));
     }
   }
 
-  return { added, updated, skipped, failed, total: list.length, slug };
+  // 앱 라이브러리에 없는 원격 곡 → 공개 목록에서 숨김 (재동기화 시 enabled 복구)
+  const toDisable = remoteSongs.filter((s) => {
+    if (!s?.id || s.enabled === false) return false;
+    return !localKeys.has(normalizeKey(s.title, s.artist));
+  });
+
+  for (let i = 0; i < toDisable.length; i++) {
+    const remote = toDisable[i];
+    try {
+      const res = await fetch(`${listUrl}/${encodeURIComponent(remote.id)}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      if (res.ok) {
+        removed += 1;
+      } else {
+        failed += 1;
+        console.warn(
+          '[SongbookSync] disable failed',
+          res.status,
+          await res.text().catch(() => ''),
+        );
+      }
+    } catch (err) {
+      failed += 1;
+      console.warn('[SongbookSync] disable error', err);
+    }
+    onProgress?.({
+      index: list.length + i + 1,
+      total: list.length + toDisable.length,
+      added,
+      updated,
+      removed,
+      skipped,
+      failed,
+    });
+    if (i < toDisable.length - 1) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  }
+
+  return { added, updated, removed, skipped, failed, total: list.length, slug };
 }
 
 function setSyncBusy(busy) {
@@ -433,6 +495,7 @@ async function runPushFromUi(trigger) {
     const parts = [
       `추가 ${result.added}`,
       `갱신 ${result.updated}`,
+      `제거 ${result.removed}`,
       `그대로 ${result.skipped}`,
     ];
     if (result.failed) parts.push(`실패 ${result.failed}`);

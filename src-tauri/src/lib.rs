@@ -166,6 +166,7 @@ pub fn run() {
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
             metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db,
             overlay_server::update_overlay_state,
+            overlay_server::update_overlay_queue,
             overlay_server::update_overlay_style,
             overlay_server::update_overlay_lyrics,
             overlay_server::update_overlay_lyrics_full,

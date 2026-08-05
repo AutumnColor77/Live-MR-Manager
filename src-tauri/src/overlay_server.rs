@@ -25,6 +25,13 @@ pub struct OverlayStyle {
     /// 가사 오버레이 전용 글씨 크기(px). 0이면 기본값 22px.
     #[serde(default)]
     pub font_size: f32,
+    /// 대기열 오버레이: 항목 추가 시 카드가 늘어나는 방향 (`up` | `both` | `down`).
+    #[serde(default = "default_queue_expand_direction")]
+    pub queue_expand_direction: String,
+}
+
+fn default_queue_expand_direction() -> String {
+    "both".to_string()
 }
 
 impl Default for OverlayStyle {
@@ -39,8 +46,15 @@ impl Default for OverlayStyle {
             rounding: 20.0,
             animation_direction: "left".to_string(),
             font_size: 0.0,
+            queue_expand_direction: default_queue_expand_direction(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct QueuePreviewItem {
+    pub title: String,
+    pub artist: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -55,6 +69,8 @@ pub struct OverlayState {
 
     pub info_style: OverlayStyle,
     pub lyrics_style: OverlayStyle,
+    #[serde(default)]
+    pub queue_style: OverlayStyle,
 
     pub is_force_visible: bool,
 
@@ -68,10 +84,18 @@ pub struct OverlayState {
     pub lyrics_lines: Vec<String>,
     #[serde(default = "default_lyric_index")]
     pub lyric_index: i32,
+    #[serde(default)]
+    pub queue_up_next: Vec<QueuePreviewItem>,
+    #[serde(default = "default_show_queue")]
+    pub show_queue: bool,
 }
 
 fn default_lyric_index() -> i32 {
     -1
+}
+
+fn default_show_queue() -> bool {
+    true
 }
 
 impl Default for OverlayState {
@@ -89,9 +113,16 @@ impl Default for OverlayState {
                 color: "ffffff".to_string(),
                 ..OverlayStyle::default()
             },
+            queue_style: OverlayStyle {
+                bg_opacity: 0.85,
+                font_size: 16.0,
+                ..OverlayStyle::default()
+            },
             is_force_visible: false,
             lyrics_lines: Vec::new(),
             lyric_index: -1,
+            queue_up_next: Vec::new(),
+            show_queue: true,
         }
     }
 }
@@ -110,6 +141,7 @@ pub fn init(handle: tauri::AppHandle) {
 
 static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
+static OVERLAY_QUEUE_HTML: &str = include_str!("../../src/overlay-queue.html");
 static LYRICS_VIEW_HTML: &str = include_str!("../../src/lyrics-view.html");
 static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
@@ -136,6 +168,18 @@ fn resolve_overlay_lyrics_html() -> String {
         }
     }
     OVERLAY_LYRICS_HTML.to_string()
+}
+
+fn resolve_overlay_queue_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/overlay-queue.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_QUEUE_HTML.to_string()
 }
 
 fn resolve_lyrics_view_html() -> String {
@@ -264,6 +308,25 @@ pub async fn start_overlay_server(allow_lan: bool) {
                         let _ = stream.write_all(response.as_bytes()).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] HTTP Page served to {} (Path: /lyrics-view)", addr);
+                    } else if request.starts_with("GET /queue")
+                        || request.starts_with("GET /overlay-queue")
+                    {
+                        let html = resolve_overlay_queue_html();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/html; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            html.len(),
+                            html
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] HTTP Page served to {} (Path: /queue)", addr);
                     } else if request.starts_with("GET /lyrics")
                         || request.starts_with("GET /overlay-lyrics")
                     {
@@ -408,6 +471,14 @@ pub async fn broadcast_overlay_state(mut state: OverlayState) {
 
 
 #[tauri::command]
+pub async fn update_overlay_queue(items: Vec<QueuePreviewItem>, show_queue: bool) {
+    let mut state = CURRENT_STATE.lock().await.clone();
+    state.queue_up_next = items.into_iter().take(3).collect();
+    state.show_queue = show_queue;
+    broadcast_overlay_state(state).await;
+}
+
+#[tauri::command]
 pub async fn update_overlay_state(title: String, artist: String, thumbnail: String, is_playing: bool) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.title = title;
@@ -431,8 +502,15 @@ pub async fn update_overlay_style(
     animation_direction: String,
     theme_mode: String,
     font_size: Option<f32>,
+    queue_expand_direction: Option<String>,
 ) {
     let mut state = CURRENT_STATE.lock().await.clone();
+    let expand = queue_expand_direction
+        .unwrap_or_else(|| "both".to_string());
+    let expand = match expand.as_str() {
+        "up" | "both" | "down" => expand,
+        _ => "both".to_string(),
+    };
     let style = OverlayStyle {
         scale,
         font,
@@ -443,6 +521,7 @@ pub async fn update_overlay_style(
         rounding,
         animation_direction,
         font_size: font_size.unwrap_or(0.0),
+        queue_expand_direction: expand,
     };
     let shared_color = style.color.clone();
     let shared_text_color = style.text_color.clone();
@@ -455,6 +534,9 @@ pub async fn update_overlay_style(
         state.info_style.text_color = shared_text_color;
         state.info_style.bg_color = shared_bg_color;
         state.info_style.bg_opacity = shared_bg_opacity;
+    } else if target == "queue" {
+        // 대기열 오버레이는 독립 스타일(곡 정보/가사와 색상 공유하지 않음)
+        state.queue_style = style;
     } else {
         // 곡 정보 오버레이는 font_size를 쓰지 않으므로, 가사 쪽 글씨 크기는 유지.
         let preserved_font_size = state.lyrics_style.font_size;

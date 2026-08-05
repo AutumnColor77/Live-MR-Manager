@@ -30,6 +30,11 @@ export function initOverlayListeners() {
   const overlayFontSize = document.getElementById('overlay-font-size');
   const overlayFontSizeVal = document.getElementById('overlay-font-size-val');
   const overlayFontSizeRow = document.getElementById('overlay-font-size-row');
+  const overlayFontSizeLabel = document.getElementById('overlay-font-size-label');
+  const overlayAnimationRow = document.getElementById('overlay-animation-row');
+  const overlayAnimationDirectionLabel = document.getElementById('overlay-animation-direction-label');
+  const overlayQueueExpandField = document.getElementById('overlay-queue-expand-field');
+  const overlayQueueExpandDirection = document.getElementById('overlay-queue-expand-direction');
   const overlayFont = document.getElementById('overlay-font');
   const overlayColor = document.getElementById('overlay-color');
   const overlayTextColor = document.getElementById('overlay-text-color');
@@ -46,28 +51,106 @@ export function initOverlayListeners() {
   const lyricsViewUrlDisplay = document.getElementById('lyrics-view-url-display');
   const overlayIframe = document.getElementById('overlay-iframe');
   const overlayPreviewWrapper = document.querySelector('.overlay-preview-wrapper');
+  const overlayPreviewStage = document.getElementById('overlay-preview-stage');
   const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
   const overlayAnimationDirection = document.getElementById('overlay-animation-direction');
   const toggleOverlayLan = document.getElementById('toggle-overlay-lan');
   const overlayLanStatus = document.getElementById('overlay-lan-status');
+  const queueOverlayUrlDisplay = document.getElementById('queue-overlay-url-display');
+  const overlayInfoHeaderSettings = document.getElementById('overlay-info-header-settings');
+  const overlayQueueSettings = document.getElementById('overlay-queue-settings');
+  const overlayDesignSettings = document.getElementById('overlay-design-settings');
+  const toggleOverlayQueueVisible = document.getElementById('toggle-overlay-queue-visible');
+  const toggleOverlayQueueForceVisible = document.getElementById('toggle-overlay-queue-force-visible');
+
+  const syncCustomSelect = (dropdownId, value) => {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown || value == null) return;
+    const selectedText = dropdown.querySelector('.selected-text');
+    dropdown.querySelectorAll('.option-item').forEach((opt) => {
+      const match = opt.dataset.value === value;
+      opt.classList.toggle('selected', match);
+      if (match && selectedText) selectedText.textContent = opt.textContent;
+    });
+  };
+
+  const syncQueueExpandUi = (isQueue) => {
+    if (overlayAnimationRow) overlayAnimationRow.classList.toggle('is-queue', isQueue);
+    if (overlayQueueExpandField) overlayQueueExpandField.hidden = !isQueue;
+    if (overlayAnimationDirectionLabel) {
+      overlayAnimationDirectionLabel.textContent = isQueue ? '애니메이션 방향' : '등장 애니메이션 방향';
+    }
+  };
+  const getPreviewMode = () => {
+    const activeTab = document.querySelector('.preview-tab.active');
+    const mode = activeTab?.dataset?.previewMode;
+    if (mode === 'lyrics') return 'lyrics';
+    if (mode === 'queue') return 'queue';
+    return 'info';
+  };
+
+  const setOverlaySettingsPanelsVisibility = (mode) => {
+    const isQueue = mode === 'queue';
+    if (overlayInfoHeaderSettings) overlayInfoHeaderSettings.style.display = isQueue ? 'none' : 'block';
+    if (overlayQueueSettings) overlayQueueSettings.style.display = isQueue ? 'block' : 'none';
+    if (overlayDesignSettings) overlayDesignSettings.style.display = 'block';
+  };
+
+  const getStyleTarget = () => {
+    const mode = getPreviewMode();
+    if (mode === 'lyrics' || mode === 'queue') return mode;
+    return 'info';
+  };
+
+  const getTargetDefaults = (target) => ({
+    scale: 1.0,
+    color: target === 'lyrics' ? 'ffffff' : '3b82f6',
+    textColor: 'ffffff',
+    bgOpacity: target === 'queue' ? 0.85 : 0.6,
+    rounding: 20,
+    bgColor: '0f0f14',
+    font: 'Inter',
+    animationDirection: 'left',
+    fontSize: target === 'queue' ? 16 : 22,
+    queueExpandDirection: 'both',
+  });
+
+  // OBS 권장 브라우저 소스 크기 — 세 탭 모두 가로 1500 고정
+  const OBS_PREVIEW_SIZE = {
+    info: { w: 1500, h: 440 },
+    lyrics: { w: 1500, h: 375 },
+    queue: { w: 1500, h: 1000 },
+  };
+
+  const previewSrc = (file, extra = '') => `${file}?preview=true${extra}`;
 
   const resizeOverlayPreview = () => {
     if (!overlayIframe || !overlayPreviewWrapper) return;
-    const activeTab = document.querySelector('.preview-tab.active');
-    const mode = activeTab && activeTab.dataset.previewMode === 'lyrics' ? 'lyrics' : 'info';
-    const baseWidth = mode === 'lyrics' ? 1200 : 1760;
-    const baseHeight = mode === 'lyrics' ? 300 : 520;
-    const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - 28);
-    const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - 28);
-    const scale = Math.min(wrapperWidth / baseWidth, wrapperHeight / baseHeight, 1);
+    const mode = getPreviewMode();
+    const { w: baseWidth, h: baseHeight } = OBS_PREVIEW_SIZE[mode] || OBS_PREVIEW_SIZE.info;
+
+    overlayPreviewWrapper.dataset.previewMode = mode;
+
+    const padX = 40;
+    const padY = 32;
+    const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - padX);
+    const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - padY);
+    const scale = Math.min(wrapperWidth / baseWidth, wrapperHeight / baseHeight);
+    const displayW = Math.max(1, Math.floor(baseWidth * scale));
+    const displayH = Math.max(1, Math.floor(baseHeight * scale));
+
+    if (overlayPreviewStage) {
+      overlayPreviewStage.style.width = `${displayW}px`;
+      overlayPreviewStage.style.height = `${displayH}px`;
+    }
 
     overlayIframe.style.width = `${baseWidth}px`;
     overlayIframe.style.height = `${baseHeight}px`;
     overlayIframe.style.position = 'absolute';
-    overlayIframe.style.left = '50%';
-    overlayIframe.style.top = '50%';
-    overlayIframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
-    overlayIframe.style.transformOrigin = 'center center';
+    overlayIframe.style.left = '0';
+    overlayIframe.style.top = '0';
+    overlayIframe.style.transform = `scale(${scale})`;
+    overlayIframe.style.transformOrigin = 'top left';
     overlayIframe.style.border = 'none';
     overlayIframe.style.background = 'transparent';
   };
@@ -121,17 +204,25 @@ export function initOverlayListeners() {
   const updateBgPalette = setupPalette('bg-palette', overlayBgColor, overlayBgColorHex);
 
   const updateOverlaySettings = async (skipSave = false) => {
-    if (!overlayScale || !overlayFont || !overlayColor || !overlayTextColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor || !toggleOverlayForceVisible) return;
+    if (!overlayScale || !overlayFont || !overlayColor || !overlayTextColor || !overlayUrlDisplay || !overlayIframe || !overlayBgOpacity || !overlayRounding || !overlayBgColor) return;
 
-    const activeTab = document.querySelector('.preview-tab.active');
-    const currentTarget = (activeTab && activeTab.dataset.previewMode === 'lyrics') ? 'lyrics' : 'info';
+    const previewMode = getPreviewMode();
+    const currentTarget = getStyleTarget();
+    const usesFontSize = currentTarget === 'lyrics' || currentTarget === 'queue';
 
     const scale = parseFloat(overlayScale.value).toFixed(1);
     if (overlayScaleVal) overlayScaleVal.textContent = `${scale}x`;
 
-    // 가사 전용 글씨 크기 — 곡 정보 탭에서는 숨김.
-    if (overlayFontSizeRow) overlayFontSizeRow.style.display = currentTarget === 'lyrics' ? 'flex' : 'none';
-    const fontSize = overlayFontSize ? (parseInt(overlayFontSize.value, 10) || 22) : 22;
+    if (overlayFontSizeRow) overlayFontSizeRow.style.display = usesFontSize ? 'flex' : 'none';
+    if (overlayFontSizeLabel) {
+      overlayFontSizeLabel.textContent = currentTarget === 'queue' ? '대기열 글씨 크기' : '가사 글씨 크기';
+    }
+    if (overlayAnimationRow) overlayAnimationRow.style.display = 'flex';
+    syncQueueExpandUi(currentTarget === 'queue');
+
+    const fontSize = overlayFontSize
+      ? (parseInt(overlayFontSize.value, 10) || (currentTarget === 'queue' ? 16 : 22))
+      : 22;
     if (overlayFontSizeVal) overlayFontSizeVal.textContent = `${fontSize}px`;
 
     const font = overlayFont.value;
@@ -145,8 +236,9 @@ export function initOverlayListeners() {
     if (overlayRoundingVal) overlayRoundingVal.textContent = `${rounding}px`;
 
     const bgColor = overlayBgColor.value.replace('#', '');
-    const isForceVisible = toggleOverlayForceVisible.checked;
-    const animationDirection = overlayAnimationDirection.value || 'left';
+    const isForceVisible = !!(toggleOverlayForceVisible && toggleOverlayForceVisible.checked);
+    const animationDirection = overlayAnimationDirection?.value || 'left';
+    const queueExpandDirection = overlayQueueExpandDirection?.value || 'both';
     const themeMode = document.documentElement.getAttribute('data-theme') || 'dark';
 
     if (!skipSave) {
@@ -155,9 +247,12 @@ export function initOverlayListeners() {
       try { config = JSON.parse(saved) || {}; } catch(e) {}
 
       config[currentTarget] = {
-        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize
+        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize,
+        ...(currentTarget === 'queue' ? { queueExpandDirection } : {}),
       };
-      config.isForceVisible = isForceVisible;
+      if (currentTarget !== 'queue') {
+        config.isForceVisible = isForceVisible;
+      }
 
       localStorage.setItem('overlay-settings', JSON.stringify(config));
     }
@@ -170,9 +265,11 @@ export function initOverlayListeners() {
     const infoUrl = `http://${host}:14202/overlay-info`;
     const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
     const lyricsViewUrl = `http://${host}:14202/lyrics-view`;
+    const queueUrl = `http://${host}:14202/queue`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
     if (lyricsViewUrlDisplay) lyricsViewUrlDisplay.textContent = lyricsViewUrl;
+    if (queueOverlayUrlDisplay) queueOverlayUrlDisplay.textContent = queueUrl;
 
     if (overlayLanStatus) {
       if (useLan && !cachedLanAddress) {
@@ -199,10 +296,17 @@ export function initOverlayListeners() {
     setupCopyBtn('btn-copy-overlay-url', infoUrl);
     setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);
     setupCopyBtn('btn-copy-lyrics-view-url', lyricsViewUrl);
+    setupCopyBtn('btn-copy-queue-overlay-url', queueUrl);
 
     if (!overlayIframe.src.includes('preview=true')) {
-      const mode = activeTab && activeTab.dataset.previewMode === 'lyrics' ? 'lyrics' : 'info';
-      overlayIframe.src = mode === 'lyrics' ? `overlay-lyrics.html?preview=true` : `overlay-info.html?preview=true`;
+      const mode = getPreviewMode();
+      if (mode === 'lyrics') {
+        overlayIframe.src = previewSrc('overlay-lyrics.html');
+      } else if (mode === 'queue') {
+        overlayIframe.src = buildQueuePreviewSrc();
+      } else {
+        overlayIframe.src = previewSrc('overlay-info.html');
+      }
     }
     resizeOverlayPreview();
 
@@ -219,11 +323,17 @@ export function initOverlayListeners() {
         isForceVisible,
         animationDirection,
         themeMode,
-        fontSize: currentTarget === 'lyrics' ? fontSize : undefined
+        fontSize: usesFontSize ? fontSize : undefined,
+        queueExpandDirection: currentTarget === 'queue' ? queueExpandDirection : undefined,
       });
     } catch (err) {
       console.error("Failed to update overlay style:", err);
     }
+  };
+
+  const buildQueuePreviewSrc = () => {
+    const force = toggleOverlayQueueForceVisible?.checked ? '&force=1' : '';
+    return previewSrc('overlay-queue.html', force);
   };
 
   const previewTabs = document.querySelectorAll('.preview-tab');
@@ -235,21 +345,28 @@ export function initOverlayListeners() {
       const mode = tab.dataset.previewMode;
       const settingsTitle = document.getElementById('overlay-settings-title');
       if (settingsTitle) {
-        settingsTitle.textContent = mode === 'lyrics' ? '가사 오버레이 설정' : '곡 정보 오버레이 설정';
+        if (mode === 'lyrics') settingsTitle.textContent = '가사 오버레이 설정';
+        else if (mode === 'queue') settingsTitle.textContent = '곡정보+대기열 오버레이';
+        else settingsTitle.textContent = '곡 정보 오버레이 설정';
       }
 
-      loadOverlaySettings();
+      setOverlaySettingsPanelsVisibility(mode === 'queue' ? 'queue' : (mode === 'lyrics' ? 'lyrics' : 'info'));
 
       if (mode === 'lyrics') {
-        overlayIframe.src = `overlay-lyrics.html?preview=true`;
+        loadOverlaySettings();
+        overlayIframe.src = previewSrc('overlay-lyrics.html');
         await updateOverlayLyrics({
-          current: "",
-          next: "첫 번째 가사가 여기에 미리 표시됩니다.",
-          index: -1
-        }).catch(err => console.error(err));
+          current: '',
+          next: '첫 번째 가사가 여기에 미리 표시됩니다.',
+          index: -1,
+        }).catch((err) => console.error(err));
+      } else if (mode === 'queue') {
+        loadOverlaySettings();
+        overlayIframe.src = buildQueuePreviewSrc();
       } else {
-        overlayIframe.src = `overlay-info.html?preview=true`;
-        await updateOverlayLyrics({ current: "", next: "", index: -1 }).catch(err => console.error(err));
+        loadOverlaySettings();
+        overlayIframe.src = previewSrc('overlay-info.html');
+        await updateOverlayLyrics({ current: '', next: '', index: -1 }).catch((err) => console.error(err));
       }
       requestAnimationFrame(resizeOverlayPreview);
     };
@@ -260,26 +377,18 @@ export function initOverlayListeners() {
     let config = {};
     try { config = JSON.parse(saved) || {}; } catch(e) {}
 
-    const activeTab = document.querySelector('.preview-tab.active');
-    const currentTarget = (activeTab && activeTab.dataset.previewMode === 'lyrics') ? 'lyrics' : 'info';
-
-    const defaults = {
-      scale: 1.0,
-      color: currentTarget === 'lyrics' ? 'ffffff' : '3b82f6',
-      textColor: 'ffffff',
-      bgOpacity: 0.6,
-      rounding: 20,
-      bgColor: '0f0f14',
-      font: 'Inter',
-      animationDirection: 'left',
-      fontSize: 22
-    };
-
+    const currentTarget = getStyleTarget();
+    const defaults = getTargetDefaults(currentTarget);
     const settings = config[currentTarget] || {};
     const final = { ...defaults, ...settings };
+    const usesFontSize = currentTarget === 'lyrics' || currentTarget === 'queue';
 
-    if (overlayFontSizeRow) overlayFontSizeRow.style.display = currentTarget === 'lyrics' ? 'flex' : 'none';
-    if (overlayFontSize) overlayFontSize.value = final.fontSize || 22;
+    if (overlayFontSizeRow) overlayFontSizeRow.style.display = usesFontSize ? 'flex' : 'none';
+    if (overlayFontSizeLabel) {
+      overlayFontSizeLabel.textContent = currentTarget === 'queue' ? '대기열 글씨 크기' : '가사 글씨 크기';
+    }
+    if (overlayAnimationRow) overlayAnimationRow.style.display = 'flex';
+    if (overlayFontSize) overlayFontSize.value = final.fontSize || defaults.fontSize;
 
     if (overlayScale) overlayScale.value = final.scale;
     if (overlayColor) {
@@ -303,7 +412,9 @@ export function initOverlayListeners() {
       if (updateBgPalette) updateBgPalette(`#${final.bgColor}`);
     }
 
-    if (config.isForceVisible !== undefined) toggleOverlayForceVisible.checked = config.isForceVisible;
+    if (toggleOverlayForceVisible && config.isForceVisible !== undefined) {
+      toggleOverlayForceVisible.checked = config.isForceVisible;
+    }
 
     if (overlayFont) {
       overlayFont.value = final.font;
@@ -324,20 +435,16 @@ export function initOverlayListeners() {
 
     if (overlayAnimationDirection) {
       overlayAnimationDirection.value = final.animationDirection;
-      const dropdown = document.getElementById('overlay-animation-direction-dropdown');
-      if (dropdown) {
-        const selectedText = dropdown.querySelector('.selected-text');
-        const options = dropdown.querySelectorAll('.option-item');
-        options.forEach(opt => {
-          if (opt.dataset.value === final.animationDirection) {
-            opt.classList.add('selected');
-            if (selectedText) selectedText.textContent = opt.textContent;
-          } else {
-            opt.classList.remove('selected');
-          }
-        });
-      }
+      syncCustomSelect('overlay-animation-direction-dropdown', final.animationDirection);
     }
+
+    if (overlayQueueExpandDirection) {
+      const expand = final.queueExpandDirection || 'both';
+      overlayQueueExpandDirection.value = expand;
+      syncCustomSelect('overlay-queue-expand-dropdown', expand);
+    }
+
+    syncQueueExpandUi(currentTarget === 'queue');
 
     updateOverlaySettings(true);
   };
@@ -349,22 +456,13 @@ export function initOverlayListeners() {
 
     const isForceVisible = config.isForceVisible === true;
     const themeMode = document.documentElement.getAttribute('data-theme') || 'dark';
-    const targets = ['info', 'lyrics'];
+    const targets = ['info', 'lyrics', 'queue'];
 
     for (const target of targets) {
-      const defaults = {
-        scale: 1.0,
-        color: target === 'lyrics' ? 'ffffff' : '3b82f6',
-        textColor: 'ffffff',
-        bgOpacity: 0.6,
-        rounding: 20,
-        bgColor: '0f0f14',
-        font: 'Inter',
-        animationDirection: 'left',
-        fontSize: 22
-      };
+      const defaults = getTargetDefaults(target);
       const targetSettings = config[target] || {};
       const final = { ...defaults, ...targetSettings };
+      const usesFontSize = target === 'lyrics' || target === 'queue';
 
       try {
         await updateOverlayStyle({
@@ -379,7 +477,8 @@ export function initOverlayListeners() {
           isForceVisible,
           animationDirection: final.animationDirection || 'left',
           themeMode,
-          fontSize: target === 'lyrics' ? (parseInt(final.fontSize, 10) || 22) : undefined
+          fontSize: usesFontSize ? (parseInt(final.fontSize, 10) || defaults.fontSize) : undefined,
+          queueExpandDirection: target === 'queue' ? (final.queueExpandDirection || 'both') : undefined,
         });
       } catch (err) {
         console.error(`Failed to sync ${target} overlay style:`, err);
@@ -444,7 +543,27 @@ export function initOverlayListeners() {
   }
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
   if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
+
+  if (toggleOverlayQueueVisible) {
+    import('../../playback-queue.js').then(({ isOverlayQueueVisible, setOverlayQueueVisible }) => {
+      toggleOverlayQueueVisible.checked = isOverlayQueueVisible();
+      toggleOverlayQueueVisible.addEventListener('change', () => {
+        setOverlayQueueVisible(toggleOverlayQueueVisible.checked);
+      });
+    });
+  }
+
+  if (toggleOverlayQueueForceVisible) {
+    toggleOverlayQueueForceVisible.addEventListener('change', () => {
+      if (getPreviewMode() === 'queue' && overlayIframe) {
+        overlayIframe.src = buildQueuePreviewSrc();
+        requestAnimationFrame(resizeOverlayPreview);
+      }
+    });
+  }
+
   if (overlayAnimationDirection) overlayAnimationDirection.addEventListener('change', () => updateOverlaySettings());
+  if (overlayQueueExpandDirection) overlayQueueExpandDirection.addEventListener('change', () => updateOverlaySettings());
 
   // LAN 노출 토글 — 기본 꺼짐(로컬호스트만). 실제 서버 바인딩 반영은 앱
   // 재시작 시에만 이뤄지므로(overlay_server::start_overlay_server), 저장된
@@ -489,6 +608,7 @@ export function initOverlayListeners() {
   };
 
   loadOverlaySettings();
+  setOverlaySettingsPanelsVisibility(getPreviewMode());
   updateOverlaySettings(true);
   syncAllOverlayStylesToBackend();
   initLyricLineVisibilityControls();

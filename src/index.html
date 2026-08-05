@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="stylesheet" href="style.css?v=6.1" />
+  <link rel="stylesheet" href="style.css?v=6.5" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live MR Manager(Beta) | Performer Dash</title>
@@ -78,6 +78,16 @@
           </svg>
         </i>
         <span>유튜브 검색</span>
+      </div>
+      <div class="nav-item" id="nav-requests">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4"></path>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+        </i>
+        <span>신청목록</span>
+        <span class="task-count" id="requests-badge" style="display: none;">0</span>
       </div>
       <button type="button" id="btn-add-song" class="sidebar-add-song-btn" title="유튜브 URL 또는 로컬 파일로 곡 추가">
         <i>
@@ -322,14 +332,17 @@
           <div class="overlay-tab-container">
             <div class="preview-tabs-container">
               <div class="preview-tab active" data-preview-mode="playing">현재 곡 정보</div>
-              <div class="preview-tab" data-preview-mode="lyrics">가사 미리보기</div>
+              <div class="preview-tab" data-preview-mode="queue">곡정보+대기열</div>
+              <div class="preview-tab" data-preview-mode="lyrics">가사</div>
             </div>
             <div class="overlay-preview-wrapper">
-              <iframe id="overlay-iframe" src="overlay-info.html"
-                style="width: 100%; height: 100%; border: none; background: transparent;"></iframe>
+              <div class="overlay-preview-stage" id="overlay-preview-stage">
+                <iframe id="overlay-iframe" class="overlay-preview-iframe"
+                  src="overlay-info.html?preview=true" title="오버레이 미리보기"></iframe>
+              </div>
             </div>
 
-            <div class="settings-group">
+            <div class="settings-group" id="overlay-info-header-settings">
               <div class="group-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -340,7 +353,7 @@
                   </svg>
                   <h3 id="overlay-settings-title">곡 정보 오버레이 설정</h3>
                 </div>
-                <div class="overlay-force-visible-chip">
+                <div class="overlay-force-visible-chip overlay-info-only">
                   <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
                   <label class="switch overlay-force-visible-switch">
                     <input type="checkbox" id="toggle-overlay-force-visible">
@@ -348,10 +361,34 @@
                   </label>
                 </div>
               </div>
+            </div>
 
+            <div id="overlay-queue-settings" class="settings-group overlay-queue-settings" style="display: none;">
+              <div class="group-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <h3>대기열 오버레이 설정</h3>
+                </div>
+                <div class="overlay-force-visible-chip">
+                  <span class="overlay-force-visible-label">대기열 표시</span>
+                  <label class="switch overlay-force-visible-switch">
+                    <input type="checkbox" id="toggle-overlay-queue-visible" checked>
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+                <div class="overlay-force-visible-chip">
+                  <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
+                  <label class="switch overlay-force-visible-switch">
+                    <input type="checkbox" id="toggle-overlay-queue-force-visible">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+              <p class="overlay-queue-settings-hint">현재 곡 정보 아래에 구분선을 두고 다음 곡 1~3개를 표시합니다. OBS에는 별도 브라우저 소스로 추가하세요.</p>
+            </div>
 
+            <div id="overlay-info-settings" class="overlay-info-settings">
 
-              <div class="ai-model-card">
+              <div class="ai-model-card" id="overlay-design-settings">
                 <div class="ai-info-left" style="width: 100%;">
                   <div class="ai-title-large">오버레이 디자인 커스텀</div>
                   <div class="ai-model-desc">설정 변경 내용이 미리보기에 바로 반영됩니다.</div>
@@ -368,7 +405,7 @@
                       </div>
 
                       <div id="overlay-font-size-row" style="display: none; flex-direction: column; gap: 8px;">
-                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">가사 글씨 크기</label>
+                        <label id="overlay-font-size-label" style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">가사 글씨 크기</label>
                         <div style="display: flex; align-items: center; gap: 10px;">
                           <input type="range" id="overlay-font-size" min="14" max="48" step="1" value="22" class="range-slider" style="flex: 1;">
                           <span id="overlay-font-size-val" style="font-size: 0.85rem; font-weight: 800; min-width: 45px; text-align: right;">22px</span>
@@ -391,20 +428,39 @@
                         </div>
                       </div>
 
-                      <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">등장 애니메이션 방향</label>
-                        <div class="custom-select" id="overlay-animation-direction-dropdown" style="width: 100%;">
-                          <div class="select-trigger">
-                            <span class="selected-text">왼쪽에서 오른쪽으로</span>
-                            <span class="select-arrow"></span>
+                      <div id="overlay-animation-row" class="overlay-animation-row">
+                        <div class="overlay-animation-fields">
+                          <div class="overlay-anim-field" id="overlay-anim-direction-field">
+                            <label id="overlay-animation-direction-label" class="overlay-anim-label">등장 애니메이션 방향</label>
+                            <div class="custom-select" id="overlay-animation-direction-dropdown">
+                              <div class="select-trigger">
+                                <span class="selected-text">왼쪽에서 오른쪽으로</span>
+                                <span class="select-arrow"></span>
+                              </div>
+                              <div class="select-options">
+                                <div class="option-item selected" data-value="left">왼쪽에서 오른쪽으로</div>
+                                <div class="option-item" data-value="right">오른쪽에서 왼쪽으로</div>
+                                <div class="option-item" data-value="top">위에서 아래로</div>
+                                <div class="option-item" data-value="bottom">아래에서 위로</div>
+                              </div>
+                              <input type="hidden" id="overlay-animation-direction" value="left">
+                            </div>
                           </div>
-                          <div class="select-options">
-                            <div class="option-item selected" data-value="left">왼쪽에서 오른쪽으로</div>
-                            <div class="option-item" data-value="right">오른쪽에서 왼쪽으로</div>
-                            <div class="option-item" data-value="top">위에서 아래로</div>
-                            <div class="option-item" data-value="bottom">아래에서 위로</div>
+                          <div class="overlay-anim-field" id="overlay-queue-expand-field" hidden>
+                            <label class="overlay-anim-label">대기열 늘어나는 방향</label>
+                            <div class="custom-select" id="overlay-queue-expand-dropdown">
+                              <div class="select-trigger">
+                                <span class="selected-text">위아래 동시</span>
+                                <span class="select-arrow"></span>
+                              </div>
+                              <div class="select-options">
+                                <div class="option-item" data-value="up">위</div>
+                                <div class="option-item selected" data-value="both">위아래 동시</div>
+                                <div class="option-item" data-value="down">아래</div>
+                              </div>
+                              <input type="hidden" id="overlay-queue-expand-direction" value="both">
+                            </div>
                           </div>
-                          <input type="hidden" id="overlay-animation-direction" value="left">
                         </div>
                       </div>
                     </div>
@@ -561,6 +617,15 @@
                   </div>
                 </div>
 
+                <!-- URL 4: Queue overlay -->
+                <div class="settings-subsection">
+                  <label class="settings-sublabel">4. 대기열 오버레이 (다음 곡 1~3개)</label>
+                  <div class="settings-inline-row">
+                    <code id="queue-overlay-url-display" class="settings-code-display">http://localhost:14202/queue</code>
+                    <button class="btn-ai-action secondary is-inline" id="btn-copy-queue-overlay-url">URL 복사</button>
+                  </div>
+                </div>
+
                 <!-- Guide Box -->
                 <div class="settings-guide-box">
                   <div class="settings-guide-title">
@@ -568,14 +633,15 @@
                     OBS 브라우저 소스 설정 가이드
                   </div>
                   <div class="settings-guide-body">
-                    • 곡 정보: <strong>1760 × 520</strong> 권장<br>
-                    • 가사: <strong>1200 × 300</strong> 권장
+                    • 곡 정보: <strong>1500 × 440</strong> 권장<br>
+                    • 곡정보+대기열: <strong>1500 × 1000</strong> 권장<br>
+                    • 가사: <strong>1500 × 375</strong> 권장
                   </div>
                 </div>
 
                 <!-- 3줄 가사(원문/차음/번역) 표시 항목 - 인앱 드로어/OBS 오버레이 독립 설정 -->
                 <div class="settings-subsection">
-                  <label class="settings-sublabel">4. 가사 표시 항목 (원문·차음·번역)</label>
+                  <label class="settings-sublabel">5. 가사 표시 항목 (원문·차음·번역)</label>
                   <div class="lyric-line-visibility-grid">
                     <div class="lyric-line-visibility-col">
                       <span class="lyric-line-visibility-title">인앱 드로어</span>
@@ -1030,6 +1096,16 @@
           <div id="alignment-viewer-root" style="height: 100%;"></div>
         </div>
 
+        <!-- 신청목록 (Songbook 운영) -->
+        <div class="tab-content" id="requests-page" style="display: none;">
+          <div class="requests-container" id="requests-page-root">
+            <div class="requests-gate-state" id="requests-empty-state">
+              <p>Songbook에 로그인하면 시청자 신청을 관리할 수 있습니다.</p>
+              <button type="button" class="btn-ai-action" id="btn-requests-login">Songbook 로그인</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 유튜브 검색 페이지 -->
         <div class="tab-content" id="youtube-page" style="display: none;">
           <div class="youtube-search-page">
@@ -1037,6 +1113,7 @@
             <div id="yt-search-results" class="yt-search-results" aria-live="polite"></div>
           </div>
         </div>
+      </div> <!-- End of scroll-area -->
       </div> <!-- End of view-main -->
 
       <!-- Lyric Sliding Drawer -->

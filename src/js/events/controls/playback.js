@@ -25,13 +25,13 @@ export function initPlaybackListeners() {
   if (elements.btnPrev) {
     elements.btnPrev.onclick = async () => {
       const { handlePrevTrack } = await import('../../player.js');
-      handlePrevTrack();
+      await handlePrevTrack();
     };
   }
   if (elements.btnNext) {
     elements.btnNext.onclick = async () => {
       const { handleNextTrack } = await import('../../player.js');
-      handleNextTrack();
+      await handleNextTrack();
     };
   }
 
