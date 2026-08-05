@@ -2,8 +2,8 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-08-04 (Songbook 동기화·로그인 토스트 보강)
-- 고유 문구 수: **약 170+** (자동 수집 + 동적 문구 보강, 중복 제거)
+- 수집일: 2026-08-05 (신청목록·Push 제거·순서 변경 토스트 보강)
+- 고유 문구 수: **약 190+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
@@ -195,7 +195,7 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
 | 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
 | 안내 | Songbook으로 목록을 보내는 중… | `src/js/songbook-sync.js` |
-| 성공 / 경고 | Songbook 동기화 완료 ({slug}): 추가 {n} · 갱신 {n} · 그대로 {n}[ · 실패 {n}] | `src/js/songbook-sync.js` |
+| 성공 / 경고 | Songbook 동기화 완료 ({slug}): 추가 {n} · 갱신 {n} · 제거 {n} · 그대로 {n}[ · 실패 {n}] | `src/js/songbook-sync.js` |
 | 오류 | Songbook 동기화에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
 | 안내 | 이미 채널이 있습니다: /c/{slug} | `src/js/songbook-sync.js` |
 | 성공 | 채널 생성 완료: /c/{slug} | `src/js/songbook-sync.js` |
@@ -205,6 +205,16 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 채널 생성을 취소했습니다. | `src/js/songbook-sync.js` |
 | confirm | Songbook 채널 만들기 / 동기화하려면 채널이 필요합니다. 지금 만들까요? | `src/js/songbook-sync.js` |
 | confirm | Songbook 채널 만들기 / 닉네임으로 채널을 만들까요? | `src/js/songbook-sync.js` |
+| 안내 | 새 신청: {title} - {artist} | `src/js/songbook-request-poller.js` |
+| 성공 | 신청을 열었습니다. / 신청을 마감했습니다. | `src/js/songbook-requests.js` |
+| 성공 | 대기열 중복만 차단합니다. / 이번 방송에서 부른 곡도 차단합니다… / 중복 신청을 허용합니다. | `src/js/songbook-requests.js` |
+| 성공 | 대기열 {n}곡을 비우고 중복 기록을 초기화했습니다. / 부른 곡 중복 기록을 초기화했습니다. | `src/js/songbook-requests.js` |
+| 성공 | 재생 중으로 표시 / 완료 처리 / 거절 처리 | `src/js/songbook-requests.js` |
+| 경고 | 라이브러리에 없는 곡입니다. | `src/js/songbook-requests.js` |
+| 경고 | 채널이 없습니다. | `src/js/songbook-requests.js` |
+| 성공 | 채널이 생성되었습니다. | `src/js/songbook-requests.js` |
+| 오류 | 순서 변경에 실패했습니다. / {err} | `src/js/songbook-requests.js` |
+| 오류 | 설정 변경 실패 / 초기화 실패 / 처리 실패 / {err} | `src/js/songbook-requests.js` |
 | 안내 | 홍보 데모 모드입니다. 재생·AI·편집이 가상으로 동작합니다. 다시 #promo 로 해제하세요. | `src/js/events/controls/library.js` |
 | 안내 | 원래 노래 목록으로 돌아왔습니다. | `src/js/events/controls/library.js` |
 

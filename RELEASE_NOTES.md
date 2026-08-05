@@ -1,8 +1,35 @@
 # Release Notes
 
-## Unreleased (2026-08-04)
+## Unreleased (2026-08-05)
 
-이전 커밋(`fix(auth): Songbook 로그인 기본 next를 /me로 변경`) 대비 작업 중 변경입니다. 버전 번호는 아직 `0.6.1`입니다.
+이전 커밋(`feat(songbook): 라이브러리 보내기·아바타·썸네일 축소와 문서 반영` 및 이후 Songbook/오버레이 작업) 대비입니다. 버전 번호는 아직 `0.6.1`입니다.
+
+### 신청목록 · 재생 큐 · 대기열 오버레이
+
+- **신청목록** 탭: Songbook 대기열 운영(접수 on/off, 재생·완료·거절, 중복 신청 3단 정책, 대기열 비우기, 새 신청 토스트·사이드바 배지).
+- **대기열 드래그 순서**: Sortable로 행 순서 변경 → Songbook `POST /admin/queue/reorder`(`sort_order`). 웹 운영·시청자 `/queue`·재생 큐·OBS 대기열과 동일 순서.
+- **재생 큐**: 로컬 매칭 곡만 적재. 신청목록에서 수동 재생 시작, 곡 종료 시 다음 곡을 정지 상태로 로드. 독 **다음/이전**이 신청 큐를 우선.
+- **OBS 대기열 오버레이**: `http://localhost:14202/queue` (권장 **1500×1000**). 미리보기 탭 「곡정보+대기열」, 등장 애니메이션·**대기열 늘어나는 방향**(위/양쪽/아래, 기본 양쪽). 곡 정보·가사 권장 가로도 **1500**으로 통일.
+
+### Songbook Push 정합
+
+- 앱 라이브러리에 없는 원격 곡은 동기화 시 `enabled: false`로 내려 **웹 노래책에서 숨김**(신청 이력 FK 보존). 토스트에 **제거 N** 표시. 다시 앱에 넣으면 다음 Push에서 복구.
+
+### 가사 드로어
+
+- 정렬 가사 없을 때 **가사 싱크 등록하러 가기** → 드로어를 닫고 **가사 싱크** 탭으로 이동(현재 곡 로드).
+
+### 문서
+
+- [UserManual.md](UserManual.md) 신청목록·오버레이·Push 삭제·가사 드로어 CTA
+- [ToDo.md](ToDo.md) Songbook/오버레이/재생 큐 항목 갱신
+- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 신청목록·동기화 제거 토스트
+
+---
+
+## Unreleased (2026-08-04) — Songbook 로그인·보내기
+
+이전 커밋(`fix(auth): Songbook 로그인 기본 next를 /me로 변경`) 대비였던 초기 Songbook 연동입니다.
 
 ### Live MR Songbook 연동
 

@@ -162,21 +162,19 @@ export function initLyricDrawer() {
     registerAppHandler('closeLyricDrawer', closeDrawer);
 
     const goToLyricSyncForCurrentTrack = async () => {
-        const currentPath = state.currentTrack?.path;
-        if (!currentPath) {
-            callAppHandler('switchToTab', 'alignment');
-            return;
-        }
+        closeDrawer();
         try {
             const nav = await import('./events/navigation.js');
-            if (typeof nav.openAlignmentForTrack === 'function') {
+            const currentPath = state.currentTrack?.path;
+            if (currentPath && typeof nav.openAlignmentForTrack === 'function') {
                 await nav.openAlignmentForTrack(currentPath, { forceLoad: true });
-            } else {
-                callAppHandler('switchToTab', 'alignment');
+                return;
+            }
+            if (typeof nav.switchTab === 'function') {
+                nav.switchTab('alignment');
             }
         } catch (err) {
             console.error('[LyricDrawer] Failed to open alignment for current track:', err);
-            callAppHandler('switchToTab', 'alignment');
         }
     };
     registerAppHandler('goToLyricSyncForCurrentTrack', goToLyricSyncForCurrentTrack);
@@ -231,12 +229,11 @@ export function updateLyrics(segments) {
                 </button>
             </div>
         `;
+        container.querySelector('.lyric-sync-cta')?.addEventListener('click', () => {
+            callAppHandler('goToLyricSyncForCurrentTrack');
+        });
         return;
     }
-
-    container.querySelector('.lyric-sync-cta')?.addEventListener('click', () => {
-        callAppHandler('goToLyricSyncForCurrentTrack');
-    });
 
     // Reset overlay payload cache when track lyrics are replaced.
     lastOverlayCurrent = null;
