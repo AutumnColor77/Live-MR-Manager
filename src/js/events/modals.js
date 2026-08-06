@@ -120,6 +120,10 @@ export function initModalListeners() {
           const raw = Number.parseInt(document.getElementById("edit-proficiency-select")?.value || "", 10);
           return Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : null;
         })(),
+        donationAmount: (() => {
+          const raw = Number.parseInt(document.getElementById("edit-donation-amount")?.value || "", 10);
+          return Number.isFinite(raw) && raw >= 0 ? raw : null;
+        })(),
         isMr: isManualMr,
         is_mr: isManualMr,
         isSeparated: wasSeparated,

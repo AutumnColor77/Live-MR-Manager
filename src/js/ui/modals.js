@@ -72,6 +72,15 @@ export function openEditModal(song, index) {
   setMetaStarRating("edit-difficulty-stars", "edit-difficulty-select", song.difficulty);
   setMetaStarRating("edit-proficiency-stars", "edit-proficiency-select", song.proficiency);
 
+  const donationEl = document.getElementById("edit-donation-amount");
+  if (donationEl) {
+    const raw = song.donationAmount ?? song.donation_amount;
+    donationEl.value =
+      raw != null && raw !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0
+        ? String(Math.round(Number(raw)))
+        : "";
+  }
+
   const lyricsLinkEl = document.getElementById("edit-lyrics-link");
   if (lyricsLinkEl) {
     lyricsLinkEl.value = song.lyricsLink || song.lyrics_link || "";

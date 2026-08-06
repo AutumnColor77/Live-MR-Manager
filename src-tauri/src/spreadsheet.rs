@@ -20,6 +20,7 @@ const EXPORT_HEADERS: &[&str] = &[
     "BPM",
     "난이도",
     "숙련도",
+    "후원금액",
     "노래방",
     "커버",
     "가사링크",
@@ -62,6 +63,9 @@ fn normalize_header(h: &str) -> String {
         "키" | "key" => "song_key".into(),
         "난이도" => "difficulty".into(),
         "숙련도" => "proficiency".into(),
+        "후원금액" | "후원" | "donation" | "donation_amount" | "donationamount" => {
+            "donation_amount".into()
+        }
         "노래방" | "노래방url" => "karaoke_url".into(),
         "커버" | "커버url" => "cover_url".into(),
         "가사링크" | "가사" => "lyrics_link".into(),
@@ -74,6 +78,7 @@ fn normalize_header(h: &str) -> String {
         "bpm" => "bpm".into(),
         "difficulty" => "difficulty".into(),
         "proficiency" => "proficiency".into(),
+        "donation_amount" => "donation_amount".into(),
         "karaoke_url" => "karaoke_url".into(),
         "cover_url" => "cover_url".into(),
         "lyrics_link" => "lyrics_link".into(),
@@ -329,6 +334,11 @@ fn apply_row_to_song(song: &mut SongMetadata, row: &HashMap<String, String>) {
     if let Some(v) = parse_u8_1_5(row.get("proficiency").map(|s| s.as_str()).unwrap_or("")) {
         song.proficiency = Some(v);
     }
+    if let Some(v) = parse_i32(row.get("donation_amount").map(|s| s.as_str()).unwrap_or("")) {
+        if v >= 0 {
+            song.donation_amount = Some(v);
+        }
+    }
     if let Some(v) = row.get("karaoke_url").filter(|s| !s.is_empty()) {
         song.karaoke_url = Some(v.clone());
     }
@@ -457,6 +467,7 @@ fn songs_to_csv(songs: &[SongMetadata], include_example: bool) -> Result<Vec<u8>
             "120",
             "3",
             "4",
+            "5000",
             "",
             "",
             "",
@@ -499,6 +510,10 @@ fn songs_to_csv(songs: &[SongMetadata], include_example: bool) -> Result<Vec<u8>
                 .unwrap_or_default(),
             &song
                 .proficiency
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            &song
+                .donation_amount
                 .map(|v| v.to_string())
                 .unwrap_or_default(),
             song.karaoke_url.as_deref().unwrap_or(""),

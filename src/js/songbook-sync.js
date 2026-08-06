@@ -72,6 +72,20 @@ function mapSongbookDifficulty(song) {
   return rounded;
 }
 
+function mapSongbookDonationAmount(song) {
+  const raw = song?.donationAmount ?? song?.donation_amount;
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : raw != null && raw !== ''
+        ? Number(raw)
+        : NaN;
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  if (rounded < 0 || rounded > 100_000_000) return null;
+  return rounded;
+}
+
 async function toSongPayload(song) {
   const title = String(song?.title || '').trim();
   const artist = String(song?.artist || '').trim() || 'Unknown';
@@ -91,6 +105,7 @@ async function toSongPayload(song) {
     songKey: song?.songKey ?? song?.song_key ?? null,
     bpm,
     difficulty: mapSongbookDifficulty(song),
+    donationAmount: mapSongbookDonationAmount(song),
     thumbnail: await prepareSongbookThumbnail(song),
     enabled: true,
   };
@@ -137,6 +152,9 @@ function needsPatch(remote, localPayload) {
   const remoteDiff = remote.difficulty ?? null;
   const localDiff = localPayload.difficulty ?? null;
   if (remoteDiff !== localDiff) return true;
+  const remoteDonation = remote.donationAmount ?? null;
+  const localDonation = localPayload.donationAmount ?? null;
+  if (remoteDonation !== localDonation) return true;
   if (thumbnailNeedsPatch(remote.thumbnail, localPayload.thumbnail)) return true;
   if (remote.enabled === false) return true;
   return false;

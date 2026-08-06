@@ -102,6 +102,8 @@ pub struct SongMetadata {
     pub bpm: Option<i32>,
     pub difficulty: Option<u8>,
     pub proficiency: Option<u8>,
+    /// Suggested tip/donation amount in KRW for Songbook requests (optional).
+    pub donation_amount: Option<i32>,
     pub karaoke_url: Option<String>,
     pub cover_url: Option<String>,
     pub original_url: Option<String>,

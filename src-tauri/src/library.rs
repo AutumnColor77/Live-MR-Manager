@@ -129,7 +129,7 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
          (SELECT GROUP_CONCAT(name) FROM Tags JOIN Track_Tag_Map ON Tags.id = Track_Tag_Map.tag_id WHERE Track_Tag_Map.track_id = t.id) as tags,
          (SELECT GROUP_CONCAT(name) FROM Categories JOIN Track_Category_Map ON Categories.id = Track_Category_Map.category_id WHERE Track_Category_Map.track_id = t.id) as categories,
          t.original_title, t.translated_title, t.curation_category,
-         t.song_key, t.bpm, t.difficulty, t.proficiency,
+         t.song_key, t.bpm, t.difficulty, t.proficiency, t.donation_amount,
          t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link
          FROM Tracks t LEFT JOIN Genres g ON t.genre_id = g.id"
     ).map_err(to_sqlite_err)?;
@@ -175,10 +175,11 @@ pub async fn get_songs_internal(paths: crate::state::AppPaths) -> Result<Vec<Son
             bpm: row.get(20).ok(),
             difficulty: row.get::<_, Option<i32>>(21).ok().flatten().and_then(|v| (1..=5).contains(&v).then_some(v as u8)),
             proficiency: row.get::<_, Option<i32>>(22).ok().flatten().and_then(|v| (1..=5).contains(&v).then_some(v as u8)),
-            karaoke_url: row.get(23).ok(),
-            cover_url: row.get(24).ok(),
-            original_url: row.get(25).ok(),
-            lyrics_link: row.get(26).ok(),
+            donation_amount: row.get::<_, Option<i32>>(23).ok().flatten().filter(|&v| v >= 0),
+            karaoke_url: row.get(24).ok(),
+            cover_url: row.get(25).ok(),
+            original_url: row.get(26).ok(),
+            lyrics_link: row.get(27).ok(),
         })
     }).map_err(to_sqlite_err)?;
 
@@ -196,7 +197,7 @@ pub fn load_all_songs_from_db() -> Result<Vec<SongMetadata>, String> {
          (SELECT GROUP_CONCAT(name) FROM Tags JOIN Track_Tag_Map ON Tags.id = Track_Tag_Map.tag_id WHERE Track_Tag_Map.track_id = t.id) as tags,
          (SELECT GROUP_CONCAT(name) FROM Categories JOIN Track_Category_Map ON Categories.id = Track_Category_Map.category_id WHERE Track_Category_Map.track_id = t.id) as categories,
          t.original_title, t.translated_title, t.curation_category,
-         t.song_key, t.bpm, t.difficulty, t.proficiency,
+         t.song_key, t.bpm, t.difficulty, t.proficiency, t.donation_amount,
          t.karaoke_url, t.cover_url, t.original_url, t.lyrics_link
          FROM Tracks t LEFT JOIN Genres g ON t.genre_id = g.id",
         )
@@ -249,10 +250,15 @@ pub fn load_all_songs_from_db() -> Result<Vec<SongMetadata>, String> {
                 .ok()
                 .flatten()
                 .and_then(|v| (1..=5).contains(&v).then_some(v as u8)),
-            karaoke_url: row.get(23).ok(),
-            cover_url: row.get(24).ok(),
-            original_url: row.get(25).ok(),
-            lyrics_link: row.get(26).ok(),
+            donation_amount: row
+                .get::<_, Option<i32>>(23)
+                .ok()
+                .flatten()
+                .filter(|&v| v >= 0),
+            karaoke_url: row.get(24).ok(),
+            cover_url: row.get(25).ok(),
+            original_url: row.get(26).ok(),
+            lyrics_link: row.get(27).ok(),
         })
     }).map_err(to_sqlite_err)?;
 
@@ -407,16 +413,16 @@ pub async fn save_library_internal(songs: Vec<SongMetadata>) -> Result<(), Strin
             "INSERT OR REPLACE INTO Tracks (
                 path, title, thumbnail, duration, source, pitch, tempo, volume, artist, play_count, date_added, is_mr, genre_id,
                 original_title, translated_title, curation_category,
-                song_key, bpm, difficulty, proficiency,
+                song_key, bpm, difficulty, proficiency, donation_amount,
                 karaoke_url, cover_url, original_url, lyrics_link
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 song.path, song.title, song.thumbnail, song.duration, song.source,
                 song.pitch.unwrap_or(0.0), song.tempo.unwrap_or(1.0), song.volume.unwrap_or(100.0),
                 song.artist, song.play_count.unwrap_or(0), song.date_added,
                 if song.is_mr.unwrap_or(false) { 1 } else { 0 },
                 genre_id, song.original_title, song.translated_title, curation_category,
-                song.song_key, song.bpm, song.difficulty, song.proficiency,
+                song.song_key, song.bpm, song.difficulty, song.proficiency, song.donation_amount,
                 song.karaoke_url, song.cover_url, song.original_url, song.lyrics_link
             ]
         )

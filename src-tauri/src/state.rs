@@ -302,6 +302,7 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             ("bpm", "ALTER TABLE Tracks ADD COLUMN bpm INTEGER"),
             ("difficulty", "ALTER TABLE Tracks ADD COLUMN difficulty INTEGER"),
             ("proficiency", "ALTER TABLE Tracks ADD COLUMN proficiency INTEGER"),
+            ("donation_amount", "ALTER TABLE Tracks ADD COLUMN donation_amount INTEGER"),
             ("karaoke_url", "ALTER TABLE Tracks ADD COLUMN karaoke_url TEXT"),
             ("cover_url", "ALTER TABLE Tracks ADD COLUMN cover_url TEXT"),
             ("original_url", "ALTER TABLE Tracks ADD COLUMN original_url TEXT"),
