@@ -139,6 +139,18 @@
   background: var(--surface-3, rgba(255, 255, 255, 0.1));
 }
 
+.songbook-login-menu-item[hidden] {
+  display: none !important;
+}
+
+.songbook-login-menu-danger {
+  color: #f87171;
+}
+
+.songbook-login-menu-danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .songbook-channel-label {
   margin: 6px 0 0;
   padding: 10px 14px;

@@ -1,10 +1,11 @@
 /**
- * Songbook 로그인 — 단일 버튼 + 프로바이더 메뉴, OAuth 후 deep-link로 앱 세션 수신
+ * Songbook 로그인 — 단일 버튼 + 프로바이더/계정 메뉴, OAuth 후 deep-link로 앱 세션 수신
  */
 import {
   applySongbookChannels,
   clearSongbookChannelCache,
   songbookBase,
+  songbookChannelSlug,
   songbookDesktopConnectUrl,
 } from '../companion-links.js';
 import { setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
@@ -37,6 +38,17 @@ function setMenuOpen(open) {
   if (!menu || !btn) return;
   menu.hidden = !open;
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function setMenuMode(loggedIn) {
+  const menu = document.getElementById('songbook-login-menu');
+  if (!menu) return;
+  menu.querySelectorAll('[data-provider]').forEach((el) => {
+    el.hidden = Boolean(loggedIn);
+  });
+  menu.querySelectorAll('[data-action]').forEach((el) => {
+    el.hidden = !loggedIn;
+  });
 }
 
 function setLoginAvatar(avatar, wrap, btn, { picture, name }) {
@@ -80,7 +92,6 @@ function setLoginAvatar(avatar, wrap, btn, { picture, name }) {
 
 function renderAuthButton(state) {
   const btn = document.getElementById('songbook-login-btn');
-  const menu = document.getElementById('songbook-login-menu');
   const avatar = document.getElementById('songbook-login-avatar');
   const wrap = document.getElementById('songbook-login-avatar-wrap');
   if (!btn) return;
@@ -91,9 +102,8 @@ function renderAuthButton(state) {
 
   if (loggedIn) {
     if (label) label.textContent = name;
-    btn.title = `${state.user?.email || name} · 클릭하여 로그아웃`;
+    btn.title = `${state.user?.email || name} · 메뉴 열기`;
     btn.dataset.loggedIn = '1';
-    if (menu) menu.hidden = true;
     setLoginAvatar(avatar, wrap, btn, { picture, name });
     setSongbookSyncVisible(true);
   } else {
@@ -103,6 +113,8 @@ function renderAuthButton(state) {
     setLoginAvatar(avatar, wrap, btn, { picture: '', name: '' });
     setSongbookSyncVisible(false);
   }
+  setMenuMode(loggedIn);
+  setMenuOpen(false);
 }
 
 async function refreshProfile(token) {
@@ -216,6 +228,21 @@ async function startProviderLogin(provider) {
   }
 }
 
+async function openMySongbook() {
+  const slug = songbookChannelSlug();
+  if (!slug) {
+    showNotification('연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요.', 'error');
+    return;
+  }
+  setMenuOpen(false);
+  try {
+    await openExternalUrl(`${songbookBase()}/c/${encodeURIComponent(slug)}`);
+  } catch (err) {
+    console.error('[SongbookAuth] open songbook failed', err);
+    showNotification('노래책을 열지 못했습니다.', 'error');
+  }
+}
+
 async function logoutSongbook() {
   const current = await invoke('get_songbook_auth').catch(() => null);
   const token = current?.token;
@@ -242,6 +269,19 @@ async function logoutSongbook() {
   showNotification('Songbook 로그아웃되었습니다.', 'info');
 }
 
+/** 헤더 로그인 메뉴 열기 (신청목록 게이트 등에서 호출) */
+export function openSongbookAuthMenu() {
+  const btn = document.getElementById('songbook-login-btn');
+  const loggedIn = btn?.dataset?.loggedIn === '1';
+  setMenuMode(loggedIn);
+  setMenuOpen(true);
+}
+
+export async function startSongbookLogin(provider) {
+  if (provider !== 'google' && provider !== 'naver') return;
+  await startProviderLogin(provider);
+}
+
 export function initSongbookAuth() {
   const btn = document.getElementById('songbook-login-btn');
   const menu = document.getElementById('songbook-login-menu');
@@ -259,14 +299,9 @@ export function initSongbookAuth() {
     void syncAuthUi(payload);
   }).catch((err) => console.warn('[SongbookAuth] listen failed', err));
 
-  btn.addEventListener('click', async (e) => {
+  btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const current = await invoke('get_songbook_auth').catch(() => null);
-    if (current?.loggedIn) {
-      await logoutSongbook();
-      return;
-    }
     setMenuOpen(menu?.hidden !== false);
   });
 
@@ -279,6 +314,18 @@ export function initSongbookAuth() {
         await startProviderLogin(provider);
       }
     });
+  });
+
+  menu?.querySelector('[data-action="songbook"]')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await openMySongbook();
+  });
+
+  menu?.querySelector('[data-action="logout"]')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await logoutSongbook();
   });
 
   document.addEventListener('click', (e) => {

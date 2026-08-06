@@ -125,30 +125,16 @@ pub async fn open_app_update_page(url: String) -> Result<(), String> {
     let target = if url.trim().is_empty() {
         default_release_url()
     } else {
-        url
+        url.trim().to_string()
     };
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // One /C string with quoted URL so `?` / `&` survive cmd.exe parsing
-        let cmdline = format!("start \"\" \"{}\"", target.replace('"', ""));
-        std::process::Command::new("cmd")
-            .args(["/C", &cmdline])
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+    // cmd.exe `start "" "url"` via Command::args mangles nested quotes on Windows
+    // (ShellExecute ends up with `\\` → 「₩₩을(를) 찾을 수 없습니다」). Use opener instead.
+    if !(target.starts_with("https://") || target.starts_with("http://")) {
+        return Err("열 수 있는 http(s) URL이 아닙니다.".into());
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&target)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
+    tauri_plugin_opener::open_url(&target, None::<&str>).map_err(|e| e.to_string())
 }
 
 async fn check_and_notify(app: AppHandle) {

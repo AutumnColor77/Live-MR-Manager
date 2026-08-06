@@ -136,6 +136,7 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 - [X] **대기열 드래그 순서 (v0.7.0)**: Sortable + Songbook `sort_order`/`/queue/reorder`, 앱·웹·시청자 큐 동기화
 - [X] **후원금액 메타 (v0.7.0)**: 곡 정보·스프레드시트·Songbook Push
 - [X] **커스텀 도메인 (v0.7.1)**: 앱 `SONGBOOK_PROD` → [www.livemrsongbook.com](https://www.livemrsongbook.com)
+- [X] **계정 메뉴·신청목록 로그인 UX (v0.7.2)**: 닉네임 메뉴(노래책/로그아웃), 게이트 Google/네이버 버튼, 업데이트 링크 opener 수정
 - [ ] **가져오기(Pull)** / 원격 hard-delete·양방향 ID 매핑
 - [ ] **카테고리 매핑 UI** (앱 freeform ↔ Songbook KPOP|POP|JPOP|OST)
 
@@ -147,4 +148,4 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. **v0.6.0**(2026-08-01)에서 멜로밍 연동을 제거하고 노래 추가 모달·커스텀 모델 URL·가사 싱크/AI 정렬 등을 포함했습니다. **v0.6.1**(2026-08-04)에서 **유튜브 검색**(하이브리드)·오버레이 상시 표시 테마를 추가했습니다. **v0.7.0**(2026-08-06)에서 **Live MR Songbook** 로그인·Push·신청목록·대기열 오버레이·후원금액을 추가했고, **v0.7.1**에서 Songbook URL을 [livemrsongbook.com](https://www.livemrsongbook.com)으로 맞췄습니다([RELEASE_NOTES.md](RELEASE_NOTES.md)).
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. **v0.6.0**(2026-08-01)에서 멜로밍 연동을 제거하고 노래 추가 모달·커스텀 모델 URL·가사 싱크/AI 정렬 등을 포함했습니다. **v0.6.1**(2026-08-04)에서 **유튜브 검색**(하이브리드)·오버레이 상시 표시 테마를 추가했습니다. **v0.7.0**(2026-08-06)에서 **Live MR Songbook** 로그인·Push·신청목록·대기열 오버레이·후원금액을 추가했고, **v0.7.1**에서 Songbook URL을 [livemrsongbook.com](https://www.livemrsongbook.com)으로 맞췄으며, **v0.7.2**에서 계정 메뉴·신청목록 로그인 UX·업데이트 링크를 고쳤습니다([RELEASE_NOTES.md](RELEASE_NOTES.md)).

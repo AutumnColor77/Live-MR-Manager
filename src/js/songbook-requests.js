@@ -36,6 +36,41 @@ let queueSortable = null;
 let queueDragActive = false;
 let lastQueueSignature = '';
 
+function providerLoginButtonHtml(provider) {
+  if (provider === 'google') {
+    return `
+      <button type="button" class="requests-provider-btn is-google" data-provider="google">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-.9 2.3-1.9 3l3.1 2.4c1.8-1.7 2.9-4.1 2.9-7 0-.7-.1-1.3-.2-1.9H12z"/>
+          <path fill="#34A853" d="M6.6 14.3l-.5.4-2.2 1.7C5.6 19.1 8.6 21 12 21c2.4 0 4.4-.8 5.9-2.2l-3.1-2.4c-.8.6-1.9.9-2.8.9-2.2 0-4-1.5-4.7-3.5z"/>
+          <path fill="#4A90E2" d="M4 7.6C3.4 8.8 3 10.1 3 11.5s.4 2.7 1 3.9c0 .1 2.6-2 2.6-2-.2-.5-.3-1-.3-1.5s.1-1 .3-1.5L4 7.6z"/>
+          <path fill="#FBBC05" d="M12 5.7c1.3 0 2.5.5 3.4 1.3l2.6-2.6C16.4 2.9 14.4 2 12 2 8.6 2 5.6 3.9 4 6.9l2.7 2.1C7.9 7.1 9.8 5.7 12 5.7z"/>
+        </svg>
+        <span>Google로 로그인</span>
+      </button>`;
+  }
+  return `
+    <button type="button" class="requests-provider-btn is-naver" data-provider="naver">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <rect width="24" height="24" rx="4" fill="#03C75A"/>
+        <path fill="#fff" d="M7 6.5h3.2l3.1 5.1V6.5H17v11h-3.2l-3.1-5.1v5.1H7V6.5z"/>
+      </svg>
+      <span>네이버로 로그인</span>
+    </button>`;
+}
+
+function bindRequestsGateLogin(root = document) {
+  root.querySelectorAll('.requests-gate-actions [data-provider]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const provider = btn.getAttribute('data-provider');
+      const { startSongbookLogin } = await import('./events/songbook-auth.js');
+      await startSongbookLogin(provider);
+    });
+  });
+}
+
 const DUP_POLICIES = new Set(['allow', 'queue', 'played']);
 
 function resolveDuplicatePolicy(status) {
@@ -409,11 +444,12 @@ function renderGateState() {
       root.innerHTML = `
         <div class="requests-gate-state" id="requests-empty-state">
           <p>Songbook에 로그인하면 시청자 신청을 관리할 수 있습니다.</p>
-          <button type="button" class="btn-ai-action" id="btn-requests-login">Songbook 로그인</button>
+          <div class="requests-gate-actions">
+            ${providerLoginButtonHtml('google')}
+            ${providerLoginButtonHtml('naver')}
+          </div>
         </div>`;
-      document.getElementById('btn-requests-login')?.addEventListener('click', () => {
-        document.getElementById('songbook-login-btn')?.click();
-      });
+      bindRequestsGateLogin(root);
       return;
     }
 
@@ -421,7 +457,9 @@ function renderGateState() {
       root.innerHTML = `
         <div class="requests-gate-state" id="requests-empty-state">
           <p>신청을 받으려면 Songbook 채널이 필요합니다.</p>
-          <button type="button" class="btn-ai-action" id="btn-requests-create-channel">채널 만들기</button>
+          <div class="requests-gate-actions">
+            <button type="button" class="btn-ai-action requests-gate-btn" id="btn-requests-create-channel">채널 만들기</button>
+          </div>
         </div>`;
       document.getElementById('btn-requests-create-channel')?.addEventListener('click', () => void createChannelFromRequests());
       return;
@@ -683,9 +721,7 @@ export function initSongbookRequestsPage() {
   window.addEventListener('songbook-auth-ready', () => void refreshPage());
   window.addEventListener('songbook-requests-auth-expired', () => renderGateState());
 
-  document.getElementById('btn-requests-login')?.addEventListener('click', () => {
-    document.getElementById('songbook-login-btn')?.click();
-  });
+  bindRequestsGateLogin(document.getElementById('requests-page-root') || document);
 
   void refreshPage();
 }
