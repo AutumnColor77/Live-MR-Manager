@@ -8,7 +8,7 @@
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.7.0·v0.6.1·v0.6.0), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.7.1·v0.7.0·v0.6.1), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 

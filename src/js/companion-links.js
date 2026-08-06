@@ -20,7 +20,7 @@ export const YTDLP_SOURCE_URL = 'https://github.com/yt-dlp/yt-dlp';
 export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';
 
 /** Live MR Songbook (Google/Naver 로그인 · 채널 운영) */
-export const SONGBOOK_PROD = 'https://live-mr-songbook.boohun2771.workers.dev';
+export const SONGBOOK_PROD = 'https://www.livemrsongbook.com';
 /** 로컬 개발: localStorage.setItem('songbook_base', 'http://localhost:5173') */
 export const SONGBOOK_BASE = SONGBOOK_PROD;
 

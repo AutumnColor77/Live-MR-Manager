@@ -1,5 +1,17 @@
 # Release Notes
 
+## v0.7.1 (2026-08-06)
+
+Songbook 프로덕션 URL 핫픽스입니다. 기준: v0.7.0.
+
+- **Songbook 기본 URL**: `https://www.livemrsongbook.com`으로 변경 (`companion-links.js` `SONGBOOK_PROD`).
+- 이전 Workers 주소(`*.workers.dev`) 대신 커스텀 도메인으로 로그인·동기화·신청목록 API를 호출합니다.
+- 문서([UserManual.md](UserManual.md)·[README.md](README.md)) 링크를 동일 도메인으로 갱신.
+
+> Google OAuth `redirect_uri_mismatch`는 앱 URL뿐 아니라 **Google Cloud Console**에 새 도메인 콜백 URI 등록이 필요합니다.
+
+---
+
 ## v0.7.0 (2026-08-06)
 
 Live MR Songbook 연동(로그인·보내기·신청목록·대기열 오버레이)과 후원금액 메타를 포함한 마이너 릴리즈입니다. 기준: v0.6.1.
@@ -12,7 +24,7 @@ Live MR Songbook 연동(로그인·보내기·신청목록·대기열 오버레�
 - **Push 삭제 정합**: 앱에 없는 원격 곡은 `enabled: false`로 웹 노래책에서 숨김(신청 이력 FK 보존). 토스트 **제거 N**.
 - **썸네일**: 업로드 전 최대 96px JPEG data URL 축소. 음원 파일은 올리지 않음.
 - **세션**: 로그아웃 시 서버 세션 정리, 401 시 재로그인 유도.
-- **기본 URL**: 프로덕션 Workers. 로컬은 `localStorage.songbook_base`.
+- **기본 URL**: 당시 프로덕션 Workers (`*.workers.dev`). v0.7.1에서 [livemrsongbook.com](https://www.livemrsongbook.com)으로 변경. 로컬은 `localStorage.songbook_base`.
 
 ### 신청목록 · 재생 큐 · 대기열 오버레이
 

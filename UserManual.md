@@ -1,8 +1,8 @@
-# 🎙️ Live MR Manager(Beta) v0.7.0 — 사용자 매뉴얼
+# 🎙️ Live MR Manager(Beta) v0.7.1 — 사용자 매뉴얼
 
 **Live MR Manager(Beta)**는 AI 기술을 활용해 어떤 노래든 고품질 MR로 분리하고, 라이브 환경에서 실시간으로 키(Pitch)와 템포(Tempo)를 조절할 수 있는 전문적인 하이브리드 오디오 도구입니다.
 
-> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.0**. Songbook·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
+> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.1**. Songbook([livemrsongbook.com](https://www.livemrsongbook.com))·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
 
 ---
 
@@ -189,7 +189,7 @@ AI 분리가 고사양 작업임을 감안해, 방송 중 시스템 부하를 �
 
 ### 📖 Live MR Songbook (로그인·동기화)
 
-별도 웹 서비스 [Live MR Songbook](https://live-mr-songbook.boohun2771.workers.dev)과 연동합니다. 음원 파일은 올리지 않고 **곡 메타데이터**(제목·아티스트·카테고리·태그·KEY/BPM·썸네일 등)만 채널 노래책에 반영합니다.
+별도 웹 서비스 [Live MR Songbook](https://www.livemrsongbook.com)과 연동합니다. 음원 파일은 올리지 않고 **곡 메타데이터**(제목·아티스트·카테고리·태그·KEY/BPM·썸네일 등)만 채널 노래책에 반영합니다.
 
 1. 라이브러리 헤더 우측 **로그인**에서 Google 또는 네이버를 고릅니다. 브라우저가 열리며, 이미 Songbook에 로그인돼 있으면 바로 앱으로 돌아옵니다.
 2. 로그인되면 버튼에 **프로필 사진·닉네임**이 표시됩니다. 다시 누르면 로그아웃됩니다.

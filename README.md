@@ -123,6 +123,12 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.7.1 핫픽스 (2026-08-06)
+
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.1 절.
+
+- **Songbook URL**: 프로덕션 기본 주소를 [www.livemrsongbook.com](https://www.livemrsongbook.com)으로 변경.
+
 ### 🆕 v0.7.0 업데이트 (2026-08-06)
 
 상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.0 절 · 사용자 안내 [UserManual.md](UserManual.md) §6 Songbook.
@@ -218,7 +224,7 @@
 
 ## 🔗 Live MR Songbook
 
-멜로밍 연동(v0.6.0에서 제거)을 대체하는 **자체 Songbook**([live-mr-songbook](https://live-mr-songbook.boohun2771.workers.dev)) 연동입니다.
+멜로밍 연동(v0.6.0에서 제거)을 대체하는 **자체 Songbook**([livemrsongbook.com](https://www.livemrsongbook.com)) 연동입니다.
 
 | 원칙 | 내용 |
 | --- | --- |
