@@ -123,14 +123,15 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
-### 🆕 Unreleased — Live MR Songbook (2026-08-04)
+### 🆕 v0.7.0 업데이트 (2026-08-06)
 
-상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) Unreleased 절 · 사용자 안내 [UserManual.md](UserManual.md) §6 Songbook.
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.0 절 · 사용자 안내 [UserManual.md](UserManual.md) §6 Songbook.
 
 - **Songbook 로그인**: Google/네이버, 웹 세션 재사용(`desktop-connect`), 헤더 프로필 아바타.
-- **라이브러리 보내기**: 본인 채널로 Push(POST/PATCH). 채널 없으면 생성. 공유 demo 제외.
+- **라이브러리 보내기**: 본인 채널로 Push(POST/PATCH). 채널 없으면 생성. 공유 demo 제외. 앱에 없는 원격 곡은 웹에서 숨김.
+- **신청목록·재생 큐**: 대기열 운영·드래그 순서, OBS 대기열 오버레이(`/queue`).
+- **후원금액**: 곡 정보·스프레드시트·Songbook 동기화.
 - **썸네일**: 동기화 전 작게 줄여 업로드. 음원 파일은 올리지 않음(메타만).
-- **기본 URL**: 프로덕션 Workers. 로컬은 `localStorage.songbook_base`로 지정.
 
 ### 🆕 v0.6.1 업데이트 (2026-08-04)
 

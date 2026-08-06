@@ -1,55 +1,38 @@
 # Release Notes
 
-## Unreleased (2026-08-05)
+## v0.7.0 (2026-08-06)
 
-이전 커밋(`feat(songbook): 라이브러리 보내기·아바타·썸네일 축소와 문서 반영` 및 이후 Songbook/오버레이 작업) 대비입니다. 버전 번호는 아직 `0.6.1`입니다.
-
-### 신청목록 · 재생 큐 · 대기열 오버레이
-
-- **신청목록** 탭: Songbook 대기열 운영(접수 on/off, 재생·완료·거절, 중복 신청 3단 정책, 대기열 비우기, 새 신청 토스트·사이드바 배지).
-- **대기열 드래그 순서**: Sortable로 행 순서 변경 → Songbook `POST /admin/queue/reorder`(`sort_order`). 웹 운영·시청자 `/queue`·재생 큐·OBS 대기열과 동일 순서.
-- **재생 큐**: 로컬 매칭 곡만 적재. 신청목록에서 수동 재생 시작, 곡 종료 시 다음 곡을 정지 상태로 로드. 독 **다음/이전**이 신청 큐를 우선.
-- **OBS 대기열 오버레이**: `http://localhost:14202/queue` (권장 **1500×1000**). 미리보기 탭 「곡정보+대기열」, 등장 애니메이션·**대기열 늘어나는 방향**(위/양쪽/아래, 기본 양쪽). 곡 정보·가사 권장 가로도 **1500**으로 통일.
-
-### Songbook Push 정합
-
-- 앱 라이브러리에 없는 원격 곡은 동기화 시 `enabled: false`로 내려 **웹 노래책에서 숨김**(신청 이력 FK 보존). 토스트에 **제거 N** 표시. 다시 앱에 넣으면 다음 Push에서 복구.
-
-### 가사 드로어
-
-- 정렬 가사 없을 때 **가사 싱크 등록하러 가기** → 드로어를 닫고 **가사 싱크** 탭으로 이동(현재 곡 로드).
-
-### 문서
-
-- [UserManual.md](UserManual.md) 신청목록·오버레이·Push 삭제·가사 드로어 CTA
-- [ToDo.md](ToDo.md) Songbook/오버레이/재생 큐 항목 갱신
-- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 신청목록·동기화 제거 토스트
-
----
-
-## Unreleased (2026-08-04) — Songbook 로그인·보내기
-
-이전 커밋(`fix(auth): Songbook 로그인 기본 next를 /me로 변경`) 대비였던 초기 Songbook 연동입니다.
+Live MR Songbook 연동(로그인·보내기·신청목록·대기열 오버레이)과 후원금액 메타를 포함한 마이너 릴리즈입니다. 기준: v0.6.1.
 
 ### Live MR Songbook 연동
 
-- **프로필 아바타**: 로그인 시 헤더 버튼에 프로필 사진 표시. 버튼 높이(36px)에 맞춘 고정 슬롯·전용 CSS(`songbook-auth.css`)로 원본 이미지 비율 깨짐 방지.
-- **라이브러리 보내기(Push)**: 헤더 **동기화** 또는 **설정 → Songbook 동기화 → 보내기**. 로그인 계정의 **본인 채널**로만 업로드(공유 `demo` 제외).
-- **채널 자동 선택**: `/api/auth/me`의 채널 목록으로 slug 결정. 채널이 없으면 확인 후 `POST /api/me/channels`로 생성.
-- **메타 동기화**: 새 곡은 `POST`, 같은 제목·아티스트는 `PATCH`(카테고리·태그·KEY/BPM·썸네일 등).
-- **썸네일**: 업로드 전 최대 96px JPEG data URL로 축소(`songbook-thumbnail.js`). Songbook `normalizeThumbnail`은 http(s) 또는 압축 data URL 허용.
-- **세션**: 브라우저에 이미 Songbook 로그인돼 있으면 `desktop-connect`로 OAuth 생략·앱 핸드오프. 로그아웃 시 `POST /api/auth/logout` 후 로컬 세션·채널 캐시 정리. 401 시 재로그인 유도.
-- **기본 URL**: 프로덕션 Workers. 로컬 Songbook은 `localStorage.setItem('songbook_base', 'http://localhost:5173')`.
+- **로그인**: Google/네이버, 웹 세션 재사용(`desktop-connect`), 헤더 프로필 아바타.
+- **라이브러리 보내기(Push)**: 헤더 **동기화** 또는 **설정 → Songbook 동기화 → 보내기**. 본인 채널만(공유 `demo` 제외). 채널 없으면 생성.
+- **메타 동기화**: 새 곡 `POST`, 같은 제목·아티스트 `PATCH`(카테고리·태그·KEY/BPM·썸네일·후원금액 등).
+- **Push 삭제 정합**: 앱에 없는 원격 곡은 `enabled: false`로 웹 노래책에서 숨김(신청 이력 FK 보존). 토스트 **제거 N**.
+- **썸네일**: 업로드 전 최대 96px JPEG data URL 축소. 음원 파일은 올리지 않음.
+- **세션**: 로그아웃 시 서버 세션 정리, 401 시 재로그인 유도.
+- **기본 URL**: 프로덕션 Workers. 로컬은 `localStorage.songbook_base`.
 
-### 홍보 데모 모드 (내부)
+### 신청목록 · 재생 큐 · 대기열 오버레이
 
-- 라이브러리 검색란에 `#promo` 입력 시 세션 전용 데모 목록으로 전환. 재생·오버레이 가사 등이 가상으로 동작하며, 다시 `#promo`로 해제.
+- **신청목록** 탭: 대기열 운영(접수 on/off, 재생·완료·거절, 중복 신청 정책, 비우기, 토스트·사이드바 배지).
+- **대기열 드래그 순서**: Sortable → Songbook `sort_order`/`/queue/reorder`. 앱·웹·시청자·OBS 동일 순서.
+- **재생 큐**: 로컬 매칭 곡만 적재. 신청목록에서 수동 재생, 독 다음/이전이 신청 큐 우선.
+- **OBS 대기열 오버레이**: `http://localhost:14202/queue` (권장 **1500×1000**). 등장·늘어나는 방향(위/양쪽/아래). 곡 정보·가사 권장 가로 **1500** 통일.
 
-### 문서
+### 메타데이터 · UX
 
-- [UserManual.md](UserManual.md) Songbook 로그인·동기화 안내
-- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) Songbook·프로모 토스트 추가
-- [ToDo.md](ToDo.md) Live MR Songbook 항목
+- **후원금액(원)**: 곡 정보 편집·스프레드시트·Songbook Push 연동.
+- **가사 드로어 CTA**: 정렬 가사 없을 때 「가사 싱크 등록하러 가기」→ 가사 싱크 탭·현재 곡 로드.
+- **홍보 데모 모드(내부)**: 검색란 `#promo`로 세션 전용 데모 목록.
+
+### 문서 · Companion
+
+- [UserManual.md](UserManual.md) Songbook·신청목록·오버레이·후원금액
+- [ToDo.md](ToDo.md) · [README.md](README.md) · [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
+- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 신청목록·동기화 토스트
+- Companion 다운로드/FAQ에 Songbook·유튜브 검색 안내 보강
 
 ---
 

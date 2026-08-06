@@ -78,7 +78,6 @@ fn normalize_header(h: &str) -> String {
         "bpm" => "bpm".into(),
         "difficulty" => "difficulty".into(),
         "proficiency" => "proficiency".into(),
-        "donation_amount" => "donation_amount".into(),
         "karaoke_url" => "karaoke_url".into(),
         "cover_url" => "cover_url".into(),
         "lyrics_link" => "lyrics_link".into(),

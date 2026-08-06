@@ -11,7 +11,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     category: "시작하기",
     question: "Live MR Manager는 어떤 앱인가요?",
     answer:
-      "방송·연습용 MR을 관리하는 Windows 데스크톱 앱입니다. 유튜브 검색·URL·로컬 음원 재생, AI로 MR 분리, 가사 동기화, OBS 오버레이 등을 한곳에서 다룰 수 있습니다. 음원 파일은 내 PC에서만 처리됩니다.",
+      "방송·연습용 MR을 관리하는 Windows 데스크톱 앱입니다. 유튜브 검색·URL·로컬 음원 재생, AI로 MR 분리, 가사 동기화, OBS 오버레이, Live MR Songbook 연동(로그인·보내기·신청목록) 등을 한곳에서 다룰 수 있습니다. 음원 파일은 내 PC에서만 처리됩니다.",
   },
   {
     id: "what-is-site",

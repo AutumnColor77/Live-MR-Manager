@@ -61,20 +61,6 @@ pub fn cache_key_variants(path: &str) -> Vec<String> {
     variants
 }
 
-pub fn normalize_youtube_watch(url: &str) -> Option<String> {
-    let u = url.trim();
-    if u.is_empty() {
-        return None;
-    }
-    if let Some(id) = extract_youtube_video_id(u) {
-        return Some(format!("https://www.youtube.com/watch?v={}", id));
-    }
-    if u.contains("youtube.com") || u.contains("youtu.be") {
-        return Some(u.to_string());
-    }
-    None
-}
-
 pub fn normalize_cache_key(path: &str) -> String {
     let normalized = path.trim().replace('\\', "/");
     if let Some(id) = extract_youtube_video_id(&normalized) {

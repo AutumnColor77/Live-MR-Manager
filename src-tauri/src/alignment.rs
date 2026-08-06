@@ -1392,43 +1392,6 @@ fn write_lrc_to_url_cache(paths: &crate::state::AppPaths, url: &str, content: &s
     Ok(primary)
 }
 
-/// Returns true if an LRC already exists for this URL under any of the same
-/// search paths `load_lrc_file` checks (URL branch only).
-fn url_lrc_exists(paths: &crate::state::AppPaths, url: &str) -> bool {
-    for key_src in youtube_url_variants(url) {
-        let cache_key = urlencoding::encode(&key_src).to_string();
-        let cache_dir = paths.separated.join(&cache_key);
-        if cache_dir.join("lyric.lrc").is_file() || cache_dir.join("vocal.lrc").is_file() {
-            return true;
-        }
-    }
-    false
-}
-
-/// Seeds a local `.lrc` from raw lyric text (e.g. pulled from Meloming) when no
-/// LRC exists yet for this URL. Each non-blank input line becomes an
-/// unsynced placeholder line (`start: 0`), matching the shape `parseLrc`
-/// already treats as "text without a timestamp". Never overwrites existing
-/// sync data — a no-op if any LRC is already found for this URL.
-pub fn seed_lrc_if_missing(paths: &crate::state::AppPaths, url: &str, lyrics_text: &str) -> Result<(), String> {
-    if url_lrc_exists(paths, url) {
-        return Ok(());
-    }
-    let content: String = lyrics_text
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .map(|l| format!("[00:00.00]{}", l))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if content.is_empty() {
-        return Ok(());
-    }
-    write_lrc_to_url_cache(paths, url, &content)?;
-    sys_log(&format!("[Alignment] Seeded LRC from Meloming lyrics_text for url={}", url));
-    Ok(())
-}
-
 /// Builds the ordered list of candidate LRC file paths for an audio path
 /// (URL cache variants for http:// sources, sibling/cache/legacy paths for
 /// local files). Shared by `load_lrc_file` and the sync-status classifier so
