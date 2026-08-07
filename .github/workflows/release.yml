@@ -31,6 +31,12 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      # tauri-build validates bundle.resources before beforeBundleCommand;
+      # download VC++ redist before cargo/tauri build starts.
+      - name: ensure Visual C++ redistributable
+        shell: pwsh
+        run: ./scripts/ensure-vcredist.ps1
+
       - name: build and upload release
         uses: tauri-apps/tauri-action@v0
         env:

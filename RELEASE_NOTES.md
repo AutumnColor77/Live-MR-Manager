@@ -5,7 +5,7 @@
 Windows 신규 설치 환경에서 Visual C++ 런타임 누락으로 앱이 안 뜨던 문제를 설치 단계에서 막는 핫픽스입니다. 기준: v0.7.2.
 
 - **VC++ Redistributable 자동 설치**: NSIS 설치 시 x64 런타임이 없으면 `vc_redist.x64.exe`를 함께 설치합니다 (`MSVCP140_1.dll` / `VCRUNTIME140_1.dll` 오류 방지).
-- **번들 전 확보**: `scripts/ensure-vcredist.ps1`로 빌드 시 redist를 자동 다운로드합니다.
+- **빌드 전 확보**: `beforeBuildCommand` + CI에서 `scripts/ensure-vcredist.ps1`로 redist를 받아 `bundle.resources` 검증 전에 준비합니다.
 
 ---
 
