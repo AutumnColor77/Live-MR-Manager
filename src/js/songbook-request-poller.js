@@ -1,16 +1,17 @@
 /**
- * Songbook 신청 백그라운드 폴링 — 토스트 알림·사이드바 배지
+ * Songbook 신청 백그라운드 폴링 — 토스트 알림·사이드바 배지·웹 재생→앱 연동
  */
 import { songbookChannelSlug } from './companion-links.js';
 import { elements } from './ui/elements.js';
 import { showNotification } from './utils.js';
+import { state } from './state.js';
 import {
   fetchAdminRequests,
   fetchPublicStatus,
   getSongbookToken,
   SongbookAuthError,
 } from './songbook-requests-api.js';
-import { syncPlaybackQueueFromRequests } from './playback-queue.js';
+import { findLibrarySong, playQueueItem, syncPlaybackQueueFromRequests } from './playback-queue.js';
 
 const POLL_MS = 4000;
 
@@ -19,6 +20,9 @@ let lastPendingIds = new Set();
 let lastPendingCount = 0;
 let requestsTabVisible = false;
 let seenPendingIds = new Set();
+/** Last request id we already auto-played (or skipped) for remote play bridge. */
+let lastAutoPlayRequestId = null;
+let lastMissingPlayToastId = null;
 
 function getSlug() {
   return songbookChannelSlug();
@@ -59,6 +63,64 @@ function detectNewPending(requests) {
   updateBadge(unseen);
 }
 
+function resolveNowPlaying(status, requests) {
+  if (status?.nowPlaying?.id) return status.nowPlaying;
+  return (requests || []).find((r) => r?.status === 'playing') || null;
+}
+
+function isPlayableLibraryPath(path) {
+  const p = String(path || '').trim();
+  if (!p) return false;
+  if (p.startsWith('songbook:song:')) return false;
+  if (p.startsWith('meloming:song:')) return false;
+  return true;
+}
+
+async function maybeAutoPlayFromRemote(status, requests, slug) {
+  const nowPlaying = resolveNowPlaying(status, requests);
+  const requestId = nowPlaying?.id || null;
+  if (!requestId) {
+    lastAutoPlayRequestId = null;
+    return;
+  }
+  if (requestId === lastAutoPlayRequestId) return;
+
+  const song = findLibrarySong(nowPlaying.title, nowPlaying.artist);
+  if (!song || !isPlayableLibraryPath(song.path)) {
+    if (lastMissingPlayToastId !== requestId) {
+      showNotification(
+        `웹에서 재생 요청: 라이브러리에 재생 가능한 음원이 없습니다 (${nowPlaying.title || '제목 없음'})`,
+        'warning',
+      );
+      lastMissingPlayToastId = requestId;
+    }
+    lastAutoPlayRequestId = requestId;
+    return;
+  }
+
+  if (state.currentTrack === song.path && state.isPlaying) {
+    lastAutoPlayRequestId = requestId;
+    return;
+  }
+
+  lastAutoPlayRequestId = requestId;
+  try {
+    await playQueueItem(
+      {
+        requestId,
+        path: song.path,
+        title: nowPlaying.title || song.title || '',
+        artist: nowPlaying.artist || song.artist || '',
+        status: 'playing',
+      },
+      { patchPlaying: false, slug, playNow: true },
+    );
+  } catch (err) {
+    console.warn('[SongbookPoller] remote play failed', err);
+    showNotification('웹 재생 연동에 실패했습니다.', 'error');
+  }
+}
+
 async function pollOnce() {
   const slug = getSlug();
   const token = await getSongbookToken();
@@ -75,6 +137,7 @@ async function pollOnce() {
     ]);
     detectNewPending(requests);
     syncPlaybackQueueFromRequests(requests);
+    await maybeAutoPlayFromRemote(status, requests, slug);
     window.dispatchEvent(new CustomEvent('songbook-requests-updated', {
       detail: { status, requests, slug },
     }));
@@ -125,7 +188,14 @@ export function resetSongbookPollerState() {
   lastPendingIds = new Set();
   lastPendingCount = 0;
   seenPendingIds = new Set();
+  lastAutoPlayRequestId = null;
+  lastMissingPlayToastId = null;
   updateBadge(0);
+}
+
+/** Call when the app itself starts playback for a request (avoids double-play on next poll). */
+export function markAutoPlayedRequest(requestId) {
+  if (requestId) lastAutoPlayRequestId = requestId;
 }
 
 export async function initSongbookRequestPoller() {

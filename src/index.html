@@ -800,15 +800,17 @@
               </div>
               <div class="ai-model-card">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">라이브러리 보내기</h2>
+                  <h2 class="ai-title-large">라이브러리 동기화</h2>
                   <div class="ai-model-desc">
-                    앱 곡 목록을 Songbook 채널로 올립니다. 새 곡은 추가하고, 같은 제목·아티스트는 키·BPM·태그 등을 갱신합니다.
+                    <strong>보내기</strong>는 앱 → 웹, <strong>가져오기</strong>는 웹 → 앱입니다.
+                    유튜브 URL이 있으면 재생 가능한 곡으로, 없으면 메타만(플레이스홀더) 가져옵니다.
                   </div>
                   <p class="settings-sublabel" style="margin-top:10px;">연결된 채널</p>
                   <p id="songbook-channel-label" class="songbook-channel-label">로그인하면 연결된 채널이 표시됩니다.</p>
                 </div>
                 <div class="ai-actions-right">
                   <button type="button" id="btn-songbook-create-channel" class="btn-ai-action secondary" data-songbook-create-channel hidden>채널 만들기</button>
+                  <button type="button" id="btn-songbook-sync-pull" class="btn-ai-action secondary" data-songbook-sync-pull data-songbook-sync-visible hidden>가져오기</button>
                   <button type="button" id="btn-songbook-sync-push" class="btn-ai-action" data-songbook-sync data-songbook-sync-visible hidden>보내기</button>
                 </div>
               </div>

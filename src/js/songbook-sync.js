@@ -86,6 +86,25 @@ function mapSongbookDonationAmount(song) {
   return rounded;
 }
 
+/** YouTube http(s) path only — never upload local file paths. */
+function pickOriginalUrl(song) {
+  const candidates = [song?.originalUrl, song?.original_url, song?.path];
+  for (const raw of candidates) {
+    const value = String(raw || '').trim();
+    if (/^https?:\/\//i.test(value)) return value;
+  }
+  return null;
+}
+
+function resolveRemoteThumbnail(remoteThumb) {
+  const value = String(remoteThumb || '').trim();
+  if (!value) return '';
+  if (value.startsWith('/api/media/thumbs/')) {
+    return `${songbookBase()}${value}`;
+  }
+  return value;
+}
+
 async function toSongPayload(song) {
   const title = String(song?.title || '').trim();
   const artist = String(song?.artist || '').trim() || 'Unknown';
@@ -107,6 +126,7 @@ async function toSongPayload(song) {
     difficulty: mapSongbookDifficulty(song),
     donationAmount: mapSongbookDonationAmount(song),
     thumbnail: await prepareSongbookThumbnail(song),
+    originalUrl: pickOriginalUrl(song),
     enabled: true,
   };
 }
@@ -156,6 +176,9 @@ function needsPatch(remote, localPayload) {
   const localDonation = localPayload.donationAmount ?? null;
   if (remoteDonation !== localDonation) return true;
   if (thumbnailNeedsPatch(remote.thumbnail, localPayload.thumbnail)) return true;
+  const remoteUrl = String(remote.originalUrl || remote.original_url || '').trim();
+  const localUrl = String(localPayload.originalUrl || '').trim();
+  if (remoteUrl !== localUrl) return true;
   if (remote.enabled === false) return true;
   return false;
 }
@@ -429,8 +452,157 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   return { added, updated, removed, skipped, failed, total: list.length, slug };
 }
 
+function applyRemoteMetaToLocal(local, remote) {
+  const next = { ...local };
+  next.title = String(remote.title || local.title || '').trim() || local.title;
+  next.artist = String(remote.artist || local.artist || '').trim() || local.artist;
+  next.songKey = remote.songKey ?? remote.song_key ?? local.songKey ?? null;
+  next.bpm = remote.bpm ?? local.bpm ?? null;
+  next.difficulty = remote.difficulty ?? local.difficulty ?? null;
+  next.tags = normalizeTags(remote.tags?.length ? remote.tags : local.tags);
+  const category = String(remote.category || '').trim();
+  if (category) {
+    next.categories = [category];
+    next.curationCategory = category;
+  }
+  const genre = String(remote.genre || '').trim();
+  if (genre) next.genre = genre;
+  const thumb = resolveRemoteThumbnail(remote.thumbnail);
+  if (thumb) next.thumbnail = thumb;
+  const url = String(remote.originalUrl || remote.original_url || '').trim();
+  if (/^https?:\/\//i.test(url)) {
+    next.originalUrl = url;
+    // Upgrade placeholder → youtube when URL appears on remote
+    if (String(local.path || '').startsWith('songbook:song:') || !local.path) {
+      next.path = url;
+      next.source = 'youtube';
+    }
+  }
+  return next;
+}
+
+function buildImportedSong(remote) {
+  const title = String(remote.title || '').trim();
+  const artist = String(remote.artist || '').trim() || 'Unknown';
+  const url = String(remote.originalUrl || remote.original_url || '').trim();
+  const hasUrl = /^https?:\/\//i.test(url);
+  const remoteId = String(remote.id || '').trim() || `unknown-${Date.now()}`;
+  const category = String(remote.category || '').trim();
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    id: null,
+    title,
+    artist,
+    path: hasUrl ? url : `songbook:song:${remoteId}`,
+    source: hasUrl ? 'youtube' : 'songbook',
+    thumbnail: resolveRemoteThumbnail(remote.thumbnail),
+    duration: '0:00',
+    pitch: 0,
+    tempo: 1,
+    volume: 100,
+    tags: normalizeTags(remote.tags),
+    genre: String(remote.genre || '').trim() || null,
+    categories: category ? [category] : null,
+    curationCategory: category || null,
+    playCount: 0,
+    dateAdded: now,
+    isMr: false,
+    songKey: remote.songKey ?? remote.song_key ?? null,
+    bpm: remote.bpm ?? null,
+    difficulty: remote.difficulty ?? null,
+    originalUrl: hasUrl ? url : null,
+  };
+}
+
+/**
+ * Pull enabled (and all admin-visible) remote songs into local library.
+ * @returns {Promise<{ added: number, updated: number, placeholders: number, skipped: number, total: number, slug: string }>}
+ */
+export async function pullLibraryFromSongbook({ onProgress } = {}) {
+  const { token, user } = await getAuthOrThrow();
+  const channel = await resolveOwnChannel(token, user, { offerCreate: false });
+  const slug = channel.slug;
+
+  const base = songbookBase();
+  const headers = authHeaders(token);
+  const listUrl = `${base}/api/c/${encodeURIComponent(slug)}/admin/songs`;
+
+  const remoteRes = await fetch(listUrl, { headers });
+  if (remoteRes.status === 401) throw new Error('AUTH_EXPIRED');
+  if (remoteRes.status === 404) {
+    throw new Error(`채널 '${slug}'을(를) 찾을 수 없습니다.`);
+  }
+  if (!remoteRes.ok) {
+    throw new Error(`원격 목록 조회 실패 (${remoteRes.status})`);
+  }
+
+  const remoteJson = await remoteRes.json();
+  const remoteSongs = (Array.isArray(remoteJson?.songs) ? remoteJson.songs : []).filter(
+    (s) => s && s.enabled !== false,
+  );
+
+  const localSongs = await invoke('get_songs');
+  const library = Array.isArray(localSongs) ? [...localSongs] : [];
+  const byKey = new Map(library.map((s) => [normalizeKey(s.title, s.artist), s]));
+
+  let added = 0;
+  let updated = 0;
+  let placeholders = 0;
+  let skipped = 0;
+  const merged = [...library];
+
+  for (let i = 0; i < remoteSongs.length; i++) {
+    const remote = remoteSongs[i];
+    const title = String(remote.title || '').trim();
+    if (!title) {
+      skipped += 1;
+      continue;
+    }
+    const key = normalizeKey(title, remote.artist);
+    const existing = byKey.get(key);
+    if (existing) {
+      const next = applyRemoteMetaToLocal(existing, remote);
+      const idx = merged.findIndex((s) => s === existing || normalizeKey(s.title, s.artist) === key);
+      if (idx >= 0) {
+        merged[idx] = next;
+        byKey.set(key, next);
+        updated += 1;
+      } else {
+        skipped += 1;
+      }
+    } else {
+      const created = buildImportedSong(remote);
+      merged.push(created);
+      byKey.set(key, created);
+      added += 1;
+      if (created.source === 'songbook') placeholders += 1;
+    }
+    onProgress?.({
+      index: i + 1,
+      total: remoteSongs.length,
+      added,
+      updated,
+      placeholders,
+      skipped,
+    });
+  }
+
+  if (added > 0 || updated > 0) {
+    await invoke('save_library', { songs: merged });
+  }
+
+  return {
+    added,
+    updated,
+    placeholders,
+    skipped,
+    total: remoteSongs.length,
+    slug,
+  };
+}
+
 function setSyncBusy(busy) {
-  document.querySelectorAll('[data-songbook-sync], [data-songbook-create-channel]').forEach((el) => {
+  document.querySelectorAll('[data-songbook-sync], [data-songbook-sync-pull], [data-songbook-create-channel]').forEach((el) => {
     el.disabled = busy;
   });
 }
@@ -491,6 +663,11 @@ function refreshChannelActionVisibility(ownOverride) {
       el.hidden = !loggedIn;
     }
   });
+  document.querySelectorAll('[data-songbook-sync-pull]').forEach((el) => {
+    if (el.hasAttribute('data-songbook-sync-visible')) {
+      el.hidden = !loggedIn;
+    }
+  });
 }
 
 async function handleAuthExpired() {
@@ -527,6 +704,41 @@ async function runPushFromUi(trigger) {
       await handleAuthExpired();
     } else {
       showNotification(err?.message || 'Songbook 동기화에 실패했습니다.', 'error');
+    }
+  } finally {
+    setSyncBusy(false);
+  }
+}
+
+async function runPullFromUi(trigger) {
+  if (trigger?.disabled) return;
+  setSyncBusy(true);
+  showNotification('Songbook에서 목록을 가져오는 중…', 'info');
+  try {
+    const result = await pullLibraryFromSongbook();
+    const { loadLibrary } = await import('./audio.js');
+    const { state } = await import('./state.js');
+    const { renderLibrary } = await import('./ui/library.js');
+    const { refreshFilterDropdowns } = await import('./ui/core.js');
+    state.songLibrary = (await loadLibrary()) || [];
+    await refreshFilterDropdowns();
+    renderLibrary();
+    const parts = [
+      `추가 ${result.added}`,
+      `갱신 ${result.updated}`,
+    ];
+    if (result.placeholders) parts.push(`플레이스홀더 ${result.placeholders}`);
+    if (result.skipped) parts.push(`건너뜀 ${result.skipped}`);
+    showNotification(
+      `Songbook 가져오기 완료 (${result.slug}): ${parts.join(' · ')}`,
+      'success',
+    );
+  } catch (err) {
+    console.error('[SongbookSync] pull', err);
+    if (err?.message === 'AUTH_EXPIRED') {
+      await handleAuthExpired();
+    } else {
+      showNotification(err?.message || 'Songbook 가져오기에 실패했습니다.', 'error');
     }
   } finally {
     setSyncBusy(false);
@@ -571,6 +783,15 @@ export function initSongbookSync() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       void runPushFromUi(btn);
+    });
+  });
+
+  document.querySelectorAll('[data-songbook-sync-pull]').forEach((btn) => {
+    if (btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      void runPullFromUi(btn);
     });
   });
 

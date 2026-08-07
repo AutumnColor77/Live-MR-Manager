@@ -8,6 +8,20 @@ Songbook 로그인 UX·업데이트 링크 핫픽스입니다. 기준: v0.7.1.
 - **신청목록 게이트**: Google/네이버 브랜드 버튼으로 바로 로그인 (상단 메뉴 연동 버그 수정).
 - **업데이트 다운로드**: Windows에서 릴리즈 페이지가 `\\` 오류로 안 열리던 문제 수정 (`open_app_update_page` → opener).
 
+## Unreleased (after v0.7.2)
+
+### Songbook Pull · 웹 재생 연동
+
+- **가져오기(Pull)**: 설정 → Songbook 동기화 → **가져오기**. 웹 enabled 곡을 앱 라이브러리에 추가·갱신. 유튜브 `originalUrl`이 있으면 재생 가능, 없으면 `songbook:song:` 플레이스홀더.
+- **보내기 시 originalUrl**: 유튜브 http(s) path를 Songbook `original_url`로 전송(Songbook 마이그레이션·배포 필요).
+- **웹 Admin 「재생」 → 앱**: 신청 폴러(~4초)가 `nowPlaying` 전이를 감지해 로컬 매칭 곡을 `playQueueItem`으로 재생.
+
+### 문서
+
+- [UserManual.md](UserManual.md) Push/Pull·웹 재생
+- [docs/SONGBOOK_INTEGRATION.md](docs/SONGBOOK_INTEGRATION.md) Push/Pull/`originalUrl`/원격 재생 규칙
+- [ToDo.md](ToDo.md) Songbook Pull·웹 재생 항목
+
 ---
 
 ## v0.7.1 (2026-08-06)

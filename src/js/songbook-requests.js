@@ -125,7 +125,8 @@ async function handleAuthExpired() {
 
 function queueActionsHtml(item) {
   const id = escapeHtml(item.id);
-  const hasLocal = Boolean(findLibrarySong(item.title, item.artist));
+  const local = findLibrarySong(item.title, item.artist);
+  const hasLocal = Boolean(local?.path) && !String(local.path).startsWith('songbook:song:');
   const localBadge = hasLocal
     ? '<span class="request-local-badge" title="라이브러리에 있음">MR</span>'
     : '<span class="request-local-badge missing" title="라이브러리에 없음">—</span>';
@@ -659,11 +660,13 @@ async function handleRequestAction(id, act) {
   try {
     if (act === 'playing') {
       const song = findLibrarySong(item.title, item.artist);
-      if (!song?.path) {
-        showNotification('라이브러리에 없는 곡입니다.', 'warning');
+      if (!song?.path || String(song.path).startsWith('songbook:song:')) {
+        showNotification('라이브러리에 재생 가능한 음원이 없습니다.', 'warning');
         return;
       }
       await patchRequestStatus(slug, id, 'playing');
+      const { markAutoPlayedRequest } = await import('./songbook-request-poller.js');
+      markAutoPlayedRequest(id);
       await playQueueItem({
         requestId: id,
         path: song.path,

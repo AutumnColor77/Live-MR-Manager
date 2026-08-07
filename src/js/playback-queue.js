@@ -37,7 +37,7 @@ function buildQueueItems(requests) {
   const items = [];
   for (const req of sortActiveRequests(requests)) {
     const song = findLibrarySong(req.title, req.artist);
-    if (!song?.path) continue;
+    if (!song?.path || String(song.path).startsWith('songbook:song:')) continue;
     items.push({
       requestId: req.id,
       path: song.path,
