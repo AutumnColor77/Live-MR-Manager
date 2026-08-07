@@ -1,18 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Live MR Manager(Beta)",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "identifier": "com.autumncolor77.live-mr-manager",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev"
+    "beforeDevCommand": "npm run dev",
+    "beforeBundleCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/ensure-vcredist.ps1"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Live MR Manager(Beta) v0.7.2",
+        "title": "Live MR Manager(Beta) v0.7.3",
         "width": 1319,
         "height": 787,
         "minWidth": 1024,
@@ -43,12 +44,19 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": [],
+    "resources": [
+      "resources/vc_redist.x64.exe"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   }
 }

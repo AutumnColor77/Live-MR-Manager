@@ -54,5 +54,8 @@ src-tauri/last_json.json
 src-tauri/LiveMR_*.csv
 src-tauri/LiveMR_*.json
 
+# VC++ Redistributable (downloaded by scripts/ensure-vcredist.ps1 on bundle)
+src-tauri/resources/vc_redist.x64.exe
+
 backup/
 .env*
