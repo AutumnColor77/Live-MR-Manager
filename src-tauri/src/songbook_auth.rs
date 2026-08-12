@@ -47,39 +47,17 @@ fn db_delete(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn parse_oauth_callback_url(raw: &str) -> Option<String> {
-    let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
-    if !trimmed.starts_with("live-mr-manager:") {
-        return None;
-    }
-    if !trimmed.contains("oauth/callback")
-        && !trimmed.contains("oauth?")
-        && !trimmed.contains("://oauth")
-    {
-        return None;
-    }
-    let idx = trimmed.find("token=")?;
-    let rest = &trimmed[idx + "token=".len()..];
-    let end = rest
-        .find(|c| c == '&' || c == '#' || c == ' ' || c == '"')
-        .unwrap_or(rest.len());
-    let encoded = &rest[..end];
-    let token = urlencoding::decode(encoded).ok()?.into_owned();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token)
-    }
-}
+pub use lmrm_logic::oauth::parse_oauth_callback_url;
 
 pub fn apply_session_token(app: &AppHandle, token: &str) -> Result<(), String> {
-    db_set(TOKEN_KEY, token)?;
+    let token = crate::ipc_validate::validate_session_token(token)?;
+    db_set(TOKEN_KEY, &token)?;
     let _ = db_delete(USER_JSON_KEY);
     let _ = app.emit(
         "songbook-auth-changed",
         SongbookAuthState {
             logged_in: true,
-            token: Some(token.to_string()),
+            token: Some(token),
             user: None,
         },
     );
@@ -120,6 +98,15 @@ pub fn get_songbook_auth() -> Result<SongbookAuthState, String> {
 
 #[tauri::command]
 pub fn set_songbook_user(user: SongbookUser) -> Result<(), String> {
+    crate::ipc_validate::require_nonempty(&user.id, "user.id")?;
+    crate::ipc_validate::require_max_len(&user.id, crate::ipc_validate::MAX_USER_FIELD_LEN, "user.id")?;
+    crate::ipc_validate::require_max_len(&user.email, crate::ipc_validate::MAX_USER_FIELD_LEN, "user.email")?;
+    crate::ipc_validate::require_max_len(&user.name, crate::ipc_validate::MAX_USER_FIELD_LEN, "user.name")?;
+    crate::ipc_validate::require_max_len(
+        &user.picture,
+        crate::ipc_validate::MAX_URL_LEN,
+        "user.picture",
+    )?;
     let json = serde_json::to_string(&user).map_err(|e| e.to_string())?;
     db_set(USER_JSON_KEY, &json)
 }
@@ -138,3 +125,4 @@ pub fn clear_songbook_auth(app: AppHandle) -> Result<(), String> {
     );
     Ok(())
 }
+

@@ -1,0 +1,116 @@
+{
+  "$schema_comment": "Live MR Manager supply-chain license policy (MIT app). Not legal advice.",
+  "project_license": "MIT",
+  "project_goals": [
+    "permissive linked dependencies",
+    "commercial streaming allowed for official AI models",
+    "no GPL/AGPL statically linked into the app binary",
+    "runtime-downloaded GPL/LGPL tools only as separate processes (documented exception)"
+  ],
+  "linked_dependencies": {
+    "allowed": [
+      "MIT",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "BSD-3-Clause-Clear",
+      "ISC",
+      "0BSD",
+      "Unlicense",
+      "CC0-1.0",
+      "Zlib",
+      "BSL-1.0",
+      "BlueOak-1.0.0",
+      "Unicode-3.0",
+      "Unicode-DFS-2016",
+      "OpenSSL",
+      "MIT-0",
+      "Artistic-2.0",
+      "NCSA",
+      "WTFPL",
+      "MPL-2.0",
+      "CC-BY-4.0",
+      "CC-BY-SA-4.0"
+    ],
+    "review": [
+      "LGPL-2.0",
+      "LGPL-2.0-or-later",
+      "LGPL-2.1",
+      "LGPL-2.1-or-later",
+      "LGPL-3.0",
+      "LGPL-3.0-or-later",
+      "MPL-2.0",
+      "CDLA-Permissive-2.0",
+      "UNKNOWN",
+      "NONE"
+    ],
+    "forbidden": [
+      "GPL-2.0",
+      "GPL-2.0-only",
+      "GPL-2.0-or-later",
+      "GPL-3.0",
+      "GPL-3.0-only",
+      "GPL-3.0-or-later",
+      "AGPL-3.0",
+      "AGPL-3.0-only",
+      "AGPL-3.0-or-later",
+      "SSPL-1.0",
+      "BUSL-1.1",
+      "Commons-Clause",
+      "CC-BY-NC-1.0",
+      "CC-BY-NC-2.0",
+      "CC-BY-NC-3.0",
+      "CC-BY-NC-4.0",
+      "CC-BY-NC-SA-4.0",
+      "CC-BY-NC-ND-4.0"
+    ]
+  },
+  "official_ai_models": {
+    "allowed": [
+      "MIT",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "CC0-1.0",
+      "CC-BY-4.0",
+      "CC-BY-SA-4.0"
+    ],
+    "review": [
+      "잠정 MIT",
+      "PROVISIONAL-MIT",
+      "UNKNOWN"
+    ],
+    "forbidden": [
+      "CC-BY-NC-1.0",
+      "CC-BY-NC-2.0",
+      "CC-BY-NC-3.0",
+      "CC-BY-NC-4.0",
+      "CC-BY-NC-SA-4.0",
+      "CC-BY-NC-ND-4.0",
+      "GPL-2.0",
+      "GPL-3.0",
+      "AGPL-3.0",
+      "research-only",
+      "non-commercial"
+    ]
+  },
+  "documented_rejected_models": [
+    {
+      "id": "becruily/mel-band-roformer-deux",
+      "license": "CC-BY-NC-4.0",
+      "reason": "commercial streaming conflict; must not appear in official MODELS catalog"
+    }
+  ],
+  "runtime_tool_exceptions": [
+    {
+      "name": "FFmpeg (BtbN LGPL)",
+      "license": "LGPL-2.1-or-later",
+      "condition": "origin download only; not bundled; separate process"
+    },
+    {
+      "name": "yt-dlp Windows exe",
+      "license": "GPL-3.0-or-later",
+      "condition": "origin download only; not bundled; separate process"
+    }
+  ]
+}

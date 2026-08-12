@@ -1,0 +1,23 @@
+# Gitleaks configuration for Live MR Manager
+# https://github.com/gitleaks/gitleaks
+
+title = "live-mr-manager"
+
+[allowlist]
+description = "Unit-test fixtures and documented non-secrets (not real credentials)"
+paths = [
+  '''(^|/)reports/''',
+  '''(^|/)\.env\.example$''',
+]
+regexes = [
+  # OAuth deep-link parser fixtures in Rust unit tests (current + historical PR commits)
+  '''token=abc\.def-123_XYZ''',
+  '''token=hello%2Bworld%2F~''',
+  '''token=hello%2Bworld%2Fplain''',
+  '''token=quotedToken''',
+  '''token=shortForm''',
+  '''token=part1''',
+  '''token=unittest-''',
+  '''token=test-fixture''',
+  '''token=test-fixture-plain''',
+]

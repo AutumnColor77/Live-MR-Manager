@@ -8,6 +8,8 @@ const USER_AGENT: &str = "Live-MR-Manager-UpdateChecker";
 /// 앱 최초 기동 후 한 번만 자동 확인 (이후는 설정의 「업데이트 확인」 버튼)
 const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(8);
 
+use lmrm_logic::version::{default_release_url, strip_version_prefix, version_gt};
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppUpdateInfo {
@@ -15,23 +17,6 @@ pub struct AppUpdateInfo {
     pub latest_version: String,
     pub release_url: String,
     pub has_update: bool,
-}
-
-fn default_release_url() -> String {
-    format!("https://github.com/{}/{}/releases", GITHUB_OWNER, GITHUB_REPO)
-}
-
-fn strip_version_prefix(tag: &str) -> String {
-    tag.trim().trim_start_matches('v').trim_start_matches('V').to_string()
-}
-
-fn version_gt(a: &str, b: &str) -> bool {
-    let a = strip_version_prefix(a);
-    let b = strip_version_prefix(b);
-    match (semver::Version::parse(&a), semver::Version::parse(&b)) {
-        (Ok(va), Ok(vb)) => va > vb,
-        _ => a != b && a > b,
-    }
 }
 
 async fn github_get_json(client: &reqwest::Client, url: &str) -> Option<serde_json::Value> {
@@ -125,15 +110,11 @@ pub async fn open_app_update_page(url: String) -> Result<(), String> {
     let target = if url.trim().is_empty() {
         default_release_url()
     } else {
-        url.trim().to_string()
+        crate::ipc_validate::validate_external_open_url(&url)?
     };
 
     // cmd.exe `start "" "url"` via Command::args mangles nested quotes on Windows
     // (ShellExecute ends up with `\\` → 「₩₩을(를) 찾을 수 없습니다」). Use opener instead.
-    if !(target.starts_with("https://") || target.starts_with("http://")) {
-        return Err("열 수 있는 http(s) URL이 아닙니다.".into());
-    }
-
     tauri_plugin_opener::open_url(&target, None::<&str>).map_err(|e| e.to_string())
 }
 
@@ -164,3 +145,4 @@ pub fn start_update_checker(app: AppHandle) {
         check_and_notify(app).await;
     });
 }
+

@@ -90,10 +90,25 @@ mod tests {
     }
 
     #[test]
-    fn extracts_from_shorts() {
+    fn normalize_cache_key_prefers_canonical_youtube() {
         assert_eq!(
-            extract_youtube_video_id("https://youtube.com/shorts/short1").as_deref(),
-            Some("short1")
+            normalize_cache_key("https://youtu.be/abc123?t=5"),
+            "https://www.youtube.com/watch?v=abc123"
         );
+    }
+
+    #[test]
+    fn cache_key_variants_include_aliases() {
+        let variants = cache_key_variants("https://youtu.be/abc123");
+        assert!(variants.iter().any(|v| v.contains("youtu.be/abc123")));
+        assert!(variants
+            .iter()
+            .any(|v| v.contains("youtube.com/watch?v=abc123")));
+    }
+
+    #[test]
+    fn rejects_non_youtube_for_id_extract() {
+        assert!(extract_youtube_video_id("https://vimeo.com/123").is_none());
+        assert!(extract_youtube_video_id("C:\\local\\track.mp3").is_none());
     }
 }

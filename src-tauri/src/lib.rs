@@ -3,7 +3,7 @@ pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongM
 
 mod types;
 mod youtube;
-mod youtube_url;
+pub use lmrm_logic::youtube_url;
 mod model_manager;
 mod custom_models;
 pub mod vocal_remover;
@@ -28,12 +28,8 @@ mod overlay_server;
 mod cache_settings;
 mod updater;
 mod songbook_auth;
-
-fn load_env_files() {
-    let manifest_env = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env");
-    let _ = dotenvy::from_path(&manifest_env);
-    let _ = dotenvy::dotenv();
-}
+mod env_config;
+pub use lmrm_logic::ipc_validate;
 
 fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -44,7 +40,7 @@ fn focus_main_window(app: &tauri::AppHandle) {
 }
 
 pub fn run() {
-    load_env_files();
+    env_config::load_env_files();
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]

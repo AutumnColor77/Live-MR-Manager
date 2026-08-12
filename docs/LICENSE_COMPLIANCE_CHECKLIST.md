@@ -36,8 +36,30 @@
 - [ ] `/terms` 시행일과 MIT 비축소 조항이 배포 환경에 반영됨
 - [ ] 앱 설정 > 법적 고지 링크(개인정보·약관·MIT·제3자 고지)가 동작한다
 
-## F. 릴리스 노트
+# F. 릴리스 노트
 
 - [ ] 사용자용 노트에 라이선스/고지 변경이 있으면 한 줄이라도 안내
 - [ ] Discord 공지와 README 라이선스 절이 모순되지 않음
 - [ ] [`docs/NOTIFICATION_MESSAGES.md`](NOTIFICATION_MESSAGES.md)와 사용자 노출 문구가 크게 어긋나지 않는지 점검(선택)
+
+## G. 자동화 게이트 (빌드 전)
+
+정책 파일: [`scripts/supply-chain/license-policy.json`](../scripts/supply-chain/license-policy.json)
+
+```powershell
+# Windows
+./scripts/check-licenses.ps1          # Cargo/npm 라이선스 전수 + 모델/MIT 충돌
+./scripts/audit-deps.ps1              # cargo-audit + npm audit (High+)
+./scripts/prebuild-supply-chain.ps1   # 위 둘 일괄
+```
+
+```bash
+# macOS / Linux
+./scripts/check-licenses.sh
+./scripts/audit-deps.sh
+./scripts/prebuild-supply-chain.sh
+```
+
+- [ ] `check-licenses` 통과 (forbidden linked license 없음, 공식 카탈로그 NC/GPL 충돌 없음)
+- [ ] `audit-deps` 통과 (또는 예외를 `reports/`에 기록 후 릴리스 노트에 잔여 리스크 명시)
+- [ ] `reports/license-inventory.json`, `reports/model-license-compat.json` 생성 확인

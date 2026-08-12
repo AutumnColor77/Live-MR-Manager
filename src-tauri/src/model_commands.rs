@@ -354,6 +354,10 @@ pub async fn add_custom_model(
         if url.is_empty() {
             return Err("다운로드 URL을 입력해주세요.".into());
         }
+        crate::ipc_validate::require_max_len(url, crate::ipc_validate::MAX_URL_LEN, "다운로드 URL")?;
+        if !url.starts_with("https://") {
+            return Err(format!("HTTPS URL만 허용됩니다: {}", url));
+        }
         let sha = normalize_sha256_hex(
             expected_sha256
                 .as_deref()
@@ -463,6 +467,7 @@ pub fn get_active_separations() -> Vec<String> {
 
 #[tauri::command]
 pub async fn start_mr_separation(window: WebviewWindow, path: String, model_id: Option<String>) -> Result<(), String> {
+    let path = crate::ipc_validate::validate_audio_source(&path)?;
     let norm = normalize_cache_key(&path);
     if crate::separation::ACTIVE_SEPARATIONS.lock().contains_key(&norm) {
         let _ = sys_log(&format!("[Command] [Error] start_mr_separation failed: ALREADY_PROCESSING for {}", path));
@@ -512,6 +517,7 @@ pub fn cancel_separation(window: WebviewWindow, path: String) -> Result<(), Stri
 
 #[tauri::command]
 pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, String> {
+    let url = crate::ipc_validate::validate_youtube_or_http_url(&url)?;
     let metadata_res = YoutubeManager::get_video_metadata(&url).await;
     match metadata_res {
         Ok(m) => {
@@ -542,7 +548,9 @@ pub async fn search_youtube(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<YoutubeSearchResult>, String> {
-    YoutubeManager::search_videos(&query, limit.unwrap_or(10)).await
+    let query = crate::ipc_validate::validate_search_query(&query)?;
+    let limit = limit.unwrap_or(10).clamp(1, 25);
+    YoutubeManager::search_videos(&query, limit).await
 }
 
 #[tauri::command]

@@ -14,9 +14,7 @@ pub fn to_sqlite_err(e: SqliteError) -> String {
 }
 
 /// Meloming-only library rows (no local/youtube audio) — removed on library load.
-fn is_meloming_only_song(source: &str, path: &str) -> bool {
-    source == "meloming" || path.starts_with("meloming:song:")
-}
+use lmrm_logic::meloming::is_meloming_only_song;
 
 /// Delete Meloming-only tracks. Returns how many rows were removed.
 pub fn purge_meloming_only_songs() -> Result<usize, String> {
@@ -79,6 +77,7 @@ pub async fn update_song_metadata(song: SongMetadata) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
+    let path = crate::ipc_validate::validate_audio_source(&path)?;
     // 1. Fetch metadata (YouTube or Local)
     let mut metadata = if path.starts_with("http") {
         crate::model_commands::youtube_metadata_fetcher(path.clone()).await?
@@ -395,4 +394,5 @@ pub fn update_track_duration(path: &str, duration: &str) -> Result<(), String> {
     db.execute("UPDATE Tracks SET duration = ? WHERE path = ?", params![duration, path]).map_err(to_sqlite_err)?;
     Ok(())
 }
+
 

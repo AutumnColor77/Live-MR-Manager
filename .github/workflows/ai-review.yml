@@ -1,0 +1,96 @@
+name: AI Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Qodo / PR-Agent — Action-based AI review (requires OPENAI_KEY secret)
+  # Custom rules: .pr_agent.toml + .github/ai-review-rules.md
+  # ---------------------------------------------------------------------------
+  qodo-pr-agent:
+    name: Qodo PR-Agent Review
+    if: >
+      github.event.sender.type != 'Bot' &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request &&
+          (
+            contains(github.event.comment.body, '/review') ||
+            contains(github.event.comment.body, '/improve') ||
+            contains(github.event.comment.body, '/describe') ||
+            contains(github.event.comment.body, '/ask')
+          )
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check OpenAI key
+        id: creds
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        run: |
+          if [ -z "${OPENAI_KEY}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OPENAI_KEY secret is missing. Add it under Settings → Secrets → Actions to enable Qodo PR-Agent."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run PR-Agent
+        if: steps.creds.outputs.configured == 'true'
+        uses: the-pr-agent/pr-agent@main
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "false"
+          github_action_config.pr_actions: '["opened","reopened","ready_for_review","synchronize"]'
+          pr_reviewer.require_security_review: "true"
+          pr_reviewer.require_score_review: "true"
+          pr_reviewer.require_estimate_effort_to_review: "true"
+          pr_reviewer.require_tests_review: "true"
+          pr_reviewer.require_can_be_split_review: "false"
+          pr_reviewer.inline_code_comments: "true"
+          pr_reviewer.num_code_suggestions: "6"
+          pr_code_suggestions.num_code_suggestions: "6"
+          config.verbosity_level: "1"
+
+  # ---------------------------------------------------------------------------
+  # CodeRabbit uses the GitHub App + .coderabbit.yaml (no Action required).
+  # This job only verifies the ruleset files are present on PR open.
+  # ---------------------------------------------------------------------------
+  coderabbit-ruleset:
+    name: CodeRabbit ruleset present
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .coderabbit.yaml
+            .github/ai-review-rules.md
+          sparse-checkout-cone-mode: false
+
+      - name: Verify CodeRabbit ruleset files
+        run: |
+          test -f .coderabbit.yaml
+          test -f .github/ai-review-rules.md
+          echo "CodeRabbit ruleset OK. Install https://github.com/apps/coderabbitai to enable App reviews."

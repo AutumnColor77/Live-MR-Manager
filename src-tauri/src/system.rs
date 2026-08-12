@@ -171,5 +171,6 @@ pub async fn pick_audio_files() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn remote_js_log(msg: String) {
-    let _ = crate::audio_player::sys_log(&format!("[JS] {}", msg));
+    let safe = crate::ipc_validate::sanitize_log_message(&msg);
+    let _ = crate::audio_player::sys_log(&format!("[JS] {}", safe));
 }

@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit GitHub App configuration (install: https://github.com/apps/coderabbitai)
+# Shared policy text: .github/ai-review-rules.md
+
+language: en-US
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - develop
+
+  path_filters:
+    - "!**/package-lock.json"
+    - "!**/Cargo.lock"
+    - "!**/target/**"
+    - "!**/*.onnx"
+    - "!reports/**"
+
+  path_instructions:
+    - path: "src-tauri/src/**/*.rs"
+      instructions: >
+        Focus on Tauri IPC safety. Flag missing validation on command inputs,
+        unwrap/expect on IO or network, secret leakage in logs, Discord webhook
+        hardcoding, Songbook OAuth deep-link parsing bugs, and path traversal
+        in cache/library helpers. Prefer ipc_validate usage. Report missing
+        error propagation on Result-returning commands.
+
+    - path: "src-tauri/capabilities/**"
+      instructions: >
+        Enforce least privilege. Flag opener:default reintroduction, wildcard
+        URL allows, and assetProtocol scope expansion to ** without justification.
+
+    - path: "src-tauri/tauri.conf.json"
+      instructions: >
+        Flag CSP null/disabled, overly broad assetProtocol scopes, and insecure
+        withGlobalTauri patterns if newly introduced.
+
+    - path: "scripts/**"
+      instructions: >
+        Flag Discord webhook URL hardcoding, missing HTTPS checks, and secret
+        printing. Ensure announce scripts read DISCORD_WEBHOOK_URL from env only.
+
+    - path: ".github/workflows/**"
+      instructions: >
+        Flag secrets echoed to logs, pull_request_target with unsafe checkout,
+        and workflows that disable security gates without rationale.
+
+    - path: "src/js/**"
+      instructions: >
+        Flag XSS via innerHTML on untrusted data, token storage mistakes, and
+        opener calls to non-allowlisted URLs.
+
+knowledge_base:
+  learnings:
+    scope: auto
+
+chat:
+  auto_reply: true
