@@ -55,3 +55,18 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: "--verbose ${{ matrix.bundleArgs }}"
+
+  # NSIS 빌드·업로드 성공 후에만 Discord #공지 (태그 push 직후 공지하지 않음)
+  announce:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Post release notes to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/discord_release_announce.py "${{ github.ref_name }}"

@@ -1,9 +1,7 @@
 name: discord-release
 
+# 자동 공지는 release.yml(빌드 성공 후). 이 워크플로는 과거 태그 수동 공지용.
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -19,17 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Post release notes to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python scripts/discord_release_announce.py "${{ steps.tag.outputs.name }}"
+        run: python scripts/discord_release_announce.py "${{ inputs.tag }}"

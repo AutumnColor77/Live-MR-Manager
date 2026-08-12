@@ -44,7 +44,6 @@
 - [X] **웨이브폼 시각화**: Lyric Sync 시 오디오 파형(Waveform) 렌더링 및 클릭 기반 정밀 탐색 기능 구현
 - [X] **원문/차음/번역 3줄 모드 (v0.6.0)**: 3줄 1세트 수동 토글, LRC `[orig]`/`[pron]`/`[tran]` 저장·하위 호환
 - [X] **AI 정렬 UX (v0.6.0)**: AI 패널·언어 드롭다운 설정 연동, 마커 버튼 3등분 그리드. BPM 그리드 배치는 코드 유지·UI 숨김(`#bpm-grid-btn` `hidden`)
-- [ ] **가사 편집 편의 기능**: 정렬 중 가사 텍스트 즉석 수정 및 오프셋 일괄 조정 기능
 - [X] **Forced Alignment 워크플로우 고도화 (v0.4.8)**: 정렬 작업 취소, 실시간 페널티 튜닝, 파형 요약 캐시 재사용, LRC 저장/로드 경로 호환 강화 완료
 - [X] **Songbook 신청 재생 큐 (v0.7.0)**: pending 신청을 로컬 매칭 곡만 재생 큐에 적재, 신청목록에서 수동 재생, 독 다음/이전 큐 우선
 - [ ] **재생 큐 (Playback Queue)**: 라이브러리 전용 '다음에 재생할 곡' 목록 관리(신청 큐와 별개)
@@ -146,7 +145,7 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 ### Companion 확장 (연동 무관)
 
 - [ ] **Vercel /changelog**, /qa 본문 보강
-- [X] **Discord 릴리즈 공지 (v0.5.0+)**: 태그 push → #공지 webhook, 사용자용 [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
+- [X] **Discord 릴리즈 공지 (v0.5.0+)**: release 빌드 성공 후 #공지 webhook, 사용자용 [DISCORD_ANNOUNCEMENTS.md](DISCORD_ANNOUNCEMENTS.md)
 - [ ] **(선택) 오버레이 숙련도/난이도 표시**
 
 ---

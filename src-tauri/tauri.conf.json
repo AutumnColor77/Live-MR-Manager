@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/before-dev.ps1",
     "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/ensure-vcredist.ps1"
   },
   "app": {
