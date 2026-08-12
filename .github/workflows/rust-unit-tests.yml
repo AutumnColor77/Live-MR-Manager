@@ -59,31 +59,15 @@ jobs:
         shell: pwsh
         run: cargo test --lib --no-run
 
-      - name: Stage ONNX Runtime DLLs next to test binaries
-        shell: pwsh
-        run: |
-          $debug = (Resolve-Path "target/debug").Path
-          $deps = Join-Path $debug "deps"
-          if (-not (Test-Path $deps)) { throw "missing $deps" }
-          $copied = 0
-          Get-ChildItem -Path $debug -Recurse -Include "*.dll" -ErrorAction SilentlyContinue |
-            Where-Object { $_.DirectoryName -ne $deps } |
-            ForEach-Object {
-              $dest = Join-Path $deps $_.Name
-              Copy-Item $_.FullName -Destination $dest -Force
-              Write-Host "Copied $($_.Name) from $($_.DirectoryName)"
-              $copied++
-            }
-          Write-Host "DLL copy count: $copied"
-          Get-ChildItem $deps -Filter "*.dll" -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty Name
-
       - name: Run focused unit tests
         shell: pwsh
         env:
           ORT_STRATEGY: download
         run: |
-          $deps = (Resolve-Path "target/debug/deps").Path
           $debug = (Resolve-Path "target/debug").Path
+          $deps = Join-Path $debug "deps"
           $env:PATH = "$deps;$debug;$env:PATH"
+          Write-Host "PATH prefix: $deps"
+          Get-ChildItem $deps -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name
           cargo test --lib "songbook_auth::|youtube_url::|ipc_validate::|updater::|library::tests::" -- --nocapture
