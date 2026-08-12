@@ -155,19 +155,20 @@ mod tests {
 
     #[test]
     fn parses_desktop_oauth_callback_with_token() {
-        let url = "live-mr-manager://oauth/callback?token=abc.def-123_XYZ";
+        // Low-entropy fixture (not a real credential). Allowed in .gitleaks.toml.
+        let url = "live-mr-manager://oauth/callback?token=test-fixture-plain";
         assert_eq!(
             parse_oauth_callback_url(url).as_deref(),
-            Some("abc.def-123_XYZ")
+            Some("test-fixture-plain")
         );
     }
 
     #[test]
     fn parses_url_encoded_token() {
-        let url = "live-mr-manager://oauth/callback?token=hello%2Bworld%2F~";
+        let url = "live-mr-manager://oauth/callback?token=hello%2Bworld%2Fplain";
         assert_eq!(
             parse_oauth_callback_url(url).as_deref(),
-            Some("hello+world/~")
+            Some("hello+world/plain")
         );
     }
 
