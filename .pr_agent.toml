@@ -1,0 +1,72 @@
+# Live MR Manager — Qodo / PR-Agent configuration
+# Docs: https://docs.pr-agent.ai/
+# Shared review policy: .github/ai-review-rules.md
+
+[config]
+model = "gpt-4o"
+verbosity_level = 1
+response_language = "en-US"
+
+[github_app]
+# Used when running as GitHub App; Action env vars also set auto_review
+handle_push_trigger = true
+pr_commands = [
+  "/describe --pr_description.final_update_message=false",
+  "/review",
+]
+
+[pr_reviewer]
+require_security_review = true
+require_score_review = true
+require_tests_review = true
+require_estimate_effort_to_review = true
+require_can_be_split_review = false
+inline_code_comments = true
+num_code_suggestions = 6
+extra_instructions = """
+You are reviewing Live MR Manager (Tauri 2 + Rust + vanilla JS desktop app, MIT).
+
+MANDATORY focus areas (comment only when actionable):
+1) Security defects
+   - Hardcoded secrets, Discord webhooks, API tokens, OAuth client secrets
+   - Tauri IPC commands missing input validation (paths, URLs, tokens)
+   - Opener / deep-link allowlist bypass, path traversal, SSRF
+   - Logging secrets or full session tokens
+   - Expanding capabilities/default.json or assetProtocol scope without justification
+2) Missing / weak exception handling
+   - unwrap()/expect() on fallible IO, network, DB, or user input in production paths
+   - Tauri commands returning Ok(()) while ignoring Err
+   - Silent drop of Result with let _ = ... on security-sensitive operations
+3) Code smells / maintainability
+   - Dead code, duplicated validation logic that should use ipc_validate
+   - Overly broad catch-all string errors without context
+   - Blocking the async runtime with heavy sync work without spawn_blocking
+   - Mixing Meloming-legacy paths back into official catalogs
+
+Project-specific invariants:
+- Official AI model catalog must not include CC-BY-NC / research-only models
+- FFmpeg and yt-dlp must remain runtime downloads (not bundled) and separate processes
+- Discord webhook URLs must come from env/CI secrets, never source
+- Prefer crate::ipc_validate helpers for new IPC inputs
+
+Do NOT nitpick formatting, import order, or trivial renames.
+Prefer inline comments with severity: Critical / High / Medium.
+Reference .github/ai-review-rules.md when relevant.
+"""
+
+[pr_code_suggestions]
+num_code_suggestions = 6
+extra_instructions = """
+Suggest concrete Rust/JS patches for:
+- Adding ipc_validate checks on new #[tauri::command] parameters
+- Replacing unwrap with map_err / ? on user-facing paths
+- Removing hardcoded webhook/secret literals
+Keep suggestions minimal and compiling.
+"""
+
+[pr_description]
+publish = true
+extra_instructions = """
+Summarize risk areas: security, error handling, tests touched.
+Call out any changes to capabilities/, .env examples, or AI model catalogs.
+"""

@@ -100,6 +100,16 @@ def main() -> int:
         print("DISCORD_WEBHOOK_URL not set - skipping Discord announce.")
         return 0
 
+    if not (
+        webhook.startswith("https://discord.com/api/webhooks/")
+        or webhook.startswith("https://discordapp.com/api/webhooks/")
+    ):
+        print(
+            "DISCORD_WEBHOOK_URL must be an https://discord.com/api/webhooks/... URL",
+            file=sys.stderr,
+        )
+        return 1
+
     description = extract_user_announcement(tag)
     payload = build_payload(tag, description)
 

@@ -5534,6 +5534,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "unicode-normalization",
+ "url",
  "urlencoding",
  "zip",
 ]

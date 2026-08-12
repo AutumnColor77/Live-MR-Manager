@@ -313,10 +313,7 @@ impl WaveformRemover {
 
         // Keep prior fast-path on Windows (GPU by default), while allowing explicit
         // opt-in/opt-out via env var across platforms.
-        let gpu_opt_in = match std::env::var("LIVE_MR_ENABLE_GPU") {
-            Ok(v) => v == "1" || v.eq_ignore_ascii_case("true"),
-            Err(_) => true,
-        };
+        let gpu_opt_in = crate::env_config::gpu_opt_in();
 
         // RawWaveform models (Mel-Band RoFormer) run a single, very heavy
         // dispatch per chunk (conv-emulated STFT + full attention over an

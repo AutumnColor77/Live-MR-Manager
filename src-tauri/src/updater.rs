@@ -125,15 +125,11 @@ pub async fn open_app_update_page(url: String) -> Result<(), String> {
     let target = if url.trim().is_empty() {
         default_release_url()
     } else {
-        url.trim().to_string()
+        crate::ipc_validate::validate_external_open_url(&url)?
     };
 
     // cmd.exe `start "" "url"` via Command::args mangles nested quotes on Windows
     // (ShellExecute ends up with `\\` → 「₩₩을(를) 찾을 수 없습니다」). Use opener instead.
-    if !(target.starts_with("https://") || target.starts_with("http://")) {
-        return Err("열 수 있는 http(s) URL이 아닙니다.".into());
-    }
-
     tauri_plugin_opener::open_url(&target, None::<&str>).map_err(|e| e.to_string())
 }
 
@@ -163,4 +159,31 @@ pub fn start_update_checker(app: AppHandle) {
         tokio::time::sleep(STARTUP_CHECK_DELAY).await;
         check_and_notify(app).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_v_prefix() {
+        assert_eq!(strip_version_prefix("v0.7.3"), "0.7.3");
+        assert_eq!(strip_version_prefix("V1.2.0"), "1.2.0");
+        assert_eq!(strip_version_prefix(" 0.7.3 "), "0.7.3");
+    }
+
+    #[test]
+    fn compares_semver_versions() {
+        assert!(version_gt("0.7.4", "0.7.3"));
+        assert!(version_gt("v1.0.0", "0.9.9"));
+        assert!(!version_gt("0.7.3", "0.7.3"));
+        assert!(!version_gt("0.7.2", "0.7.3"));
+    }
+
+    #[test]
+    fn default_release_url_points_at_this_repo() {
+        let url = default_release_url();
+        assert!(url.contains("AutumnColor77/Live-MR-Manager/releases"));
+        assert!(url.starts_with("https://github.com/"));
+    }
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window capabilities",
+  "description": "Main window capabilities (least privilege)",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -11,16 +11,21 @@
     "core:window:allow-unmaximize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
-    "opener:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [
+        { "url": "https://www.livemrsongbook.com/*" },
+        { "url": "https://livemrsongbook.com/*" },
         { "url": "https://live-mr-songbook.boohun2771.workers.dev/*" },
         { "url": "http://localhost:5173/*" },
         { "url": "https://accounts.google.com/*" },
-        { "url": "https://github.com/*" },
+        { "url": "https://nid.naver.com/*" },
+        { "url": "https://github.com/AutumnColor77/Live-MR-Manager/*" },
+        { "url": "https://github.com/BtbN/FFmpeg-Builds/*" },
+        { "url": "https://github.com/yt-dlp/yt-dlp*" },
         { "url": "https://lmrm.vercel.app/*" },
-        { "url": "https://discord.gg/*" }
+        { "url": "https://discord.gg/*" },
+        { "url": "https://discord.com/invite/*" }
       ]
     },
     "deep-link:default",

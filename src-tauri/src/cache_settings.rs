@@ -84,14 +84,16 @@ pub fn get_mr_cache_path_info(paths: State<'_, AppPaths>) -> MrCachePathInfo {
 
 #[tauri::command]
 pub async fn check_mr_cache_path(path: String) -> CachePathCheckResult {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return CachePathCheckResult {
-            writable: false,
-            is_network_path: false,
-            error: Some("경로를 입력해주세요.".into()),
-        };
-    }
+    let trimmed = match crate::ipc_validate::validate_path_string(&path) {
+        Ok(v) => v,
+        Err(e) => {
+            return CachePathCheckResult {
+                writable: false,
+                is_network_path: false,
+                error: Some(e),
+            };
+        }
+    };
     let base = PathBuf::from(trimmed);
     let is_network = is_likely_network_path(&base);
     let target = base.join("separated");
@@ -107,9 +109,17 @@ pub async fn check_mr_cache_path(path: String) -> CachePathCheckResult {
 /// manually; the app just starts looking in the new place after restart.
 #[tauri::command]
 pub async fn set_mr_cache_path(paths: State<'_, AppPaths>, path: Option<String>) -> Result<(), String> {
-    let normalized = path
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty());
+    let normalized = match path {
+        Some(p) => {
+            let trimmed = p.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(crate::ipc_validate::validate_path_string(trimmed)?.to_string())
+            }
+        }
+        None => None,
+    };
 
     if let Some(p) = &normalized {
         let target = PathBuf::from(p).join("separated");

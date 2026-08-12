@@ -1,0 +1,52 @@
+name: Rust Unit Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-unit-tests.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-unit-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: cargo test (lib unit)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Placeholder VC redist for tauri-build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path resources | Out-Null
+          if (-not (Test-Path resources/vc_redist.x64.exe)) {
+            Set-Content -Path resources/vc_redist.x64.exe -Value "ci-placeholder" -NoNewline
+          }
+
+      - name: Run focused unit tests
+        shell: pwsh
+        run: |
+          cargo test --lib "songbook_auth::|youtube_url::|ipc_validate::|updater::|library::tests::" -- --nocapture

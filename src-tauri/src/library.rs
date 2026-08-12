@@ -79,6 +79,7 @@ pub async fn update_song_metadata(song: SongMetadata) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_audio_metadata(path: String) -> Result<SongMetadata, String> {
+    let path = crate::ipc_validate::validate_audio_source(&path)?;
     // 1. Fetch metadata (YouTube or Local)
     let mut metadata = if path.starts_with("http") {
         crate::model_commands::youtube_metadata_fetcher(path.clone()).await?
@@ -394,5 +395,24 @@ pub fn update_track_duration(path: &str, duration: &str) -> Result<(), String> {
     let db = DB.lock();
     db.execute("UPDATE Tracks SET duration = ? WHERE path = ?", params![duration, path]).map_err(to_sqlite_err)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_meloming_source_rows() {
+        assert!(is_meloming_only_song("meloming", "/any/path.mp3"));
+        assert!(is_meloming_only_song("local", "meloming:song:abc"));
+        assert!(!is_meloming_only_song("local", "C:\\Music\\a.mp3"));
+        assert!(!is_meloming_only_song("youtube", "https://youtu.be/abc"));
+    }
+
+    #[test]
+    fn meloming_prefix_is_case_sensitive_by_design() {
+        assert!(!is_meloming_only_song("Meloming", "x"));
+        assert!(!is_meloming_only_song("local", "Meloming:song:1"));
+    }
 }
 
