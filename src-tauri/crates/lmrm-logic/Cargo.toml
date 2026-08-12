@@ -1,0 +1,12 @@
+[package]
+name = "lmrm-logic"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Pure validation/parsing helpers for Live MR Manager (ORT-free, CI-testable)"
+publish = false
+
+[dependencies]
+semver = "1"
+url = "2"
+urlencoding = "2.1.3"

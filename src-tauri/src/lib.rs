@@ -3,7 +3,7 @@ pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongM
 
 mod types;
 mod youtube;
-mod youtube_url;
+pub use lmrm_logic::youtube_url;
 mod model_manager;
 mod custom_models;
 pub mod vocal_remover;
@@ -29,7 +29,7 @@ mod cache_settings;
 mod updater;
 mod songbook_auth;
 mod env_config;
-mod ipc_validate;
+pub use lmrm_logic::ipc_validate;
 
 fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {

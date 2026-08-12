@@ -21,9 +21,11 @@ concurrency:
 
 jobs:
   unit-tests:
-    name: cargo test (lib unit)
-    runs-on: windows-latest
-    timeout-minutes: 45
+    name: cargo test (lmrm-logic)
+    # Pure helpers only — avoids linking Windows ORT/DirectML into the test binary
+    # (STATUS_ENTRYPOINT_NOT_FOUND on GitHub-hosted runners).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: src-tauri
@@ -38,36 +40,5 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Placeholder VC redist for tauri-build resource check
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path resources | Out-Null
-          if (-not (Test-Path resources/vc_redist.x64.exe)) {
-            Set-Content -Path resources/vc_redist.x64.exe -Value "ci-placeholder" -NoNewline
-          }
-
-      - name: Install Visual C++ Redistributable (ORT native deps)
-        shell: pwsh
-        run: |
-          $url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          $out = Join-Path $env:TEMP "vc_redist.x64.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-          $p = Start-Process -FilePath $out -ArgumentList "/install","/quiet","/norestart" -Wait -PassThru
-          Write-Host "vc_redist exit: $($p.ExitCode)"
-
-      - name: Build unit test binaries
-        shell: pwsh
-        run: cargo test --lib --no-run
-
-      - name: Run focused unit tests
-        shell: pwsh
-        env:
-          ORT_STRATEGY: download
-        run: |
-          $debug = (Resolve-Path "target/debug").Path
-          $deps = Join-Path $debug "deps"
-          $env:PATH = "$deps;$debug;$env:PATH"
-          Write-Host "PATH prefix: $deps"
-          Get-ChildItem $deps -Filter "*.dll" -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty Name
-          cargo test --lib "songbook_auth::|youtube_url::|ipc_validate::|updater::|library::tests::" -- --nocapture
+      - name: Run lmrm-logic unit tests
+        run: cargo test -p lmrm-logic -- --nocapture

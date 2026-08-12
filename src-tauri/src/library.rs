@@ -14,9 +14,7 @@ pub fn to_sqlite_err(e: SqliteError) -> String {
 }
 
 /// Meloming-only library rows (no local/youtube audio) — removed on library load.
-fn is_meloming_only_song(source: &str, path: &str) -> bool {
-    source == "meloming" || path.starts_with("meloming:song:")
-}
+use lmrm_logic::meloming::is_meloming_only_song;
 
 /// Delete Meloming-only tracks. Returns how many rows were removed.
 pub fn purge_meloming_only_songs() -> Result<usize, String> {
@@ -397,22 +395,4 @@ pub fn update_track_duration(path: &str, duration: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detects_meloming_source_rows() {
-        assert!(is_meloming_only_song("meloming", "/any/path.mp3"));
-        assert!(is_meloming_only_song("local", "meloming:song:abc"));
-        assert!(!is_meloming_only_song("local", "C:\\Music\\a.mp3"));
-        assert!(!is_meloming_only_song("youtube", "https://youtu.be/abc"));
-    }
-
-    #[test]
-    fn meloming_prefix_is_case_sensitive_by_design() {
-        assert!(!is_meloming_only_song("Meloming", "x"));
-        assert!(!is_meloming_only_song("local", "Meloming:song:1"));
-    }
-}
 

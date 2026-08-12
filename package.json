@@ -9,7 +9,7 @@
     "dev": "npx -y serve src -l 1420",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib \"songbook_auth::|youtube_url::|ipc_validate::|updater::|library::tests::\"",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml -p lmrm-logic",
     "check:licenses": "python scripts/supply-chain/inventory_licenses.py --out reports/license-inventory.json --markdown reports/license-inventory.md && python scripts/supply-chain/check_model_license_compat.py --out reports/model-license-compat.json",
     "audit:deps": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/audit-deps.ps1",
     "prebuild:supply-chain": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prebuild-supply-chain.ps1"

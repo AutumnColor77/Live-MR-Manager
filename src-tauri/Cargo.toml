@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/lmrm-logic"]
+resolver = "2"
+
 [package]
 name = "tauri-app"
 version = "0.7.3"
@@ -17,6 +21,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+lmrm-logic = { path = "crates/lmrm-logic" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-window-state = "2"
