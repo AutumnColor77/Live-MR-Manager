@@ -62,23 +62,21 @@ jobs:
       - name: Stage ONNX Runtime DLLs next to test binaries
         shell: pwsh
         run: |
-          $debug = "target/debug"
+          $debug = (Resolve-Path "target/debug").Path
           $deps = Join-Path $debug "deps"
           if (-not (Test-Path $deps)) { throw "missing $deps" }
           $copied = 0
-          Get-ChildItem -Path $debug -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName -Destination $deps -Force
-            Write-Host "Copied $($_.Name)"
-            $copied++
-          }
-          # ort may place dylibs under target/debug/build/**/out
-          Get-ChildItem -Path $debug -Recurse -Filter "onnxruntime*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName -Destination $deps -Force
-            Write-Host "Copied ORT $($_.Name) from $($_.DirectoryName)"
-            $copied++
-          }
+          Get-ChildItem -Path $debug -Recurse -Include "*.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.DirectoryName -ne $deps } |
+            ForEach-Object {
+              $dest = Join-Path $deps $_.Name
+              Copy-Item $_.FullName -Destination $dest -Force
+              Write-Host "Copied $($_.Name) from $($_.DirectoryName)"
+              $copied++
+            }
           Write-Host "DLL copy count: $copied"
-          Get-ChildItem $deps -Filter "*.dll" | Select-Object -ExpandProperty Name
+          Get-ChildItem $deps -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name
 
       - name: Run focused unit tests
         shell: pwsh
@@ -86,5 +84,6 @@ jobs:
           ORT_STRATEGY: download
         run: |
           $deps = (Resolve-Path "target/debug/deps").Path
-          $env:PATH = "$deps;$env:PATH"
+          $debug = (Resolve-Path "target/debug").Path
+          $env:PATH = "$deps;$debug;$env:PATH"
           cargo test --lib "songbook_auth::|youtube_url::|ipc_validate::|updater::|library::tests::" -- --nocapture
