@@ -13,6 +13,11 @@ import {
 } from './audio.js';
 import { loadLyricsForTrack, getIntroSkipTarget } from './lyrics.js';
 import { emit, invoke, convertFileSrc as bridgeConvertFileSrc } from './tauri-bridge.js';
+import {
+  isPlaceholderAudioPath,
+  pickHttpMediaUrl,
+  resolvePlayableAudioPath,
+} from './youtube-utils.js';
 
 function isYoutubePath(path) {
   if (!path || typeof path !== "string") return false;
@@ -182,6 +187,30 @@ export async function handlePlaybackToggle() {
   }
 }
 
+async function ensurePlayableSongPath(song) {
+  const playable = resolvePlayableAudioPath(song);
+  if (!playable) return null;
+  const prev = String(song.path || "").trim();
+  if (playable === prev) return playable;
+  if (!/^https?:\/\//i.test(playable)) return playable;
+
+  const oldPath = prev;
+  song.path = playable;
+  song.source = "youtube";
+  song.originalUrl = pickHttpMediaUrl(song.originalUrl, song.original_url, playable);
+  song.original_url = song.originalUrl;
+  try {
+    const { deleteSongFromDb, saveLibrary } = await import("./audio.js");
+    if (oldPath && oldPath !== playable) {
+      await deleteSongFromDb(oldPath);
+    }
+    await saveLibrary(state.songLibrary);
+  } catch (err) {
+    console.warn("[Player] path repair save failed:", err);
+  }
+  return playable;
+}
+
 export async function selectTrack(index, options = {}) {
   const playNow = options.playNow !== false;
   // Increment sequence for every new request
@@ -197,6 +226,14 @@ export async function selectTrack(index, options = {}) {
 
   const song = state.songLibrary[index];
   if (!song) {
+    state.isLoading = false;
+    updateThumbnailOverlay();
+    return;
+  }
+
+  const playablePath = await ensurePlayableSongPath(song);
+  if (!playablePath || isPlaceholderAudioPath(playablePath)) {
+    showNotification("이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다.", "warning");
     state.isLoading = false;
     updateThumbnailOverlay();
     return;

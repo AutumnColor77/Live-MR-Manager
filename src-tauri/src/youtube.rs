@@ -288,6 +288,49 @@ impl YoutubeManager {
         "유튜브 재생에 실패했습니다.".into()
     }
 
+    fn youtube_player_client_arg(fallback: bool) -> &'static str {
+        // Default `web` formats often 403 (SABR / nsig). TV+Android still expose HTTPS audio.
+        if fallback {
+            "youtube:player_client=ios,mweb,web"
+        } else {
+            "youtube:player_client=tv,android,web_safari"
+        }
+    }
+
+    fn find_node_runtime() -> Option<String> {
+        use std::os::windows::process::CommandExt;
+        let output = std::process::Command::new("where.exe")
+            .arg("node.exe")
+            .creation_flags(0x08000000)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let first = p.lines().next().unwrap_or("").trim();
+        if first.is_empty() {
+            None
+        } else {
+            Some(first.to_string())
+        }
+    }
+
+    fn push_youtube_compat_args(args: &mut Vec<String>, fallback_clients: bool) {
+        args.extend_from_slice(&[
+            "--extractor-args".into(),
+            Self::youtube_player_client_arg(fallback_clients).into(),
+            "--retries".into(),
+            "5".into(),
+            "--fragment-retries".into(),
+            "5".into(),
+            "--no-playlist".into(),
+        ]);
+        if let Some(node) = Self::find_node_runtime() {
+            args.extend_from_slice(&["--js-runtimes".into(), format!("node:{}", node)]);
+        }
+    }
+
     fn release_download_slot(destination: &Path, error: Option<String>) {
         let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
         active.remove(destination);
@@ -381,6 +424,8 @@ impl YoutubeManager {
                 "8",
                 "--extractor-retries",
                 "1",
+                "--extractor-args",
+                "youtube:player_client=tv,android,web_safari",
                 url,
             ])
             .output(),
@@ -646,27 +691,44 @@ impl YoutubeManager {
         destination: PathBuf,
         wait_for_full: bool,
     ) -> Result<PathBuf, String> {
-        match Self::download_audio_once(window, url, destination.clone(), wait_for_full).await {
+        match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false).await {
             Ok(path) => Ok(path),
             Err(err) => {
                 let _ = crate::audio_player::sys_log(&format!("[Youtube] download failed: {}", err));
-                let should_retry =
-                    Self::is_extractor_failure(&err) || err.to_lowercase().contains("failed to spawn");
-                if should_retry && Self::refresh_managed_yt_dlp_once().await {
+                let extractor = Self::is_extractor_failure(&err);
+                if extractor && Self::refresh_managed_yt_dlp_once().await {
                     let _ = std::fs::remove_file(&destination);
-                    match Self::download_audio_once(window, url, destination, wait_for_full).await {
-                        Ok(path) => Ok(path),
+                    match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false)
+                        .await
+                    {
+                        Ok(path) => return Ok(path),
                         Err(err2) => {
                             let _ = crate::audio_player::sys_log(&format!(
-                                "[Youtube] download retry failed: {}",
+                                "[Youtube] download retry after yt-dlp refresh failed: {}",
                                 err2
                             ));
-                            Err(Self::user_facing_error(&err2))
                         }
                     }
-                } else {
-                    Err(Self::user_facing_error(&err))
                 }
+                if extractor {
+                    let _ = crate::audio_player::sys_log(
+                        "[Youtube] Retrying download with fallback player clients",
+                    );
+                    let _ = std::fs::remove_file(&destination);
+                    match Self::download_audio_once(window, url, destination, wait_for_full, true)
+                        .await
+                    {
+                        Ok(path) => return Ok(path),
+                        Err(err2) => {
+                            let _ = crate::audio_player::sys_log(&format!(
+                                "[Youtube] fallback-client download failed: {}",
+                                err2
+                            ));
+                            return Err(Self::user_facing_error(&err2));
+                        }
+                    }
+                }
+                Err(Self::user_facing_error(&err))
             }
         }
     }
@@ -676,6 +738,7 @@ impl YoutubeManager {
         url: &str,
         destination: PathBuf,
         wait_for_full: bool,
+        fallback_clients: bool,
     ) -> Result<PathBuf, String> {
         let exe = Self::find_yt_dlp().await;
         let ffmpeg_location = Self::resolve_ffmpeg_location().await;
@@ -730,6 +793,7 @@ impl YoutubeManager {
                 "--buffer-size".into(),
                 "16K".into(),
             ];
+            Self::push_youtube_compat_args(&mut args, fallback_clients);
 
             if wait_for_full {
                 // High quality post-processing for separation
@@ -740,6 +804,8 @@ impl YoutubeManager {
                     "--audio-format".into(),
                     "m4a".into(),
                 ]);
+            } else if fallback_clients {
+                args.extend_from_slice(&["-f".into(), "bestaudio/best".into()]);
             } else {
                 // Streaming friendly: no post-processing
                 args.extend_from_slice(&["-f".into(), "ba[ext=m4a]/ba".into()]);

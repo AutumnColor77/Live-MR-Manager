@@ -12,6 +12,7 @@ import {
   SongbookAuthError,
 } from './songbook-requests-api.js';
 import { findLibrarySong, playQueueItem, syncPlaybackQueueFromRequests } from './playback-queue.js';
+import { isPlaceholderAudioPath, resolvePlayableAudioPath } from './youtube-utils.js';
 
 const POLL_MS = 4000;
 
@@ -68,12 +69,9 @@ function resolveNowPlaying(status, requests) {
   return (requests || []).find((r) => r?.status === 'playing') || null;
 }
 
-function isPlayableLibraryPath(path) {
-  const p = String(path || '').trim();
-  if (!p) return false;
-  if (p.startsWith('songbook:song:')) return false;
-  if (p.startsWith('meloming:song:')) return false;
-  return true;
+function isPlayableLibrarySong(song) {
+  const playable = resolvePlayableAudioPath(song);
+  return Boolean(playable) && !isPlaceholderAudioPath(playable);
 }
 
 async function maybeAutoPlayFromRemote(status, requests, slug) {
@@ -86,7 +84,7 @@ async function maybeAutoPlayFromRemote(status, requests, slug) {
   if (requestId === lastAutoPlayRequestId) return;
 
   const song = findLibrarySong(nowPlaying.title, nowPlaying.artist);
-  if (!song || !isPlayableLibraryPath(song.path)) {
+  if (!song || !isPlayableLibrarySong(song)) {
     if (lastMissingPlayToastId !== requestId) {
       showNotification(
         `웹에서 재생 요청: 라이브러리에 재생 가능한 음원이 없습니다 (${nowPlaying.title || '제목 없음'})`,

@@ -46,6 +46,7 @@
 | 오류 | 재생 오류: {err} | `src/js/events/backend.js`<br>selectTrack 진행 중이 아닐 때만 (탐색 실패 등) |
 | 오류 | 재생 제어 실패 | `src/js/audio.js` |
 | 오류 | 재생에 실패했습니다: {err} | `src/js/player.js` |
+| 경고 | 이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다. | `src/js/player.js` |
 | 오류 | 재생에 실패했습니다: 유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요. | `src/js/player.js` 유튜브 90초 타임아웃 |
 | 오류 | 재생에 실패했습니다: 재생 준비 시간이 초과되었습니다. | `src/js/player.js` 로컬 30초 타임아웃 |
 | 오류 | 재설정 실패: {err} | `src/js/events/controls/settings.js` |

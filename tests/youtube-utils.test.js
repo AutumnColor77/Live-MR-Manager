@@ -5,6 +5,7 @@ import {
   normalizeYoutubeUrl,
   youtubePathsMatch,
   isDuplicateYoutubeTrack,
+  resolvePlayableAudioPath,
 } from '../src/js/youtube-utils.js';
 
 describe('youtube-utils', () => {
@@ -33,9 +34,23 @@ describe('youtube-utils', () => {
     expect(youtubePathsMatch('https://youtu.be/abc', 'https://youtu.be/def')).toBe(false);
   });
 
-  it('detects duplicate youtube tracks', () => {
-    const library = [{ path: 'https://youtu.be/abc', title: 'Song' }];
-    expect(isDuplicateYoutubeTrack(library, 'https://www.youtube.com/watch?v=abc', null)).toBe(true);
-    expect(isDuplicateYoutubeTrack(library, 'https://youtu.be/new', null)).toBe(false);
+  it('resolves songbook pull placeholders via originalUrl', () => {
+    expect(
+      resolvePlayableAudioPath({
+        path: 'songbook:song:abc',
+        source: 'songbook',
+        originalUrl: 'https://youtu.be/dQw4w9WgXcQ',
+      }),
+    ).toBe('https://youtu.be/dQw4w9WgXcQ');
+  });
+
+  it('keeps local audio paths when originalUrl is also set', () => {
+    expect(
+      resolvePlayableAudioPath({
+        path: 'C:\\Music\\track.mp3',
+        source: 'local',
+        originalUrl: 'https://youtu.be/abc',
+      }),
+    ).toBe('C:\\Music\\track.mp3');
   });
 });

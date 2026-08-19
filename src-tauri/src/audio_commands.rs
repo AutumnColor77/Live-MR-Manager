@@ -22,6 +22,11 @@ use urlencoding;
 // --- Global Statics ---
 pub static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
+fn is_http_url(path: &str) -> bool {
+    let lower = path.trim().to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
 fn youtube_cache_playable(path: &std::path::Path) -> bool {
     let path_buf = path.to_path_buf();
     if crate::audio_player::DOWNLOAD_ERRORS.lock().contains_key(&path_buf) {
@@ -86,7 +91,7 @@ pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option
     let res = play_track_internal(window.clone(), path, duration_ms, None, play_now.unwrap_or(true)).await;
     if let Err(ref e) = res {
         sys_log(&format!("[AUDIO] play_track failed: path={}, error={}", path_for_log, e));
-        let mapped = if path_for_log.starts_with("http") {
+        let mapped = if is_http_url(&path_for_log) {
             YoutubeManager::user_facing_error(e)
         } else {
             e.clone()
@@ -284,7 +289,12 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     }
 
     // Case 2: Fallback to Original source
-    let play_path = if path.starts_with("http") {
+    let trimmed_path = path.trim();
+    if trimmed_path.starts_with("songbook:") || trimmed_path.starts_with("meloming:") {
+        return Err("이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다.".into());
+    }
+
+    let play_path = if is_http_url(&path) {
         let seeking = start_pos_ms.is_some();
         if !seeking {
             window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "유튜브 오디오 준비 중...".into() }).ok();
@@ -317,11 +327,11 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
 
     if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
 
-    if !play_path.exists() && !path.starts_with("http") {
+    if !play_path.exists() && !is_http_url(&path) {
         return Err("파일을 찾을 수 없습니다".into());
     }
 
-    let is_yt = path.starts_with("http");
+    let is_yt = is_http_url(&path);
     let mut decoder_result = None;
     let mut first_error_msg = String::new();
     let mut cache_retried = false;

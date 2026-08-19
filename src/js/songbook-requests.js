@@ -21,6 +21,7 @@ import {
   playQueueItem,
   syncPlaybackQueueFromRequests,
 } from './playback-queue.js';
+import { isPlaceholderAudioPath, resolvePlayableAudioPath } from './youtube-utils.js';
 import {
   onRequestsTabHidden as markRequestsUnseen,
   onRequestsTabShown as markRequestsSeen,
@@ -126,7 +127,8 @@ async function handleAuthExpired() {
 function queueActionsHtml(item) {
   const id = escapeHtml(item.id);
   const local = findLibrarySong(item.title, item.artist);
-  const hasLocal = Boolean(local?.path) && !String(local.path).startsWith('songbook:song:');
+  const playable = resolvePlayableAudioPath(local);
+  const hasLocal = Boolean(playable) && !isPlaceholderAudioPath(playable);
   const localBadge = hasLocal
     ? '<span class="request-local-badge" title="라이브러리에 있음">MR</span>'
     : '<span class="request-local-badge missing" title="라이브러리에 없음">—</span>';
@@ -660,7 +662,8 @@ async function handleRequestAction(id, act) {
   try {
     if (act === 'playing') {
       const song = findLibrarySong(item.title, item.artist);
-      if (!song?.path || String(song.path).startsWith('songbook:song:')) {
+      const playable = resolvePlayableAudioPath(song);
+      if (!playable || isPlaceholderAudioPath(playable)) {
         showNotification('라이브러리에 재생 가능한 음원이 없습니다.', 'warning');
         return;
       }
@@ -669,7 +672,7 @@ async function handleRequestAction(id, act) {
       markAutoPlayedRequest(id);
       await playQueueItem({
         requestId: id,
-        path: song.path,
+        path: playable,
         title: item.title,
         artist: item.artist,
       }, { patchPlaying: false, slug });

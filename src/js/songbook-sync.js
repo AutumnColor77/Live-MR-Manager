@@ -472,8 +472,16 @@ function applyRemoteMetaToLocal(local, remote) {
   const url = String(remote.originalUrl || remote.original_url || '').trim();
   if (/^https?:\/\//i.test(url)) {
     next.originalUrl = url;
-    // Upgrade placeholder → youtube when URL appears on remote
-    if (String(local.path || '').startsWith('songbook:song:') || !local.path) {
+    next.original_url = url;
+    const localPath = String(local.path || '').trim();
+    const localIsHttp = /^https?:\/\//i.test(localPath);
+    const shouldBindYoutube =
+      !localPath
+      || localPath.startsWith('songbook:')
+      || localPath.startsWith('meloming:')
+      || (!localIsHttp && String(local.source || '').toLowerCase() === 'youtube')
+      || (!localIsHttp && !/\.(mp3|wav|flac|m4a|aac|ogg|wma|opus)$/i.test(localPath));
+    if (shouldBindYoutube) {
       next.path = url;
       next.source = 'youtube';
     }
@@ -511,6 +519,7 @@ function buildImportedSong(remote) {
     bpm: remote.bpm ?? null,
     difficulty: remote.difficulty ?? null,
     originalUrl: hasUrl ? url : null,
+    original_url: hasUrl ? url : null,
   };
 }
 

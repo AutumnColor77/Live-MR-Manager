@@ -4,6 +4,7 @@
 import { state } from './state.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
+import { isPlaceholderAudioPath, resolvePlayableAudioPath } from './youtube-utils.js';
 
 export function normalizeSongKey(title, artist) {
   return `${String(title || '')
@@ -37,10 +38,11 @@ function buildQueueItems(requests) {
   const items = [];
   for (const req of sortActiveRequests(requests)) {
     const song = findLibrarySong(req.title, req.artist);
-    if (!song?.path || String(song.path).startsWith('songbook:song:')) continue;
+    const playable = resolvePlayableAudioPath(song);
+    if (!playable || isPlaceholderAudioPath(playable)) continue;
     items.push({
       requestId: req.id,
-      path: song.path,
+      path: playable,
       title: req.title || song.title || '',
       artist: req.artist || song.artist || '',
       status: req.status,
@@ -118,7 +120,10 @@ export async function playQueueItem(item, { patchPlaying = true, slug, playNow =
 
   const { playTrack } = await import('./audio.js');
   const { selectTrack } = await import('./player.js');
-  const index = (state.songLibrary || []).findIndex((s) => s.path === item.path);
+  const index = (state.songLibrary || []).findIndex((s) => {
+    if (s.path === item.path) return true;
+    return resolvePlayableAudioPath(s) === item.path;
+  });
 
   if (patchPlaying && item.requestId && slug) {
     const { patchRequestStatus } = await import('./songbook-requests-api.js');
