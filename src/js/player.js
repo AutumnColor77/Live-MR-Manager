@@ -231,6 +231,11 @@ export async function selectTrack(index, options = {}) {
     return;
   }
 
+  state.lyricTargetPath = song.path;
+  import('./lyric-drawer.js').then((m) => {
+    if (m.syncLyricDrawerHeader) m.syncLyricDrawerHeader();
+  }).catch(() => {});
+
   const playablePath = await ensurePlayableSongPath(song);
   if (!playablePath || isPlaceholderAudioPath(playablePath)) {
     showNotification("이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다.", "warning");

@@ -2,13 +2,21 @@
  * youtube-search.js — 사이드바 「유튜브 검색」 페이지: 키워드 검색 → 라이브러리 추가.
  */
 import { state } from './state.js';
-import { getAudioMetadata, saveLibrary, searchYoutube } from './audio.js';
+import { getAudioMetadata, saveLibrary, searchYoutube, youtubePreviewAudio, togglePlayback } from './audio.js';
 import { showNotification } from './utils.js';
 import { isDuplicateYoutubeTrack, normalizeYoutubeUrl } from './youtube-utils.js';
+import { listen } from './tauri-bridge.js';
 
 let initialized = false;
 /** @type {Array<object>} */
 let lastResults = [];
+
+/** @type {HTMLAudioElement | null} */
+let previewAudio = null;
+let previewIndex = null;
+let previewBusyIndex = null;
+let previewToken = 0;
+let previewStatusUnlisten = null;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -40,6 +48,139 @@ function formatMetaLine(item) {
   return parts.join(' · ');
 }
 
+function masterVolumePercent() {
+  const slider = document.getElementById('master-volume-slider');
+  const fromSlider = Number.parseFloat(slider?.value);
+  const raw = Number.isFinite(fromSlider) ? fromSlider : Number(state.masterVolume);
+  if (!Number.isFinite(raw)) return 100;
+  return Math.max(0, Math.min(120, raw));
+}
+
+function previewGain() {
+  if (state.isMuted) return 0;
+  return Math.max(0, Math.min(1, masterVolumePercent() / 100));
+}
+
+export function applyYoutubePreviewVolume() {
+  if (previewAudio) previewAudio.volume = previewGain();
+}
+
+function syncPreviewButtons() {
+  document.querySelectorAll('.yt-search-preview-btn').forEach((btn) => {
+    const index = Number(btn.dataset.index);
+    const row = btn.closest('.yt-search-row');
+    const isBusy = previewBusyIndex === index;
+    const isCurrent = previewIndex === index;
+    const isPlaying = Boolean(isCurrent && previewAudio && !previewAudio.paused);
+    btn.disabled = isBusy;
+    btn.classList.toggle('loading-btn', isBusy);
+    btn.textContent = isBusy ? '준비 중' : isPlaying ? '정지' : '미리듣기';
+    row?.classList.toggle('is-previewing', isCurrent && (isBusy || isPlaying));
+  });
+}
+
+function stopYoutubePreviewAudio() {
+  previewToken += 1;
+  previewBusyIndex = null;
+  previewIndex = null;
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio.removeAttribute('src');
+    previewAudio.load();
+    previewAudio = null;
+  }
+  syncPreviewButtons();
+}
+
+async function pauseMainPlaybackForPreview() {
+  if (!state.isPlaying) return;
+  try {
+    await togglePlayback();
+    showNotification('미리듣기를 위해 재생을 일시정지했습니다.', 'info');
+  } catch {
+    /* ignore */
+  }
+}
+
+async function togglePreview(index) {
+  const item = lastResults[index];
+  if (!item) return;
+
+  if (previewIndex === index && previewAudio) {
+    if (previewAudio.paused) {
+      await pauseMainPlaybackForPreview();
+      applyYoutubePreviewVolume();
+      try {
+        await previewAudio.play();
+      } catch (err) {
+        console.error('[YoutubeSearch] Preview resume failed:', err);
+        showNotification('미리듣기를 재생할 수 없습니다.', 'error');
+        stopYoutubePreviewAudio();
+        return;
+      }
+    } else {
+      previewAudio.pause();
+    }
+    syncPreviewButtons();
+    return;
+  }
+
+  const url = normalizeYoutubeUrl(item.url || `https://youtu.be/${item.id}`);
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio.removeAttribute('src');
+    previewAudio.load();
+    previewAudio = null;
+    previewIndex = null;
+  }
+
+  const token = ++previewToken;
+  previewBusyIndex = index;
+  syncPreviewButtons();
+  await pauseMainPlaybackForPreview();
+
+  try {
+    const streamUrl = await youtubePreviewAudio(url);
+    if (token !== previewToken) return;
+    if (!streamUrl) {
+      throw new Error('미리듣기 주소를 받지 못했습니다.');
+    }
+
+    const audio = new Audio(streamUrl);
+    audio.preload = 'auto';
+    audio.volume = previewGain();
+    audio.addEventListener('ended', () => {
+      if (previewAudio === audio) stopYoutubePreviewAudio();
+    });
+    audio.addEventListener('error', () => {
+      if (previewAudio === audio) {
+        showNotification('미리듣기를 재생할 수 없습니다.', 'error');
+        stopYoutubePreviewAudio();
+      }
+    });
+    previewAudio = audio;
+    previewIndex = index;
+    previewBusyIndex = null;
+    await audio.play();
+    if (token !== previewToken) {
+      audio.pause();
+      return;
+    }
+    syncPreviewButtons();
+  } catch (err) {
+    if (token !== previewToken) return;
+    previewBusyIndex = null;
+    syncPreviewButtons();
+    console.error('[YoutubeSearch] Preview failed:', err);
+    const msg = typeof err === 'string' ? err : (err?.message || '미리듣기에 실패했습니다.');
+    showNotification(msg, 'error');
+  }
+}
+
+export function stopYoutubePreview() {
+  stopYoutubePreviewAudio();
+}
+
 function renderResults(results) {
   const container = document.getElementById('yt-search-results');
   if (!container) return;
@@ -50,24 +191,41 @@ function renderResults(results) {
     return;
   }
 
-  container.innerHTML = lastResults
-    .map((item, index) => {
-      const thumb = item.thumbnail
-        ? `<img src="${escapeHtml(item.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-        : '<div class="yt-search-thumb-placeholder" aria-hidden="true"></div>';
-      const meta = formatMetaLine(item);
-      return `
+  try {
+    container.innerHTML = lastResults
+      .map((item, index) => {
+        const thumbUrl = String(item?.thumbnail || '').trim();
+        const thumb = thumbUrl
+          ? `<img src="${escapeHtml(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+          : '<div class="yt-search-thumb-placeholder" aria-hidden="true"></div>';
+        const meta = formatMetaLine(item || {});
+        return `
         <article class="yt-search-row" data-index="${index}">
           <div class="yt-search-thumb">${thumb}</div>
           <div class="yt-search-info">
-            <h4 class="yt-search-title">${escapeHtml(item.title || '제목 없음')}</h4>
+            <h4 class="yt-search-title">${escapeHtml(item?.title || '제목 없음')}</h4>
             <p class="yt-search-meta">${escapeHtml(meta)}</p>
           </div>
-          <button type="button" class="btn-ai-action is-inline yt-search-add-btn" data-index="${index}">추가</button>
+          <div class="yt-search-actions">
+            <button type="button" class="btn-ai-action secondary is-inline yt-search-preview-btn" data-index="${index}">미리듣기</button>
+            <button type="button" class="btn-ai-action is-inline yt-search-add-btn" data-index="${index}">추가</button>
+          </div>
         </article>
       `;
-    })
-    .join('');
+      })
+      .join('');
+    syncPreviewButtons();
+  } catch (err) {
+    console.error('[YoutubeSearch] Render failed:', err);
+    container.innerHTML = '<div class="yt-search-empty">검색 결과를 표시하지 못했습니다.</div>';
+    throw err;
+  }
+}
+
+function invokeErrorMessage(err, fallback) {
+  if (typeof err === 'string' && err.trim()) return err;
+  if (typeof err?.message === 'string' && err.message.trim()) return err.message;
+  return fallback;
 }
 
 async function runSearch() {
@@ -81,17 +239,19 @@ async function runSearch() {
 
   setSearching(true);
   setStatus('검색 중…');
+  stopYoutubePreviewAudio();
   const container = document.getElementById('yt-search-results');
   if (container) container.innerHTML = '<div class="yt-search-empty">검색 중…</div>';
 
   try {
-    const results = await searchYoutube(query, 10);
-    renderResults(results || []);
-    const count = (results || []).length;
+    const raw = await searchYoutube(query, 10);
+    const results = Array.isArray(raw) ? raw : [];
+    renderResults(results);
+    const count = results.length;
     setStatus(count > 0 ? `${count}개 결과` : '검색 결과가 없습니다.');
   } catch (err) {
     console.error('[YoutubeSearch] Failed:', err);
-    const msg = typeof err === 'string' ? err : '유튜브 검색에 실패했습니다.';
+    const msg = invokeErrorMessage(err, '유튜브 검색에 실패했습니다.');
     showNotification(msg, 'error');
     setStatus(msg);
     if (container) container.innerHTML = `<div class="yt-search-empty">${escapeHtml(msg)}</div>`;
@@ -208,11 +368,30 @@ export function initYoutubeSearch() {
   });
 
   document.getElementById('yt-search-results')?.addEventListener('click', (e) => {
+    const previewBtn = e.target.closest('.yt-search-preview-btn');
+    if (previewBtn) {
+      const index = Number(previewBtn.dataset.index);
+      if (Number.isFinite(index)) void togglePreview(index);
+      return;
+    }
     const btn = e.target.closest('.yt-search-add-btn');
     if (!btn) return;
     const index = Number(btn.dataset.index);
     if (Number.isFinite(index)) addResult(index);
   });
+
+  if (!previewStatusUnlisten) {
+    listen('playback-status', (event) => {
+      const status = String(event?.payload?.status || '').toLowerCase();
+      if (status === 'playing' || status === 'downloading') {
+        stopYoutubePreviewAudio();
+      }
+    }).then((unlisten) => {
+      previewStatusUnlisten = unlisten;
+    }).catch(() => {});
+  }
+
+  window.addEventListener('master-volume-changed', () => applyYoutubePreviewVolume());
 }
 
 export function focusYoutubeSearch() {

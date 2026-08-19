@@ -68,7 +68,7 @@ async function runInputAction(action, editable) {
 export function showInputContextMenu(event, editable) {
   if (!elements.contextMenu) return;
 
-  const songMenuIds = ["menu-play", "menu-lyrics-view", "menu-separate", "menu-delete-mr", "menu-edit", "menu-delete"];
+  const songMenuIds = ["menu-play", "menu-add-to-requests", "menu-lyrics-view", "menu-separate", "menu-delete-mr", "menu-edit", "menu-delete"];
   const inputMenuIds = [
     "menu-input-separator",
     "menu-undo",

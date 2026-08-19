@@ -6,7 +6,41 @@ import { elements } from '../ui/elements.js';
 import { renderLibrary } from '../ui/library.js';
 import { updateBroadcastTasksControlVisibility } from '../ui/components.js';
 
+const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
+
+function applySidebarCollapsed(collapsed) {
+  const sidebar = document.querySelector(".sidebar");
+  const toggleBtn = document.getElementById("btn-sidebar-toggle");
+  if (!sidebar) return;
+
+  sidebar.classList.toggle("collapsed", collapsed);
+
+  if (toggleBtn) {
+    const label = collapsed ? "사이드바 펼치기" : "사이드바 접기";
+    toggleBtn.title = label;
+    toggleBtn.setAttribute("aria-label", label);
+    toggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+}
+
+function initSidebarCollapse() {
+  const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  applySidebarCollapsed(collapsed);
+
+  const toggleBtn = document.getElementById("btn-sidebar-toggle");
+  if (!toggleBtn) return;
+
+  toggleBtn.addEventListener("click", () => {
+    const sidebar = document.querySelector(".sidebar");
+    const next = !sidebar?.classList.contains("collapsed");
+    applySidebarCollapsed(next);
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "true" : "false");
+  });
+}
+
 export function initNavigation() {
+  initSidebarCollapse();
+
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
       const tabId = item.id.replace("nav-", "");
@@ -36,7 +70,7 @@ export function initNavigation() {
   }
 }
 
-export function switchTab(tabId) {
+export function switchTab(tabId, options = {}) {
   // Legacy local nav → library with source filter. YouTube is a real search page again.
   if (tabId === "local") {
     state.sourceFilter = "local";
@@ -120,6 +154,10 @@ export function switchTab(tabId) {
     import('../youtube-search.js').then(({ focusYoutubeSearch }) => {
       focusYoutubeSearch();
     });
+  } else {
+    import('../youtube-search.js').then(({ stopYoutubePreview }) => {
+      stopYoutubePreview?.();
+    }).catch(() => {});
   }
 
   const alignmentPage = document.getElementById("alignment-page");
@@ -129,7 +167,7 @@ export function switchTab(tabId) {
     initAlignmentViewer().then(() => {
       if (alignmentViewer) {
         alignmentViewer.resize();
-        if (state.currentTrack) {
+        if (!options.skipAlignmentAutoLoad && state.currentTrack) {
           const alreadyOpen = alignmentViewer.state.currentPath === state.currentTrack.path;
           if (!alreadyOpen) {
             alignmentViewer.loadAudio(state.currentTrack.path);
@@ -183,7 +221,7 @@ export async function openAlignmentForTrack(path, options = {}) {
 
   if (alignmentViewer && path && (forceLoad || alignmentViewer.state.currentPath !== path)) {
     const loadPromise = alignmentViewer.loadAudio(path);
-    switchTab("alignment");
+    switchTab("alignment", { skipAlignmentAutoLoad: true });
     await loadPromise;
   } else {
     switchTab("alignment");

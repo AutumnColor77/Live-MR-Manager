@@ -57,6 +57,8 @@
     right: 0;
     bottom: calc(var(--dock-height) + var(--lyric-drawer-bottom-gap));
     width: var(--lyric-drawer-width);
+    container-type: inline-size;
+    container-name: lyric-drawer;
     background: var(--glass-bg);
     border-left: 1px solid var(--glass-border);
     backdrop-filter: blur(25px);
@@ -255,10 +257,43 @@ body.drawer-open .settings-container {
 }
 
 .drawer-empty-msg {
-    padding-top: 60px;
+    padding: 40px 12px 20px;
     text-align: center;
     color: var(--text-dim);
-    opacity: 0.7;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    line-break: strict;
+}
+
+.drawer-empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.drawer-empty-title,
+.drawer-empty-desc {
+    word-break: keep-all;
+    overflow-wrap: normal;
+    line-break: strict;
+}
+
+.drawer-empty-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+
+.drawer-empty-desc {
+    font-size: 0.85rem;
+    opacity: 0.75;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.drawer-empty-nowrap {
+    white-space: nowrap;
 }
 
 /* Scrollbar for Drawer Content */
@@ -280,5 +315,39 @@ body.drawer-open .settings-container {
     height: 100%;
     background: linear-gradient(to bottom, transparent, var(--accent-primary), transparent);
     opacity: 0.3;
+}
+
+.lyric-sync-cta {
+    width: 100%;
+    height: auto;
+    min-height: var(--btn-h-md);
+    padding: 10px 12px;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: center;
+}
+
+.lyric-sync-cta-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.lyric-sync-cta-gap {
+    display: none;
+}
+
+@container lyric-drawer (min-width: 300px) {
+    .lyric-sync-cta-label {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.3em;
+    }
+
+    .lyric-sync-cta-gap {
+        display: inline;
+    }
 }
 

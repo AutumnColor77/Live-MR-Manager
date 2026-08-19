@@ -300,6 +300,8 @@ export function updateLibrarySelectionBar() {
   if (countEl) countEl.textContent = `${count}곡 선택`;
   const batchBtn = document.getElementById('btn-batch-align');
   if (batchBtn) batchBtn.disabled = count === 0;
+  const requestsBtn = document.getElementById('btn-batch-requests');
+  if (requestsBtn) requestsBtn.disabled = count === 0;
 }
 
 export async function requestBatchAlignment() {
@@ -316,6 +318,17 @@ export async function requestBatchAlignment() {
   } else {
     showNotification('이미 대기열이거나 추가할 곡이 없습니다.', 'info');
   }
+}
+
+export async function requestBatchSongbookQueue() {
+  const paths = Array.from(state.selectedLibraryPaths);
+  if (paths.length === 0) return;
+  const songs = paths
+    .map((path) => (state.songLibrary || []).find((song) => song.path === path))
+    .filter(Boolean);
+  const { addLibrarySongsToRequests } = await import('../library-songbook-queue.js');
+  const result = await addLibrarySongsToRequests(songs);
+  if (result.added > 0) setLibrarySelectMode(false);
 }
 
 export function initLibrarySelectionControls() {
@@ -335,6 +348,11 @@ export function initLibrarySelectionControls() {
   if (batchBtn && batchBtn.dataset.bound !== '1') {
     batchBtn.dataset.bound = '1';
     batchBtn.addEventListener('click', () => requestBatchAlignment());
+  }
+  const requestsBtn = document.getElementById('btn-batch-requests');
+  if (requestsBtn && requestsBtn.dataset.bound !== '1') {
+    requestsBtn.dataset.bound = '1';
+    requestsBtn.addEventListener('click', () => requestBatchSongbookQueue());
   }
   updateLibrarySelectionBar();
 }

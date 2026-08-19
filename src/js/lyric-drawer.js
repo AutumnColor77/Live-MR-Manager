@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { registerAppHandler, callAppHandler } from './app-context.js';
 import { getDisplayLines, parseLrc } from './lrc-parser.js';
 import { getPromoOverlayLyrics, isPromoSongPath } from './screenshot-library.js';
+import { loadLyricsForTrack } from './lyrics.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
@@ -17,10 +18,41 @@ function getOverlaySegments(fallbackSegments) {
     return parseLrc(getPromoOverlayLyrics(path), duration);
 }
 
+export function getLyricTargetTrack() {
+    const path = state.lyricTargetPath;
+    if (path) {
+        const found = (state.songLibrary || []).find((s) => s.path === path);
+        if (found) return found;
+    }
+    if (state.selectedTrackIndex >= 0) {
+        const found = state.songLibrary[state.selectedTrackIndex];
+        if (found) return found;
+    }
+    return state.currentTrack || null;
+}
+
+function durationSecForSong(song) {
+    const raw = song?.duration;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+        return raw > 1000 ? raw / 1000 : raw;
+    }
+    return 0;
+}
+
+export async function focusLyricDrawerOnTrack(song) {
+    if (!song?.path) return;
+    state.lyricTargetPath = song.path;
+    const idx = (state.songLibrary || []).findIndex((s) => s.path === song.path);
+    if (idx >= 0) state.selectedTrackIndex = idx;
+    const lyrics = await loadLyricsForTrack(song.path, durationSecForSong(song));
+    if (state.lyricTargetPath !== song.path) return;
+    updateLyrics(lyrics);
+}
+
 function updateDrawerTrackTitle() {
     const titleEl = document.getElementById('lyric-drawer-track-title');
     if (!titleEl) return;
-    titleEl.textContent = state.currentTrack?.title || '선택된 곡 없음';
+    titleEl.textContent = getLyricTargetTrack()?.title || '선택된 곡 없음';
 }
 
 export function syncLyricDrawerHeader() {
@@ -165,9 +197,9 @@ export function initLyricDrawer() {
         closeDrawer();
         try {
             const nav = await import('./events/navigation.js');
-            const currentPath = state.currentTrack?.path;
-            if (currentPath && typeof nav.openAlignmentForTrack === 'function') {
-                await nav.openAlignmentForTrack(currentPath, { forceLoad: true });
+            const targetPath = getLyricTargetTrack()?.path;
+            if (targetPath && typeof nav.openAlignmentForTrack === 'function') {
+                await nav.openAlignmentForTrack(targetPath, { forceLoad: true });
                 return;
             }
             if (typeof nav.switchTab === 'function') {
@@ -218,14 +250,18 @@ export function updateLyrics(segments) {
         lastOverlayCurrent = null;
         lastOverlayNext = null;
         container.innerHTML = `
-            <div class="drawer-empty-msg" style="padding: 40px 20px; text-align: center;">
-                <div style="font-size: 2.5rem; margin-bottom: 20px; opacity: 0.5;">🎵</div>
-                <p style="font-weight: 700; font-size: 1.1rem; margin-bottom: 8px;">정렬된 가사가 없습니다.</p>
-                <p style="font-size: 0.85rem; opacity: 0.6; line-height: 1.6; margin-bottom: 24px;">
-                    이 곡에 등록된 가사 싱크가 없습니다.<br>Lyric Sync 모드에서 가사를 정렬해 보세요.
+            <div class="drawer-empty-msg">
+                <div class="drawer-empty-icon">🎵</div>
+                <p class="drawer-empty-title">정렬된 가사가 없습니다.</p>
+                <p class="drawer-empty-desc">
+                    이 곡에 등록된 가사 싱크가 없습니다.<br>
+                    <span class="drawer-empty-nowrap">Lyric Sync</span> 모드에서 가사를 정렬해 보세요.
                 </p>
-                <button type="button" class="primary-btn btn-md lyric-sync-cta" style="width: 100%;">
-                    가사 싱크 등록하러 가기
+                <button type="button" class="primary-btn btn-md lyric-sync-cta">
+                    <span class="lyric-sync-cta-label">
+                        <span class="lyric-sync-cta-kicker">가사<span class="lyric-sync-cta-gap"> </span>싱크</span>
+                        <span class="lyric-sync-cta-rest">등록하러 가기</span>
+                    </span>
                 </button>
             </div>
         `;

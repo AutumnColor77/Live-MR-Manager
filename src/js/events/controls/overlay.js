@@ -80,6 +80,7 @@ export function initOverlayListeners() {
     if (overlayAnimationDirectionLabel) {
       overlayAnimationDirectionLabel.textContent = isQueue ? '애니메이션 방향' : '등장 애니메이션 방향';
     }
+    document.querySelector('.overlay-tab-container')?.classList.toggle('is-queue', isQueue);
   };
   const getPreviewMode = () => {
     const activeTab = document.querySelector('.preview-tab.active');
@@ -94,6 +95,8 @@ export function initOverlayListeners() {
     if (overlayInfoHeaderSettings) overlayInfoHeaderSettings.style.display = isQueue ? 'none' : 'block';
     if (overlayQueueSettings) overlayQueueSettings.style.display = isQueue ? 'block' : 'none';
     if (overlayDesignSettings) overlayDesignSettings.style.display = 'block';
+    document.querySelector('.overlay-tab-container')?.setAttribute('data-preview-mode', mode);
+    syncQueueExpandUi(isQueue);
   };
 
   const getStyleTarget = () => {
@@ -115,11 +118,16 @@ export function initOverlayListeners() {
     queueExpandDirection: 'both',
   });
 
-  // OBS 권장 브라우저 소스 크기 — 세 탭 모두 가로 1500 고정
+  // 미리보기 스테이지는 대기열과 동일(1500×1000). OBS 실소스 크기는 가이드 문구 기준.
   const OBS_PREVIEW_SIZE = {
-    info: { w: 1500, h: 440 },
-    lyrics: { w: 1500, h: 375 },
+    info: { w: 1500, h: 1000 },
+    lyrics: { w: 1500, h: 1000 },
     queue: { w: 1500, h: 1000 },
+  };
+  const PREVIEW_CARD_BASE = {
+    info: { w: 400, h: 460 },
+    lyrics: { w: 400, h: 460 },
+    queue: { w: 400, h: 460 },
   };
 
   const previewSrc = (file, extra = '') => `${file}?preview=true${extra}`;
@@ -127,30 +135,26 @@ export function initOverlayListeners() {
   const resizeOverlayPreview = () => {
     if (!overlayIframe || !overlayPreviewWrapper) return;
     const mode = getPreviewMode();
-    const { w: baseWidth, h: baseHeight } = OBS_PREVIEW_SIZE[mode] || OBS_PREVIEW_SIZE.info;
+    const { w: canvasW, h: canvasH } = OBS_PREVIEW_SIZE[mode] || OBS_PREVIEW_SIZE.info;
+    const card = PREVIEW_CARD_BASE[mode] || PREVIEW_CARD_BASE.info;
+    const userScale = Math.max(0.5, parseFloat(overlayScale?.value) || 1);
 
     overlayPreviewWrapper.dataset.previewMode = mode;
 
-    const padX = 40;
-    const padY = 32;
-    const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - padX);
-    const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - padY);
-    const scale = Math.min(wrapperWidth / baseWidth, wrapperHeight / baseHeight);
-    const displayW = Math.max(1, Math.floor(baseWidth * scale));
-    const displayH = Math.max(1, Math.floor(baseHeight * scale));
+    const pad = 80;
+    const contentW = card.w * userScale + pad;
+    const contentH = card.h * userScale + pad;
+    const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - 8);
+    const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - 8);
+    const scale = Math.min(wrapperWidth / contentW, wrapperHeight / contentH);
 
-    if (overlayPreviewStage) {
-      overlayPreviewStage.style.width = `${displayW}px`;
-      overlayPreviewStage.style.height = `${displayH}px`;
-    }
-
-    overlayIframe.style.width = `${baseWidth}px`;
-    overlayIframe.style.height = `${baseHeight}px`;
+    overlayIframe.style.width = `${canvasW}px`;
+    overlayIframe.style.height = `${canvasH}px`;
     overlayIframe.style.position = 'absolute';
-    overlayIframe.style.left = '0';
-    overlayIframe.style.top = '0';
-    overlayIframe.style.transform = `scale(${scale})`;
-    overlayIframe.style.transformOrigin = 'top left';
+    overlayIframe.style.left = '50%';
+    overlayIframe.style.top = '50%';
+    overlayIframe.style.transformOrigin = 'center center';
+    overlayIframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
     overlayIframe.style.border = 'none';
     overlayIframe.style.background = 'transparent';
   };
@@ -615,6 +619,14 @@ export function initOverlayListeners() {
   initOverlayLanToggle();
   requestAnimationFrame(resizeOverlayPreview);
   window.addEventListener('resize', resizeOverlayPreview);
+
+  // Sidebar collapse / split-pane reflow — wrapper size can change without window resize
+  if (overlayPreviewWrapper && typeof ResizeObserver !== 'undefined') {
+    const previewResizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(resizeOverlayPreview);
+    });
+    previewResizeObserver.observe(overlayPreviewWrapper);
+  }
 
   return { syncAllOverlayStylesToBackend };
 }

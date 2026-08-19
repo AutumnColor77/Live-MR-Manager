@@ -683,6 +683,7 @@ export class ForcedAlignmentViewer {
             if (matchedSong) {
                 state.currentTrack = matchedSong;
                 state.selectedTrackIndex = matchedIndex;
+                state.lyricTargetPath = path;
                 state.isPlaying = false;
                 state.isLoading = true;
                 state.vocalEnabled = true;

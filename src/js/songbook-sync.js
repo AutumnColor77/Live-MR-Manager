@@ -614,6 +614,10 @@ function setSyncBusy(busy) {
   document.querySelectorAll('[data-songbook-sync], [data-songbook-sync-pull], [data-songbook-create-channel]').forEach((el) => {
     el.disabled = busy;
   });
+  document.querySelectorAll('.songbook-sync-btn').forEach((el) => {
+    el.classList.toggle('is-syncing', busy);
+    el.setAttribute('aria-busy', busy ? 'true' : 'false');
+  });
 }
 
 export function setSongbookSyncVisible(visible) {

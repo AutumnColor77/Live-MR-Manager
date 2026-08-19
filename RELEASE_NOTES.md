@@ -2,7 +2,7 @@
 
 ## v0.7.4 (2026-08-19)
 
-유튜브 곡 재생 실패를 줄이고, 실패해도 원인을 구분할 수 있게 한 핫픽스입니다. 기준: v0.7.3.
+유튜브 재생 안정화와 Songbook·가사·오버레이 UX를 묶은 릴리즈입니다. 기준: v0.7.3.
 
 ### 유튜브 재생
 
@@ -12,6 +12,27 @@
 - **타임아웃**: 유튜브 재생 대기는 90초(로컬 30초 유지). 시간 초과 뒤에는 늦게 도착한 재생 이벤트가 UI를 덮지 않습니다.
 - **알림**: 같은 실패로 토스트가 두 번 뜨지 않습니다. 사용자에게는 짧은 한국어 안내(시간 초과 / 도구 실행 실패 / 유튜브가 오디오를 막음 / 파일 손상)만 보이고, yt-dlp 원문은 앱 로그에 남습니다.
 
+### 유튜브 검색
+
+- **미리듣기**: 결과 행에서 스트림만 재생(파일 미저장). 독 마스터 볼륨을 따르고, 본 재생 중이면 일시정지합니다. 탭을 떠나거나 독에서 재생하면 미리듣기를 멈춥니다.
+- **검색 오류**: IPC로 결과를 넘기지 못할 때 원인을 숨기지 않고 안내합니다.
+
+### Songbook · 신청목록
+
+- **계정 메뉴**: 닉네임 → **운영페이지**(`/c/{채널}/admin`) · **노래책페이지**(`/c/{채널}`) · **로그아웃**.
+- **라이브러리 → 신청목록**: 우클릭·선택 모드에서 곡을 신청 대기열에 넣습니다. 곡은 노래책에 있어야 합니다(**보내기**).
+- **동기화 버튼**: 작업 중 아이콘이 회전합니다. 설정 설명은 보내기(앱→웹)·가져오기(웹→앱)만 남깁니다.
+- **가져오기(Pull)** · **웹 Admin 재생 → 앱**: v0.7.3 이후 포함된 연동을 이 릴리즈에 넣습니다.
+
+### 가사 드로어 · 싱크
+
+- **가사 싱크 등록하러 가기**: 방금 고른 곡(가사보기·라이브러리 선택)을 엽니다. 이전에 재생 중이던 곡으로 덮이지 않습니다.
+- 좁은 드로어에서 CTA는 두 줄, 안내 문구는 단어 중간에서 잘리지 않습니다.
+
+### OBS 오버레이
+
+- 설정 화면을 **미리보기 | 설정** 2열로 나누고, 창이 좁으면 세로로 쌓입니다.
+
 ### v0.7.3 이후 포함
 
 - 릴리즈 NSIS 빌드 성공 후에만 Discord `#공지` webhook.
@@ -19,8 +40,8 @@
 
 ### 문서
 
-- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 유튜브 재생 실패 문구
-- [UserManual.md](UserManual.md) · [README.md](README.md)
+- [docs/NOTIFICATION_MESSAGES.md](docs/NOTIFICATION_MESSAGES.md) 미리듣기·신청목록 추가·유튜브 검색 문구
+- [UserManual.md](UserManual.md) · [README.md](README.md) · [docs/SONGBOOK_INTEGRATION.md](docs/SONGBOOK_INTEGRATION.md)
 
 ---
 
@@ -40,20 +61,6 @@ Songbook 로그인 UX·업데이트 링크 핫픽스입니다. 기준: v0.7.1.
 - **헤더 계정 메뉴**: 로그인 후 닉네임 클릭 시 **노래책** / **로그아웃** (즉시 로그아웃 제거).
 - **신청목록 게이트**: Google/네이버 브랜드 버튼으로 바로 로그인 (상단 메뉴 연동 버그 수정).
 - **업데이트 다운로드**: Windows에서 릴리즈 페이지가 `\\` 오류로 안 열리던 문제 수정 (`open_app_update_page` → opener).
-
-## Unreleased (after v0.7.2)
-
-### Songbook Pull · 웹 재생 연동
-
-- **가져오기(Pull)**: 설정 → Songbook 동기화 → **가져오기**. 웹 enabled 곡을 앱 라이브러리에 추가·갱신. 유튜브 `originalUrl`이 있으면 재생 가능, 없으면 `songbook:song:` 플레이스홀더.
-- **보내기 시 originalUrl**: 유튜브 http(s) path를 Songbook `original_url`로 전송(Songbook 마이그레이션·배포 필요).
-- **웹 Admin 「재생」 → 앱**: 신청 폴러(~4초)가 `nowPlaying` 전이를 감지해 로컬 매칭 곡을 `playQueueItem`으로 재생.
-
-### 문서
-
-- [UserManual.md](UserManual.md) Push/Pull·웹 재생
-- [docs/SONGBOOK_INTEGRATION.md](docs/SONGBOOK_INTEGRATION.md) Push/Pull/`originalUrl`/원격 재생 규칙
-- [ToDo.md](ToDo.md) Songbook Pull·웹 재생 항목
 
 ---
 

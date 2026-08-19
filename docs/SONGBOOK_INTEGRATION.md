@@ -1,5 +1,13 @@
 # Live MR Songbook 연동 (Pull / Push / 원격 재생)
 
+앱 헤더 닉네임 메뉴(v0.7.4):
+
+- **운영페이지** → `/c/{slug}/admin`
+- **노래책페이지** → `/c/{slug}`
+- **로그아웃**
+
+라이브러리에서 **신청목록에 추가**는 시청자 신청 API(`POST /api/c/:slug/requests`)를 씁니다. 곡은 보내기로 노래책에 있어야 합니다.
+
 ## Push (앱 → 웹)
 
 설정 → Songbook 동기화 → **보내기**

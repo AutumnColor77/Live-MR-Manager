@@ -550,7 +550,12 @@ pub async fn search_youtube(
 ) -> Result<Vec<YoutubeSearchResult>, String> {
     let query = crate::ipc_validate::validate_search_query(&query)?;
     let limit = limit.unwrap_or(10).clamp(1, 25);
-    YoutubeManager::search_videos(&query, limit).await
+    let results = YoutubeManager::search_videos(&query, limit).await?;
+    if let Err(err) = serde_json::to_vec(&results) {
+        crate::audio_player::sys_log(&format!("[Youtube] search serialize failed: {err}"));
+        return Err("검색 결과를 화면에 전달하지 못했습니다.".into());
+    }
+    Ok(results)
 }
 
 #[tauri::command]

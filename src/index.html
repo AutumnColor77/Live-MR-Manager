@@ -52,6 +52,11 @@
         <div class="logo-text-group">
           <div class="logo-text">Live MR<br>Manager</div>
         </div>
+        <button type="button" id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="사이드바 접기" aria-label="사이드바 접기" aria-expanded="true">
+          <svg class="sidebar-toggle-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
       </div>
       <div class="logo-badge-row">
         <span class="beta-badge">BETA</span>
@@ -60,7 +65,7 @@
 
     <div class="nav-group">
       <label class="nav-label">미디어</label>
-      <div class="nav-item active" id="nav-library">
+      <div class="nav-item active" id="nav-library" title="라이브러리">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 18V5l12-2v13"></path>
@@ -70,7 +75,7 @@
         </i>
         <span>라이브러리</span>
       </div>
-      <div class="nav-item" id="nav-youtube">
+      <div class="nav-item" id="nav-youtube" title="유튜브 검색">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.4 19.54C5.12 20 12 20 12 20s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"></path>
@@ -79,7 +84,7 @@
         </i>
         <span>유튜브 검색</span>
       </div>
-      <div class="nav-item" id="nav-requests">
+      <div class="nav-item" id="nav-requests" title="신청목록">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 11l3 3L22 4"></path>
@@ -102,7 +107,7 @@
 
     <div class="nav-group secondary">
       <label class="nav-label">스튜디오</label>
-      <div class="nav-item" id="nav-alignment">
+      <div class="nav-item" id="nav-alignment" title="가사 싱크">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"></polyline>
@@ -113,7 +118,7 @@
         <span>가사 싱크</span>
       </div>
 
-      <div class="nav-item" id="nav-tasks">
+      <div class="nav-item" id="nav-tasks" title="AI 프로세싱">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
@@ -132,7 +137,7 @@
         <span class="task-count" id="task-badge" style="display: none;">0</span>
       </div>
 
-      <div class="nav-item" id="nav-overlay">
+      <div class="nav-item" id="nav-overlay" title="OBS 오버레이">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
@@ -143,7 +148,7 @@
         <span>OBS 오버레이</span>
       </div>
 
-      <div class="nav-item" id="nav-settings">
+      <div class="nav-item" id="nav-settings" title="설정">
         <i>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
@@ -194,7 +199,7 @@
         </div>
         <div class="songbook-auth-group">
           <button type="button" id="songbook-sync-btn" class="songbook-sync-btn" data-songbook-sync data-songbook-sync-visible title="라이브러리를 Songbook으로 보내기" hidden>
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <svg class="songbook-sync-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-3-6.7"/>
               <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="21 3 21 9 15 9"/>
             </svg>
@@ -226,12 +231,21 @@
               </svg>
               네이버
             </button>
+            <button type="button" class="songbook-login-menu-item" data-action="admin" role="menuitem" hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+                <rect x="14" y="3" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+                <rect x="14" y="12" width="7" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+                <rect x="3" y="16" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              운영페이지
+            </button>
             <button type="button" class="songbook-login-menu-item" data-action="songbook" role="menuitem" hidden>
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
               </svg>
-              노래책
+              노래책페이지
             </button>
             <button type="button" class="songbook-login-menu-item songbook-login-menu-danger" data-action="logout" role="menuitem" hidden>
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -344,36 +358,51 @@
 
         <!-- Overlay Preview Tab -->
         <section id="overlay-tab" class="tab-content" style="display: none;">
-          <div class="overlay-tab-container">
-            <div class="preview-tabs-container">
-              <div class="preview-tab active" data-preview-mode="playing">현재 곡 정보</div>
-              <div class="preview-tab" data-preview-mode="queue">곡정보+대기열</div>
-              <div class="preview-tab" data-preview-mode="lyrics">가사</div>
-            </div>
-            <div class="overlay-preview-wrapper">
-              <div class="overlay-preview-stage" id="overlay-preview-stage">
-                <iframe id="overlay-iframe" class="overlay-preview-iframe"
-                  src="overlay-info.html?preview=true" title="오버레이 미리보기"></iframe>
+          <div class="overlay-tab-container" data-preview-mode="info">
+            <div class="overlay-preview-pane">
+              <div class="overlay-preview-toolbar">
+                <div class="preview-tabs-container">
+                  <div class="preview-tab active" data-preview-mode="playing">현재 곡 정보</div>
+                  <div class="preview-tab" data-preview-mode="queue">곡정보+대기열</div>
+                  <div class="preview-tab" data-preview-mode="lyrics">가사</div>
+                </div>
+                <div class="overlay-preview-toolbar-actions">
+                  <div class="overlay-force-visible-chip overlay-force-chip-info">
+                    <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
+                    <label class="switch overlay-force-visible-switch">
+                      <input type="checkbox" id="toggle-overlay-force-visible">
+                      <span class="slider round"></span>
+                    </label>
+                  </div>
+                  <div class="overlay-force-visible-chip overlay-force-chip-queue">
+                    <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
+                    <label class="switch overlay-force-visible-switch">
+                      <input type="checkbox" id="toggle-overlay-queue-force-visible">
+                      <span class="slider round"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="overlay-preview-wrapper">
+                <div class="overlay-preview-stage" id="overlay-preview-stage">
+                  <iframe id="overlay-iframe" class="overlay-preview-iframe"
+                    src="overlay-info.html?preview=true" title="오버레이 미리보기"></iframe>
+                </div>
               </div>
             </div>
 
+            <div class="overlay-settings-pane">
+            <div class="overlay-settings-header">
             <div class="settings-group" id="overlay-info-header-settings">
               <div class="group-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
                     <path
-                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
+                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l-.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z">
                     </path>
                   </svg>
                   <h3 id="overlay-settings-title">곡 정보 오버레이 설정</h3>
-                </div>
-                <div class="overlay-force-visible-chip overlay-info-only">
-                  <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
-                  <label class="switch overlay-force-visible-switch">
-                    <input type="checkbox" id="toggle-overlay-force-visible">
-                    <span class="slider round"></span>
-                  </label>
                 </div>
               </div>
             </div>
@@ -390,23 +419,16 @@
                     <span class="slider round"></span>
                   </label>
                 </div>
-                <div class="overlay-force-visible-chip">
-                  <span class="overlay-force-visible-label">상시 표시 (미리보기)</span>
-                  <label class="switch overlay-force-visible-switch">
-                    <input type="checkbox" id="toggle-overlay-queue-force-visible">
-                    <span class="slider round"></span>
-                  </label>
-                </div>
               </div>
-              <p class="overlay-queue-settings-hint">현재 곡 정보 아래에 구분선을 두고 다음 곡 1~3개를 표시합니다. OBS에는 별도 브라우저 소스로 추가하세요.</p>
+            </div>
             </div>
 
-            <div id="overlay-info-settings" class="overlay-info-settings">
+            <div id="overlay-info-settings" class="overlay-info-settings overlay-settings-body">
 
               <div class="ai-model-card" id="overlay-design-settings">
                 <div class="ai-info-left" style="width: 100%;">
                   <div class="ai-title-large">오버레이 디자인 커스텀</div>
-                  <div class="ai-model-desc">설정 변경 내용이 미리보기에 바로 반영됩니다.</div>
+                  <div class="ai-model-desc overlay-design-live-hint">설정 변경 내용이 미리보기에 바로 반영됩니다.</div>
                   
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
                     <!-- 좌측: 크기 및 투명도, 둥글기 -->
@@ -606,8 +628,8 @@
                 <div id="overlay-lan-status" class="lan-status-note">꺼짐 — 이 PC에서만 접속할 수 있습니다.</div>
 
                 <!-- URL 1: Full Info -->
-                <div class="settings-subsection">
-                  <label class="settings-sublabel">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
+                <div class="settings-subsection overlay-obs-item" data-obs-for="info">
+                  <label class="settings-sublabel">곡 정보 오버레이 (썸네일 + 곡 정보)</label>
                   <div class="settings-inline-row">
                     <code id="overlay-url-display" class="settings-code-display">http://localhost:14202/</code>
                     <button class="btn-ai-action secondary is-inline" id="btn-copy-overlay-url">URL 복사</button>
@@ -615,8 +637,8 @@
                 </div>
 
                 <!-- URL 2: Lyrics Only -->
-                <div class="settings-subsection">
-                  <label class="settings-sublabel">2. 가사 전용 오버레이 (가사만 2줄 출력)</label>
+                <div class="settings-subsection overlay-obs-item" data-obs-for="lyrics">
+                  <label class="settings-sublabel">가사 전용 오버레이 (가사만 2줄 출력)</label>
                   <div class="settings-inline-row">
                     <code id="lyrics-overlay-url-display" class="settings-code-display">http://localhost:14202/lyrics</code>
                     <button class="btn-ai-action secondary is-inline" id="btn-copy-lyrics-overlay-url">URL 복사</button>
@@ -624,8 +646,8 @@
                 </div>
 
                 <!-- URL 3: 가사 뷰 (퍼포머 본인용 전체 가사) -->
-                <div class="settings-subsection">
-                  <label class="settings-sublabel">3. 가사 뷰 (본인용 전체 가사)</label>
+                <div class="settings-subsection overlay-obs-item" data-obs-for="lyrics">
+                  <label class="settings-sublabel">가사 뷰 (본인용 전체 가사)</label>
                   <div class="settings-inline-row">
                     <code id="lyrics-view-url-display" class="settings-code-display">http://localhost:14202/lyrics-view</code>
                     <button class="btn-ai-action secondary is-inline" id="btn-copy-lyrics-view-url">URL 복사</button>
@@ -633,8 +655,8 @@
                 </div>
 
                 <!-- URL 4: Queue overlay -->
-                <div class="settings-subsection">
-                  <label class="settings-sublabel">4. 대기열 오버레이 (다음 곡 1~3개)</label>
+                <div class="settings-subsection overlay-obs-item" data-obs-for="queue">
+                  <label class="settings-sublabel">대기열 오버레이 (다음 곡 1~3개)</label>
                   <div class="settings-inline-row">
                     <code id="queue-overlay-url-display" class="settings-code-display">http://localhost:14202/queue</code>
                     <button class="btn-ai-action secondary is-inline" id="btn-copy-queue-overlay-url">URL 복사</button>
@@ -642,21 +664,37 @@
                 </div>
 
                 <!-- Guide Box -->
-                <div class="settings-guide-box">
+                <div class="settings-guide-box overlay-obs-item" data-obs-for="info">
                   <div class="settings-guide-title">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                     OBS 브라우저 소스 설정 가이드
                   </div>
                   <div class="settings-guide-body">
-                    • 곡 정보: <strong>1500 × 440</strong> 권장<br>
-                    • 곡정보+대기열: <strong>1500 × 1000</strong> 권장<br>
-                    • 가사: <strong>1500 × 375</strong> 권장
+                    권장 크기: <strong>1500 × 440</strong>
+                  </div>
+                </div>
+                <div class="settings-guide-box overlay-obs-item" data-obs-for="queue">
+                  <div class="settings-guide-title">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    OBS 브라우저 소스 설정 가이드
+                  </div>
+                  <div class="settings-guide-body">
+                    권장 크기: <strong>1500 × 1000</strong>
+                  </div>
+                </div>
+                <div class="settings-guide-box overlay-obs-item" data-obs-for="lyrics">
+                  <div class="settings-guide-title">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    OBS 브라우저 소스 설정 가이드
+                  </div>
+                  <div class="settings-guide-body">
+                    권장 크기: <strong>1500 × 375</strong>
                   </div>
                 </div>
 
                 <!-- 3줄 가사(원문/차음/번역) 표시 항목 - 인앱 드로어/OBS 오버레이 독립 설정 -->
-                <div class="settings-subsection">
-                  <label class="settings-sublabel">5. 가사 표시 항목 (원문·차음·번역)</label>
+                <div class="settings-subsection overlay-obs-item" data-obs-for="lyrics">
+                  <label class="settings-sublabel">가사 표시 항목 (원문·차음·번역)</label>
                   <div class="lyric-line-visibility-grid">
                     <div class="lyric-line-visibility-col">
                       <span class="lyric-line-visibility-title">인앱 드로어</span>
@@ -673,6 +711,7 @@
                   </div>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </section>
@@ -803,7 +842,6 @@
                   <h2 class="ai-title-large">라이브러리 동기화</h2>
                   <div class="ai-model-desc">
                     <strong>보내기</strong>는 앱 → 웹, <strong>가져오기</strong>는 웹 → 앱입니다.
-                    유튜브 URL이 있으면 재생 가능한 곡으로, 없으면 메타만(플레이스홀더) 가져옵니다.
                   </div>
                   <p class="settings-sublabel" style="margin-top:10px;">연결된 채널</p>
                   <p id="songbook-channel-label" class="songbook-channel-label">로그인하면 연결된 채널이 표시됩니다.</p>
@@ -1143,7 +1181,7 @@
         <!-- 유튜브 검색 페이지 -->
         <div class="tab-content" id="youtube-page" style="display: none;">
           <div class="youtube-search-page">
-            <p class="yt-search-hint" id="yt-search-status">곡 제목이나 아티스트를 검색해 라이브러리에 추가하세요.</p>
+            <p class="yt-search-hint" id="yt-search-status">곡 제목이나 아티스트를 검색해 미리듣고 라이브러리에 추가하세요.</p>
             <div id="yt-search-results" class="yt-search-results" aria-live="polite"></div>
           </div>
         </div>
@@ -1183,6 +1221,7 @@
   <div id="library-selection-bar" class="library-selection-bar" hidden>
     <span id="library-selection-count" class="library-selection-count">0곡 선택</span>
     <button type="button" id="btn-batch-align" class="library-selection-primary">AI 정렬 요청</button>
+    <button type="button" id="btn-batch-requests" class="library-selection-secondary">신청목록에 추가</button>
     <button type="button" id="btn-selection-cancel" class="library-selection-secondary">취소</button>
   </div>
 
@@ -1340,6 +1379,7 @@
 
   <div id="context-menu" class="context-menu">
     <div class="context-menu-item" id="menu-play">재생</div>
+    <div class="context-menu-item" id="menu-add-to-requests">신청목록에 추가</div>
     <div class="context-menu-item" id="menu-lyrics-view">가사보기</div>
     <div class="context-menu-item" id="menu-separate">MR 분리</div>
     <div class="context-menu-item" id="menu-delete-mr">MR 삭제</div>

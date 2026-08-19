@@ -66,14 +66,7 @@
 .overlay-animation-fields {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.overlay-animation-row.is-queue .overlay-animation-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 12px;
-  align-items: start;
 }
 
 .overlay-anim-field {
@@ -81,6 +74,11 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+}
+
+/* class display가 [hidden]을 덮지 않도록 */
+.overlay-anim-field[hidden] {
+  display: none !important;
 }
 
 .overlay-anim-label {
@@ -91,6 +89,11 @@
 
 .overlay-anim-field .custom-select {
   width: 100%;
+}
+
+.overlay-anim-field:has(.custom-select.active) {
+  z-index: 2;
+  position: relative;
 }
 
 .overlay-force-visible-chip {

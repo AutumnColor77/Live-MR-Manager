@@ -11,6 +11,8 @@ export const state = {
   isSeparating: false,
   editingSongIndex: null,
   selectedTrackIndex: -1, // Currently highlighted but not playing
+  // 가사 드로어·「가사 싱크」CTA가 따를 곡. 재생 중(currentTrack)과 다를 수 있음
+  lyricTargetPath: null,
   viewMode: localStorage.getItem("viewMode") || "grid",
   themeMode: localStorage.getItem("themeMode") || "dark",
   masterVolume: (() => {

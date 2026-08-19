@@ -169,6 +169,16 @@ export async function refreshSongbookRequestsNow() {
   await pollOnce();
 }
 
+/** 앱에서 직접 넣은 신청은 ‘새 신청’ 토스트를 내지 않음. */
+export function acknowledgePendingRequestIds(ids) {
+  for (const id of ids || []) {
+    if (!id) continue;
+    lastPendingIds.add(id);
+    seenPendingIds.add(id);
+  }
+  lastPendingCount = lastPendingIds.size;
+}
+
 export function onRequestsTabShown() {
   requestsTabVisible = true;
   const pending = [...lastPendingIds];

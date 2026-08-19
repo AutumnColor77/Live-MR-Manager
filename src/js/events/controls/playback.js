@@ -95,9 +95,9 @@ export function initPlaybackListeners() {
     elements.volSlider.oninput = (e) => {
       const val = e.target.value;
       if (elements.volSliderVal) elements.volSliderVal.textContent = `${val}%`;
-      setMasterVolume(parseFloat(val));
       state.masterVolume = parseFloat(val);
       localStorage.setItem("masterVolume", val);
+      setMasterVolume(parseFloat(val));
     };
 
     elements.volSlider.addEventListener("wheel", (e) => {

@@ -28,6 +28,11 @@
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html {
+      background: transparent;
+      color-scheme: dark;
+    }
+
     body {
       background: transparent;
       color: var(--text-main);
@@ -42,7 +47,7 @@
     html[data-preview],
     html[data-preview] body {
       width: 1500px !important;
-      height: 440px !important;
+      height: 1000px !important;
     }
     html[data-preview] body {
       display: flex;
@@ -50,6 +55,7 @@
       justify-content: center;
       padding: 48px;
       box-sizing: border-box;
+      overflow: hidden;
     }
     html[data-preview] .overlay-container,
     html[data-preview] .overlay-container.dir-left,

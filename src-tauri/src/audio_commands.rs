@@ -85,6 +85,14 @@ async fn ensure_youtube_audio_file(
     ))
 }
 
+/// 검색 미리듣기용. 디스크에 받지 않고 스트림 URL만 반환.
+#[tauri::command]
+pub async fn youtube_preview_audio(url: String) -> Result<String, String> {
+    let url = crate::ipc_validate::validate_youtube_or_http_url(&url)?;
+    sys_log(&format!("[Youtube] preview stream: {}", url));
+    YoutubeManager::preview_stream_url(&url).await
+}
+
 #[tauri::command]
 pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<u64, String> {
     let path_for_log = path.clone();

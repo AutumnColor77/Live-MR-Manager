@@ -44,9 +44,13 @@ pub struct YoutubeManager;
 
 static METADATA_CACHE: Lazy<RwLock<HashMap<String, (YoutubeMetadata, Instant)>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
+static PREVIEW_URL_CACHE: Lazy<RwLock<HashMap<String, (String, Instant)>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 const METADATA_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
 const METADATA_TIMEOUT: Duration = Duration::from_secs(12);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(45);
+const PREVIEW_URL_TIMEOUT: Duration = Duration::from_secs(20);
+const PREVIEW_URL_TTL: Duration = Duration::from_secs(4 * 60);
 const YT_DLP_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const STREAM_HEADER_WAIT: Duration = Duration::from_secs(60);
 static YT_DLP_FORCE_REFRESH_USED: AtomicBool = AtomicBool::new(false);
@@ -61,6 +65,14 @@ pub struct YoutubeSearchResult {
     pub duration_label: Option<String>,
     pub thumbnail: Option<String>,
     pub url: String,
+}
+
+fn sanitize_ipc_text(value: &str, max_chars: usize) -> String {
+    value
+        .chars()
+        .filter(|c| *c != '\0' && (!c.is_control() || *c == '\t' || *c == '\n'))
+        .take(max_chars)
+        .collect()
 }
 
 impl YoutubeManager {
@@ -262,7 +274,7 @@ impl YoutubeManager {
     }
 
     pub fn user_facing_error(raw: &str) -> String {
-        if raw.starts_with("유튜브") {
+        if raw.starts_with("유튜브") || raw.starts_with("미리듣기") {
             return raw.to_string();
         }
         let lower = raw.to_lowercase();
@@ -548,6 +560,7 @@ impl YoutubeManager {
                 x.as_f64()
                     .or_else(|| x.as_i64().map(|n| n as f64))
                     .or_else(|| x.as_u64().map(|n| n as f64))
+                    .filter(|d| d.is_finite() && *d >= 0.0)
             }),
             thumbnail,
         }
@@ -557,7 +570,7 @@ impl YoutubeManager {
         if !secs.is_finite() || secs < 0.0 {
             return String::new();
         }
-        let total = secs.round() as u64;
+        let total = secs.min(359_999.0).round() as u64;
         let h = total / 3600;
         let m = (total % 3600) / 60;
         let s = total % 60;
@@ -653,18 +666,18 @@ impl YoutubeManager {
                 .title
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or_else(|| "제목 없음".into());
-            let duration_label = meta
-                .duration
+            let duration = meta.duration.filter(|d| d.is_finite() && *d >= 0.0 && *d < 86_400_000.0);
+            let duration_label = duration
                 .map(Self::format_duration_label)
                 .filter(|s| !s.is_empty());
             results.push(YoutubeSearchResult {
                 url: format!("https://youtu.be/{}", id),
-                id,
-                title,
-                uploader: meta.uploader,
-                duration: meta.duration,
+                id: sanitize_ipc_text(&id, 64),
+                title: sanitize_ipc_text(&title, 300),
+                uploader: meta.uploader.map(|s| sanitize_ipc_text(&s, 200)),
+                duration,
                 duration_label,
-                thumbnail: meta.thumbnail,
+                thumbnail: meta.thumbnail.map(|s| sanitize_ipc_text(&s, 2000)),
             });
             if results.len() >= limit {
                 break;
@@ -677,6 +690,101 @@ impl YoutubeManager {
             q
         ));
         Ok(results)
+    }
+
+    fn preview_cache_key(url: &str) -> String {
+        Self::extract_video_id(url).unwrap_or_else(|| url.trim().to_string())
+    }
+
+    fn read_preview_url_cache(key: &str) -> Option<String> {
+        let mut cache = PREVIEW_URL_CACHE.write();
+        if let Some((url, ts)) = cache.get(key) {
+            if ts.elapsed() <= PREVIEW_URL_TTL {
+                return Some(url.clone());
+            }
+            cache.remove(key);
+        }
+        None
+    }
+
+    fn write_preview_url_cache(key: &str, stream_url: &str) {
+        let mut cache = PREVIEW_URL_CACHE.write();
+        cache.insert(key.to_string(), (stream_url.to_string(), Instant::now()));
+    }
+
+    fn parse_stream_url(stdout: &str) -> Option<String> {
+        stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("http://") || line.starts_with("https://"))
+            .last()
+            .map(str::to_string)
+    }
+
+    async fn resolve_preview_stream_url(page_url: &str, fallback_clients: bool) -> Result<String, String> {
+        let exe = Self::find_yt_dlp().await;
+        let mut args: Vec<String> = vec![
+            "-g".into(),
+            "-f".into(),
+            "ba[ext=m4a]/bestaudio/best".into(),
+            "--no-playlist".into(),
+            "--no-warnings".into(),
+            "--no-check-certificates".into(),
+            "--socket-timeout".into(),
+            "12".into(),
+        ];
+        Self::push_youtube_compat_args(&mut args, fallback_clients);
+        args.push(page_url.to_string());
+
+        let mut cmd = Command::new(&exe);
+        cmd.creation_flags(0x08000000);
+        let output = tokio::time::timeout(PREVIEW_URL_TIMEOUT, cmd.args(&args).output())
+            .await
+            .map_err(|_| {
+                format!(
+                    "미리듣기 주소 요청이 시간 초과되었습니다 ({}초).",
+                    PREVIEW_URL_TIMEOUT.as_secs()
+                )
+            })?
+            .map_err(|e| format!("Failed to start yt-dlp ({}): {}", exe, e))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(err.trim().to_string());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Self::parse_stream_url(&stdout).ok_or_else(|| "미리듣기 스트림 주소를 찾지 못했습니다.".into())
+    }
+
+    /// 파일을 받지 않고 재생용 스트림 URL만 반환 (`yt-dlp -g`).
+    pub async fn preview_stream_url(page_url: &str) -> Result<String, String> {
+        let key = Self::preview_cache_key(page_url);
+        if let Some(cached) = Self::read_preview_url_cache(&key) {
+            let _ = crate::audio_player::sys_log("[Youtube] Preview stream cache hit");
+            return Ok(cached);
+        }
+
+        let first = Self::resolve_preview_stream_url(page_url, false).await;
+        let stream_url = match first {
+            Ok(url) => url,
+            Err(err) => {
+                let _ = crate::audio_player::sys_log(&format!(
+                    "[Youtube] preview -g failed: {}",
+                    err
+                ));
+                if Self::is_extractor_failure(&err) && Self::refresh_managed_yt_dlp_once().await {
+                    Self::resolve_preview_stream_url(page_url, true).await?
+                } else if Self::is_extractor_failure(&err) {
+                    Self::resolve_preview_stream_url(page_url, true).await?
+                } else {
+                    return Err(Self::user_facing_error(&err));
+                }
+            }
+        };
+
+        Self::write_preview_url_cache(&key, &stream_url);
+        Ok(stream_url)
     }
 
     fn destination_ready(path: &Path) -> bool {

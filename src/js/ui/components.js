@@ -486,7 +486,7 @@ export function showSongContextMenu(e, song, originalIndex) {
   state.editingSongIndex = originalIndex;
 
   const menuWidth = 160;
-  const menuHeight = 240;
+  const menuHeight = 280;
   let x = e.clientX;
   let y = e.clientY;
   const winW = window.innerWidth;
@@ -509,6 +509,7 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSeparate = document.getElementById("menu-separate");
   const menuDeleteMr = document.getElementById("menu-delete-mr");
   const menuPlay = document.getElementById("menu-play");
+  const menuAddToRequests = document.getElementById("menu-add-to-requests");
   const menuLyricsView = document.getElementById("menu-lyrics-view");
   const menuEdit = document.getElementById("menu-edit");
   const menuDelete = document.getElementById("menu-delete");
@@ -521,7 +522,7 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSelectAll = document.getElementById("menu-select-all");
 
   // Song context: show song actions, hide text-input actions.
-  [menuPlay, menuLyricsView, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
+  [menuPlay, menuAddToRequests, menuLyricsView, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
     if (el) el.style.display = "block";
   });
   [inputSeparator, menuUndo, menuRedo, menuCut, menuCopy, menuPaste, menuSelectAll].forEach((el) => {
@@ -658,11 +659,27 @@ export function showSongContextMenu(e, song, originalIndex) {
     invoke('remote_js_log', { msg: `[Menu Play Init] menuPlay is null!` }).catch(() => {});
   }
 
+  if (menuAddToRequests) {
+    menuAddToRequests.onclick = async () => {
+      elements.contextMenu.classList.remove("active");
+      elements.contextMenu.style.display = 'none';
+      try {
+        const { addLibrarySongsToRequests } = await import('../library-songbook-queue.js');
+        await addLibrarySongsToRequests([song]);
+      } catch (err) {
+        console.error('[Menu AddToRequests]', err);
+      }
+    };
+  }
+
   if (menuLyricsView) {
     menuLyricsView.onclick = () => {
       invoke('remote_js_log', { msg: `[Menu LyricsView] Clicked for index ${originalIndex}` }).catch(() => {});
       elements.contextMenu.classList.remove("active");
       elements.contextMenu.style.display = 'none';
+      import('../lyric-drawer.js').then(({ focusLyricDrawerOnTrack }) => {
+        focusLyricDrawerOnTrack(song);
+      }).catch(() => {});
       const openLyricDrawer = getAppHandler('openLyricDrawer');
       if (typeof openLyricDrawer === "function") {
         openLyricDrawer();

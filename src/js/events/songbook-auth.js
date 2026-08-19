@@ -228,12 +228,30 @@ async function startProviderLogin(provider) {
   }
 }
 
-async function openMySongbook() {
+async function requireChannelSlug() {
   const slug = songbookChannelSlug();
   if (!slug) {
     showNotification('연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요.', 'error');
-    return;
+    return null;
   }
+  return slug;
+}
+
+async function openSongbookAdmin() {
+  const slug = await requireChannelSlug();
+  if (!slug) return;
+  setMenuOpen(false);
+  try {
+    await openExternalUrl(`${songbookBase()}/c/${encodeURIComponent(slug)}/admin`);
+  } catch (err) {
+    console.error('[SongbookAuth] open admin failed', err);
+    showNotification('운영 페이지를 열지 못했습니다.', 'error');
+  }
+}
+
+async function openMySongbook() {
+  const slug = await requireChannelSlug();
+  if (!slug) return;
   setMenuOpen(false);
   try {
     await openExternalUrl(`${songbookBase()}/c/${encodeURIComponent(slug)}`);
@@ -314,6 +332,12 @@ export function initSongbookAuth() {
         await startProviderLogin(provider);
       }
     });
+  });
+
+  menu?.querySelector('[data-action="admin"]')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await openSongbookAdmin();
   });
 
   menu?.querySelector('[data-action="songbook"]')?.addEventListener('click', async (e) => {

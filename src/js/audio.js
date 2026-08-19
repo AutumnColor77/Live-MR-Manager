@@ -120,6 +120,10 @@ export async function searchYoutube(query, limit = 10) {
   return await invoke("search_youtube", { query, limit });
 }
 
+export async function youtubePreviewAudio(url) {
+  return await invoke("youtube_preview_audio", { url });
+}
+
 export async function getAudioMetadata(path) {
   return await invoke("get_audio_metadata", { path });
 }
@@ -195,4 +199,5 @@ export async function setMasterVolume(volume) {
   } catch (err) {
     console.error("Failed to set master volume:", err);
   }
+  window.dispatchEvent(new CustomEvent("master-volume-changed"));
 }

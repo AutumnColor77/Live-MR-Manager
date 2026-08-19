@@ -258,7 +258,8 @@
   color: #fff;
 }
 
-.library-selection-primary:disabled {
+.library-selection-primary:disabled,
+.library-selection-secondary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

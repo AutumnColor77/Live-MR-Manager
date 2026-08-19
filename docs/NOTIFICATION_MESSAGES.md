@@ -8,7 +8,7 @@
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.7.2·v0.7.1·v0.7.0), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.7.4 포함), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 
@@ -83,6 +83,8 @@
 | 경고 | 이미 대기열에 있거나 처리 중인 곡입니다. | `src/js/audio.js` |
 | 경고 | 이미 등록된 곡입니다. | `src/js/add-song-modal.js`, `src/js/youtube-search.js` |
 | 경고 | 검색어를 입력하세요. | `src/js/youtube-search.js` |
+| 안내 | 미리듣기를 위해 재생을 일시정지했습니다. | `src/js/youtube-search.js` |
+| 오류 | 미리듣기를 재생할 수 없습니다. / 미리듣기에 실패했습니다. | `src/js/youtube-search.js` |
 | 경고 | 파형 로드 실패: {err} | `src/js/alignment-viewer.js` |
 | 경고 | HTTPS URL만 사용할 수 있습니다. | `src/js/events/controls/custom-models.js` (notify()) |
 | 경고 | LAN 접속을 껐습니다. 앱을 다시 시작해야 적용됩니다. | `src/js/events/controls/overlay.js`<br>삼항 분기 |
@@ -196,6 +198,8 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 안내 | 브라우저에서 연결 중… | `src/js/events/songbook-auth.js` |
 | 성공 | Songbook 로그인 완료 | `src/js/events/songbook-auth.js` |
 | 오류 | 로그인 창을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
+| 오류 | 연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요. | `src/js/events/songbook-auth.js` |
+| 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
 | 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
 | 안내 | Songbook으로 목록을 보내는 중… | `src/js/songbook-sync.js` |
@@ -209,6 +213,9 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 채널 생성을 취소했습니다. | `src/js/songbook-sync.js` |
 | confirm | Songbook 채널 만들기 / 동기화하려면 채널이 필요합니다. 지금 만들까요? | `src/js/songbook-sync.js` |
 | confirm | Songbook 채널 만들기 / 닉네임으로 채널을 만들까요? | `src/js/songbook-sync.js` |
+| 성공 | 신청목록에 추가했습니다: {title} / 신청목록에 {n}곡을 추가했습니다. | `src/js/library-songbook-queue.js` |
+| 경고 | 노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요. | `src/js/library-songbook-queue.js` |
+| 오류 | Songbook 로그인이 필요합니다. / 채널이 없습니다… / 신청목록에 추가하지 못했습니다. | `src/js/library-songbook-queue.js` |
 | 안내 | 새 신청: {title} - {artist} | `src/js/songbook-request-poller.js` |
 | 성공 | 신청을 열었습니다. / 신청을 마감했습니다. | `src/js/songbook-requests.js` |
 | 성공 | 대기열 중복만 차단합니다. / 이번 방송에서 부른 곡도 차단합니다… / 중복 신청을 허용합니다. | `src/js/songbook-requests.js` |

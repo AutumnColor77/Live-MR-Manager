@@ -54,6 +54,27 @@
   display: none !important;
 }
 
+.songbook-sync-icon {
+  flex-shrink: 0;
+  transform-origin: 50% 50%;
+}
+
+.songbook-sync-btn.is-syncing .songbook-sync-icon {
+  animation: songbook-sync-spin 0.8s linear infinite;
+}
+
+@keyframes songbook-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .songbook-sync-btn.is-syncing .songbook-sync-icon {
+    animation: none;
+  }
+}
+
 .songbook-login-icon {
   flex-shrink: 0;
   width: 16px;

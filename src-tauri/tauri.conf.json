@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob: https:; media-src 'self' asset: http://asset.localhost https://asset.localhost blob:; connect-src 'self' http://localhost:* http://127.0.0.1:* https://www.livemrsongbook.com https://livemrsongbook.com https://lmrm.vercel.app https://www.youtube.com https://youtube.com https://i.ytimg.com https://*.mzstatic.com https://api.github.com https://github.com; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob: https:; media-src 'self' asset: http://asset.localhost https://asset.localhost blob: https://*.googlevideo.com https://*.youtube.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://www.livemrsongbook.com https://livemrsongbook.com https://lmrm.vercel.app https://www.youtube.com https://youtube.com https://i.ytimg.com https://*.mzstatic.com https://api.github.com https://github.com; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
       "assetProtocol": {
         "scope": [
           "$APPDATA/**",
