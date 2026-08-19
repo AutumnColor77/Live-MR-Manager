@@ -106,6 +106,9 @@ export async function setupBackendListeners() {
 
     // 2. Playback state
     if (s === "playing") {
+      if (state.ignoreStalePlaybackEvents) {
+        return;
+      }
       state.isPlaying = true;
       // Self-heal overlay state sync in case a prior invoke was dropped.
       invoke('update_overlay_state', {
@@ -152,7 +155,9 @@ export async function setupBackendListeners() {
         updatePlayButton();
       }
       if (s === "error" && message) {
-        showNotification(`재생 오류: ${message}`, "error");
+        if (!state.playbackInvokePending && !state.suppressPlaybackErrorToast) {
+          showNotification(`재생 오류: ${message}`, "error");
+        }
       }
 
       // Sync overlay state on stop/finish/error

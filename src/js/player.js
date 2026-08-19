@@ -218,6 +218,9 @@ export async function selectTrack(index, options = {}) {
 
   // Sync Selection Highlight immediately (Remove 2-step barrier)
   state.selectedTrackIndex = index;
+  state.suppressPlaybackErrorToast = false;
+  state.ignoreStalePlaybackEvents = false;
+  state.playbackInvokePending = true;
 
   // Update State
   if (playNow) {
@@ -305,10 +308,14 @@ export async function selectTrack(index, options = {}) {
 
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
 
-  // Safety timeout: If it takes more than 30s (for slow YT downloads), force loading off
+  // Safety timeout: YouTube needs metadata + yt-dlp; local files stay at 30s.
+  const playTimeoutMs = isYoutubePath(song.path) ? 90000 : 30000;
   let loadingTimeout;
   const timeoutPromise = new Promise((_, reject) => {
-    loadingTimeout = setTimeout(() => reject(new Error("Playback timed out after 30s")), 30000);
+    loadingTimeout = setTimeout(
+      () => reject(new Error(`Playback timed out after ${playTimeoutMs / 1000}s`)),
+      playTimeoutMs,
+    );
   });
 
   try {
@@ -359,18 +366,33 @@ export async function selectTrack(index, options = {}) {
         state.rafId = requestAnimationFrame(updateProgressBar);
       }
       saveLibrary(state.songLibrary);
-    }  } catch (err) {
+    }
+  } catch (err) {
     console.error("Playback failed:", err);
     state.isPlaying = false;
-    const detail = typeof err === "string"
+    const raw = typeof err === "string"
       ? err
       : (err?.message || err?.toString?.() || "알 수 없는 오류");
+    const timedOut = String(raw).toLowerCase().includes("timed out");
+    if (timedOut) {
+      state.ignoreStalePlaybackEvents = true;
+      state.playbackSequence += 1;
+      apiStopPlayback().catch(() => {});
+    }
+    state.suppressPlaybackErrorToast = true;
+    state.playbackInvokePending = false;
+    const detail = timedOut
+      ? (isYoutubePath(song.path)
+        ? "유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요."
+        : "재생 준비 시간이 초과되었습니다.")
+      : raw;
     showNotification(`재생에 실패했습니다: ${detail}`, "error");
   } finally {
     clearTimeout(loadingTimeout);
     // Only reset isLoading if this is still the latest request
     if (mySequence === state.playbackSequence) {
       state.isLoading = false;
+      state.playbackInvokePending = false;
       updateThumbnailOverlay();
       updatePlayButton();
     }

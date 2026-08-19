@@ -43,9 +43,11 @@
 | 오류 | 업데이트 확인 실패: {err} | `src/js/events/controls/settings.js` |
 | 오류 | 오디오 로드 실패: {err} | `src/js/alignment-viewer.js` |
 | 오류 | 일부 곡 삭제 중 오류가 발생했습니다. | `src/js/ui/manager.js` |
-| 오류 | 재생 오류: {err} | `src/js/events/backend.js` |
+| 오류 | 재생 오류: {err} | `src/js/events/backend.js`<br>selectTrack 진행 중이 아닐 때만 (탐색 실패 등) |
 | 오류 | 재생 제어 실패 | `src/js/audio.js` |
 | 오류 | 재생에 실패했습니다: {err} | `src/js/player.js` |
+| 오류 | 재생에 실패했습니다: 유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요. | `src/js/player.js` 유튜브 90초 타임아웃 |
+| 오류 | 재생에 실패했습니다: 재생 준비 시간이 초과되었습니다. | `src/js/player.js` 로컬 30초 타임아웃 |
 | 오류 | 재설정 실패: {err} | `src/js/events/controls/settings.js` |
 | 오류 | 저장 실패: {err} | `src/js/events/controls/settings.js` |
 | 오류 | 저장 중 오류가 발생했습니다: {err} | `src/js/ui/manager.js` |
@@ -180,10 +182,11 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | SHA-256 불일치 (expected {}, actual {}) | `src-tauri/src/alignment.rs` |
 | 오류 | SHA-256은 64자리 16진수여야 합니다. | `src-tauri/src/model_commands.rs` |
 | 오류 | Vocal 파일을 열 수 없습니다: {} (Path: {:?}) | `src-tauri/src/audio_commands.rs` |
-| 오류 | YouTube 오디오 다운로드 실패: {} | `src-tauri/src/youtube.rs` |
-| 오류 | YouTube 오디오 파일 생성 실패: {} | `src-tauri/src/youtube.rs` |
-| 오류 | YouTube 오디오 파일을 완전히 다운로드하지 못했습니다 | `src-tauri/src/youtube.rs` |
-| 오류 | YouTube 오디오 파일이 생성되지 않았습니다 (Timeout) | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요. | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 도구(yt-dlp)를 실행할 수 없습니다. | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브가 오디오를 막았습니다. 네트워크를 바꾸거나 나중에 다시 시도해 주세요. | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 오디오 파일을 재생할 수 없습니다. 다시 시도해 주세요. | `src-tauri/src/youtube.rs` |
+| 오류 | 유튜브 재생에 실패했습니다. | `src-tauri/src/youtube.rs` |
 
 ## Live MR Songbook · 홍보 데모 (`showNotification`)
 

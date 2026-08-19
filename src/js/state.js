@@ -31,6 +31,9 @@ export const state = {
   // 라이브러리 소스 필터 칩: all | youtube | local
   sourceFilter: localStorage.getItem("librarySourceFilter") || "all",
   playbackSequence: 0, // Latest playback request ID to handle race conditions
+  playbackInvokePending: false,
+  suppressPlaybackErrorToast: false,
+  ignoreStalePlaybackEvents: false,
   
   // Interpolation / Progress State
   targetProgressMs: 0,

@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use serde_json::Value;
 use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
@@ -12,6 +13,7 @@ use futures::StreamExt;
 use std::process::Stdio;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use crate::youtube_url::youtube_cache_bytes_ready;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
@@ -45,6 +47,9 @@ static METADATA_CACHE: Lazy<RwLock<HashMap<String, (YoutubeMetadata, Instant)>>>
 const METADATA_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
 const METADATA_TIMEOUT: Duration = Duration::from_secs(12);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(45);
+const YT_DLP_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const STREAM_HEADER_WAIT: Duration = Duration::from_secs(60);
+static YT_DLP_FORCE_REFRESH_USED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -165,44 +170,146 @@ impl YoutubeManager {
         crate::ffmpeg_tools::resolve_ffmpeg_dir().await
     }
 
-    async fn ensure_managed_yt_dlp() -> Option<PathBuf> {
-        for p in Self::managed_candidates() {
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    fn managed_bin_is_fresh(path: &Path) -> bool {
+        let Ok(meta) = std::fs::metadata(path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            return false;
+        };
+        modified
+            .elapsed()
+            .map(|age| age <= YT_DLP_MAX_AGE)
+            .unwrap_or(false)
+    }
 
+    async fn download_managed_yt_dlp(target: &Path) -> Option<PathBuf> {
         // Windows PyInstaller build: combined work under GPLv3+ (yt-dlp source is Unlicense).
         // Downloaded at runtime into tools cache — not shipped inside the app installer.
         // See THIRD_PARTY_NOTICES.md.
         let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-
-        let target = Self::managed_cache_dir().join(Self::managed_bin_name());
         if let Some(parent) = target.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+        let tmp = target.with_extension("exe.partial");
         let response = reqwest::get(url).await.ok()?;
         if !response.status().is_success() {
             return None;
         }
         let bytes = response.bytes().await.ok()?;
-        let mut file = tokio::fs::File::create(&target).await.ok()?;
+        let mut file = tokio::fs::File::create(&tmp).await.ok()?;
         if file.write_all(&bytes).await.is_err() {
+            let _ = tokio::fs::remove_file(&tmp).await;
             return None;
         }
         let _ = file.flush().await;
-
+        drop(file);
+        if std::fs::rename(&tmp, target).is_err() {
+            let _ = std::fs::copy(&tmp, target);
+            let _ = std::fs::remove_file(&tmp);
+        }
         if target.exists() {
-            Some(target)
+            Some(target.to_path_buf())
         } else {
             None
         }
     }
 
+    async fn ensure_managed_yt_dlp(force: bool) -> Option<PathBuf> {
+        let target = Self::managed_cache_dir().join(Self::managed_bin_name());
+        if target.is_file() && !force && Self::managed_bin_is_fresh(&target) {
+            return Some(target);
+        }
+
+        if force || !target.is_file() || !Self::managed_bin_is_fresh(&target) {
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Youtube] Refreshing managed yt-dlp (force={}, exists={})",
+                force,
+                target.is_file()
+            ));
+            if let Some(p) = Self::download_managed_yt_dlp(&target).await {
+                return Some(p);
+            }
+            if target.is_file() {
+                return Some(target);
+            }
+        }
+
+        for p in Self::managed_candidates() {
+            if p != target && p.exists() {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    async fn refresh_managed_yt_dlp_once() -> bool {
+        if YT_DLP_FORCE_REFRESH_USED.swap(true, AtomicOrdering::SeqCst) {
+            return false;
+        }
+        Self::ensure_managed_yt_dlp(true).await.is_some()
+    }
+
+    fn is_extractor_failure(msg: &str) -> bool {
+        let e = msg.to_lowercase();
+        e.contains("requested format is not available")
+            || e.contains("nsig")
+            || e.contains("sign in to confirm")
+            || e.contains("only images are available")
+            || e.contains("http error 403")
+            || e.contains("sabr")
+            || e.contains("this video is not available")
+    }
+
+    pub fn user_facing_error(raw: &str) -> String {
+        if raw.starts_with("유튜브") {
+            return raw.to_string();
+        }
+        let lower = raw.to_lowercase();
+        if lower.contains("timeout")
+            || raw.contains("시간이 초과")
+            || raw.contains("생성되지 않았습니다")
+            || raw.contains("완전히 다운로드하지 못했습니다")
+        {
+            return "유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요.".into();
+        }
+        if lower.contains("failed to spawn")
+            || lower.contains("failed to start yt-dlp")
+            || raw.contains("yt-dlp 설치")
+        {
+            return "유튜브 도구(yt-dlp)를 실행할 수 없습니다.".into();
+        }
+        if Self::is_extractor_failure(raw) {
+            return "유튜브가 오디오를 막았습니다. 네트워크를 바꾸거나 나중에 다시 시도해 주세요.".into();
+        }
+        if lower.contains("decode") || raw.contains("디코딩") {
+            return "유튜브 오디오 파일을 재생할 수 없습니다. 다시 시도해 주세요.".into();
+        }
+        "유튜브 재생에 실패했습니다.".into()
+    }
+
+    fn release_download_slot(destination: &Path, error: Option<String>) {
+        let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+        active.remove(destination);
+        let mut errors = crate::audio_player::DOWNLOAD_ERRORS.lock();
+        errors.remove(destination);
+        if let Some(reason) = error {
+            errors.insert(destination.to_path_buf(), reason);
+        }
+        let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
+        if let Some(n) = notifiers.remove(destination) {
+            n.notify_waiters();
+        }
+    }
+
     /// Finds the best yt-dlp executable by checking managed and system paths.
     async fn find_yt_dlp() -> String {
+        Self::find_yt_dlp_inner(false).await
+    }
+
+    async fn find_yt_dlp_inner(force: bool) -> String {
         // 1. Use managed binary first for stability.
-        if let Some(p) = Self::ensure_managed_yt_dlp().await {
+        if let Some(p) = Self::ensure_managed_yt_dlp(force).await {
             return p.to_string_lossy().to_string();
         }
 
@@ -297,6 +404,13 @@ impl YoutubeManager {
             Ok(v) => v,
             Err(err_msg) => {
                 let _ = crate::audio_player::sys_log(&format!("[Youtube] {}", err_msg));
+                if (Self::is_extractor_failure(&err_msg)
+                    || err_msg.contains("Failed to start")
+                    || err_msg.contains("timeout"))
+                    && Self::refresh_managed_yt_dlp_once().await
+                {
+                    return Box::pin(Self::get_video_metadata(url)).await;
+                }
                 if let Some(fallback) =
                     Self::fetch_oembed_metadata(url, Self::extract_video_id(url).as_deref()).await
                 {
@@ -314,6 +428,9 @@ impl YoutubeManager {
             let err = String::from_utf8_lossy(&output.stderr);
             let err_msg = format!("yt-dlp execution failed: {}", err);
             let _ = crate::audio_player::sys_log(&err_msg);
+            if Self::is_extractor_failure(&err_msg) && Self::refresh_managed_yt_dlp_once().await {
+                return Box::pin(Self::get_video_metadata(url)).await;
+            }
             if let Some(fallback) =
                 Self::fetch_oembed_metadata(url, Self::extract_video_id(url).as_deref()).await
             {
@@ -517,7 +634,44 @@ impl YoutubeManager {
         Ok(results)
     }
 
+    fn destination_ready(path: &Path) -> bool {
+        std::fs::metadata(path)
+            .map(|m| youtube_cache_bytes_ready(m.len()))
+            .unwrap_or(false)
+    }
+
     pub async fn download_audio(
+        window: &WebviewWindow,
+        url: &str,
+        destination: PathBuf,
+        wait_for_full: bool,
+    ) -> Result<PathBuf, String> {
+        match Self::download_audio_once(window, url, destination.clone(), wait_for_full).await {
+            Ok(path) => Ok(path),
+            Err(err) => {
+                let _ = crate::audio_player::sys_log(&format!("[Youtube] download failed: {}", err));
+                let should_retry =
+                    Self::is_extractor_failure(&err) || err.to_lowercase().contains("failed to spawn");
+                if should_retry && Self::refresh_managed_yt_dlp_once().await {
+                    let _ = std::fs::remove_file(&destination);
+                    match Self::download_audio_once(window, url, destination, wait_for_full).await {
+                        Ok(path) => Ok(path),
+                        Err(err2) => {
+                            let _ = crate::audio_player::sys_log(&format!(
+                                "[Youtube] download retry failed: {}",
+                                err2
+                            ));
+                            Err(Self::user_facing_error(&err2))
+                        }
+                    }
+                } else {
+                    Err(Self::user_facing_error(&err))
+                }
+            }
+        }
+    }
+
+    async fn download_audio_once(
         window: &WebviewWindow,
         url: &str,
         destination: PathBuf,
@@ -551,9 +705,15 @@ impl YoutubeManager {
             println!("Download already in progress for {:?}, waiting...", destination);
             if wait_for_full {
                 n.notified().await;
-                return if destination.exists() { Ok(destination) } else { Err("Download failed in other thread".into()) };
+                if Self::destination_ready(&destination) {
+                    return Ok(destination);
+                }
+                if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
+                    return Err(reason);
+                }
+                return Err("Download failed in other thread".into());
             } else {
-                // If streaming, still check for header
+                // Streaming: wait for header below
             }
         } else {
             // This is the primary download thread
@@ -587,7 +747,15 @@ impl YoutubeManager {
 
             args.extend_from_slice(&[
                 "-o".into(),
-                destination.to_str().ok_or("Invalid path")?.to_string(),
+                {
+                    match destination.to_str() {
+                        Some(s) => s.to_string(),
+                        None => {
+                            Self::release_download_slot(&destination, Some("Invalid path".into()));
+                            return Err("Invalid path".into());
+                        }
+                    }
+                },
                 url.to_string(),
             ]);
             if let Some(ffmpeg_dir) = &ffmpeg_location {
@@ -597,12 +765,19 @@ impl YoutubeManager {
                 ]);
             }
 
-            let mut child = cmd
+            let mut child = match cmd
                 .args(&args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
+            {
+                Ok(child) => child,
+                Err(e) => {
+                    let err_msg = format!("Failed to spawn yt-dlp: {}", e);
+                    Self::release_download_slot(&destination, Some(err_msg.clone()));
+                    return Err(err_msg);
+                }
+            };
 
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take();
@@ -675,27 +850,15 @@ impl YoutubeManager {
                 } else {
                     Vec::new()
                 };
-                
-                {
-                    let mut active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
-                    active.remove(&dest_clone);
-                    let mut errors = crate::audio_player::DOWNLOAD_ERRORS.lock();
-                    errors.remove(&dest_clone);
-                    if !matches!(status, Ok(s) if s.success()) {
-                        let reason = if stderr_tail.is_empty() {
-                            "yt-dlp exited without stderr output".to_string()
-                        } else {
-                            stderr_tail.join(" | ")
-                        };
-                        errors.insert(dest_clone.clone(), reason);
-                    }
-                    
-                    // Notify all waiters
-                    let mut notifiers = crate::audio_player::DOWNLOAD_FINISHED_NOTIFIER.lock();
-                    if let Some(n) = notifiers.remove(&dest_clone) {
-                        n.notify_waiters();
-                    }
-                }
+
+                let error = if matches!(status, Ok(s) if s.success()) {
+                    None
+                } else if stderr_tail.is_empty() {
+                    Some("yt-dlp exited without stderr output".to_string())
+                } else {
+                    Some(stderr_tail.join(" | "))
+                };
+                Self::release_download_slot(&dest_clone, error);
 
                 match status {
                     Ok(s) if s.success() => {
@@ -727,42 +890,50 @@ impl YoutubeManager {
                 }
             }
             
-            if destination.exists() { return Ok(destination); }
-            if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
-                return Err(format!("YouTube 오디오 다운로드 실패: {}", reason));
+            if Self::destination_ready(&destination) {
+                crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination);
+                return Ok(destination);
             }
+            if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
+                let _ = std::fs::remove_file(&destination);
+                return Err(reason);
+            }
+            let _ = std::fs::remove_file(&destination);
             return Err("YouTube 오디오 파일을 완전히 다운로드하지 못했습니다".into());
         } else {
-            // Streaming mode: wait for headers (8KB)
             let start_wait = std::time::Instant::now();
             let mut file_ready = false;
-            
-            // Increased to 30s as metadata extraction can be slow
-            while start_wait.elapsed().as_secs() < 30 {
-                {
-                    // If the download thread finished (meaning it succeeded or failed completely), stop waiting
-                    let active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
-                    if !active.contains(&destination) { break; }
+
+            while start_wait.elapsed() < STREAM_HEADER_WAIT {
+                if Self::destination_ready(&destination) {
+                    file_ready = true;
+                    break;
                 }
-                
-                if destination.exists() {
-                    if let Ok(meta) = std::fs::metadata(&destination) {
-                        if meta.len() > 8192 {
-                            file_ready = true;
-                            break;
-                        }
+                {
+                    let errors = crate::audio_player::DOWNLOAD_ERRORS.lock();
+                    if errors.contains_key(&destination) {
+                        break;
+                    }
+                }
+                {
+                    let active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
+                    if !active.contains(&destination) {
+                        break;
                     }
                 }
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
 
-            if !file_ready && !destination.exists() {
-                if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
-                    return Err(format!("YouTube 오디오 파일 생성 실패: {}", reason));
-                }
-                return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
+            if file_ready || Self::destination_ready(&destination) {
+                crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination);
+                return Ok(destination);
             }
-            Ok(destination)
+            if let Some(reason) = crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&destination) {
+                let _ = std::fs::remove_file(&destination);
+                return Err(reason);
+            }
+            let _ = std::fs::remove_file(&destination);
+            return Err("YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)".into());
         }
     }
 }

@@ -14,12 +14,71 @@ use crate::audio_player::{
 use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
 use crate::state::DB;
 use crate::youtube::YoutubeManager;
+use crate::youtube_url::{
+    cache_key_variants, extract_youtube_video_id, youtube_audio_cache_filename, youtube_cache_bytes_ready,
+};
 use urlencoding;
 
 // --- Global Statics ---
 pub static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
-use crate::youtube_url::cache_key_variants;
+fn youtube_cache_playable(path: &std::path::Path) -> bool {
+    let path_buf = path.to_path_buf();
+    if crate::audio_player::DOWNLOAD_ERRORS.lock().contains_key(&path_buf) {
+        return false;
+    }
+    std::fs::metadata(path)
+        .map(|m| youtube_cache_bytes_ready(m.len()))
+        .unwrap_or(false)
+}
+
+async fn ensure_youtube_audio_file(
+    window: &WebviewWindow,
+    url: &str,
+    dest: &std::path::PathBuf,
+) -> Result<(), String> {
+    if youtube_cache_playable(dest) {
+        return Ok(());
+    }
+
+    let is_active = crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(dest);
+    if is_active {
+        sys_log("[AUDIO] YouTube file is being written by another task, waiting...");
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(60) {
+            if youtube_cache_playable(dest) {
+                return Ok(());
+            }
+            if !crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(dest) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        if youtube_cache_playable(dest) {
+            return Ok(());
+        }
+        if crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(dest) {
+            return Err(YoutubeManager::user_facing_error(
+                "YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)",
+            ));
+        }
+    }
+
+    if dest.exists() {
+        sys_log(&format!("[AUDIO] Discarding incomplete YouTube cache: {:?}", dest));
+        let _ = std::fs::remove_file(dest);
+    }
+    crate::audio_player::DOWNLOAD_ERRORS.lock().remove(dest);
+
+    YoutubeManager::download_audio(window, url, dest.clone(), false).await?;
+    if youtube_cache_playable(dest) {
+        crate::audio_player::DOWNLOAD_ERRORS.lock().remove(dest);
+        return Ok(());
+    }
+    Err(YoutubeManager::user_facing_error(
+        "YouTube 오디오 파일이 생성되지 않았습니다 (Timeout)",
+    ))
+}
 
 #[tauri::command]
 pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<u64, String> {
@@ -27,7 +86,13 @@ pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option
     let res = play_track_internal(window.clone(), path, duration_ms, None, play_now.unwrap_or(true)).await;
     if let Err(ref e) = res {
         sys_log(&format!("[AUDIO] play_track failed: path={}, error={}", path_for_log, e));
-        let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: e.clone() });
+        let mapped = if path_for_log.starts_with("http") {
+            YoutubeManager::user_facing_error(e)
+        } else {
+            e.clone()
+        };
+        let _ = window.emit("playback-status", PlaybackStatus { status: Status::Error, message: mapped.clone() });
+        return Err(mapped);
     }
     res
 }
@@ -220,28 +285,27 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
 
     // Case 2: Fallback to Original source
     let play_path = if path.starts_with("http") {
-        if start_pos_ms.is_none() {
+        let seeking = start_pos_ms.is_some();
+        if !seeking {
             window.emit("playback-status", PlaybackStatus { status: Status::Downloading, message: "유튜브 오디오 준비 중...".into() }).ok();
         }
-        let metadata = YoutubeManager::get_video_metadata(&path).await?;
-        
-        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
-
         let temp_dir = window.state::<crate::state::AppPaths>().temp.clone();
-        let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
-        
-        if !final_path.exists() {
-            YoutubeManager::download_audio(&window, &path, final_path.clone(), false).await?;
-        } else {
-            let is_yt_active = {
-                let active = crate::audio_player::ACTIVE_DOWNLOADS.lock();
-                active.contains(&final_path)
-            };
-            
-            if is_yt_active {
-                sys_log("[AUDIO] YouTube file is being written by another task, waiting...");
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let final_path = temp_dir.join(youtube_audio_cache_filename(&path));
+
+        if !(seeking && youtube_cache_playable(&final_path)) {
+            if !seeking {
+                match YoutubeManager::get_video_metadata(&path).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        sys_log(&format!("[AUDIO] YouTube metadata failed (continuing if URL has id): {}", e));
+                        if extract_youtube_video_id(&path).is_none() {
+                            return Err(YoutubeManager::user_facing_error(&e));
+                        }
+                    }
+                }
             }
+            if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
+            ensure_youtube_audio_file(&window, &path, &final_path).await?;
         }
         final_path
     } else {
@@ -260,39 +324,64 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     let is_yt = path.starts_with("http");
     let mut decoder_result = None;
     let mut first_error_msg = String::new();
+    let mut cache_retried = false;
 
-    for i in 0..5 {
-        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
+    'decode: loop {
+        for i in 0..5 {
+            if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
 
-        let reader = match StreamingReader::new(play_path.clone(), is_yt) {
-            Ok(r) => r,
-            Err(e) => {
-                if i < 4 {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-                    continue;
+            let reader = match StreamingReader::new(play_path.clone(), is_yt) {
+                Ok(r) => r,
+                Err(e) => {
+                    if i < 4 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                        continue;
+                    }
+                    if is_yt && !cache_retried && start_pos_ms.is_none() {
+                        cache_retried = true;
+                        sys_log(&format!("[AUDIO] YouTube open failed, re-downloading: {}", e));
+                        let _ = std::fs::remove_file(&play_path);
+                        crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&play_path);
+                        ensure_youtube_audio_file(&window, &path, &play_path).await?;
+                        continue 'decode;
+                    }
+                    let msg = format!("파일을 열 수 없습니다: {}", e);
+                    return Err(if is_yt { YoutubeManager::user_facing_error(&msg) } else { msg });
                 }
-                return Err(format!("파일을 열 수 없습니다: {}", e));
-            }
-        };
+            };
 
-        match rodio::Decoder::new(std::io::BufReader::new(reader)) {
-            Ok(d) => {
-                decoder_result = Some(d);
-                break;
-            }
-            Err(e) => {
-                first_error_msg = e.to_string();
-                if i < 4 {
-                    sys_log(&format!("[AUDIO] Decoding retry {}/5...", i + 1));
-                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-                } else {
-                    return Err(format!("디코딩 실패: {}", e));
+            match rodio::Decoder::new(std::io::BufReader::new(reader)) {
+                Ok(d) => {
+                    decoder_result = Some(d);
+                    break 'decode;
+                }
+                Err(e) => {
+                    first_error_msg = e.to_string();
+                    if i < 4 {
+                        sys_log(&format!("[AUDIO] Decoding retry {}/5...", i + 1));
+                        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                        continue;
+                    }
+                    if is_yt && !cache_retried && start_pos_ms.is_none() {
+                        cache_retried = true;
+                        sys_log(&format!("[AUDIO] YouTube decode failed, re-downloading: {}", e));
+                        let _ = std::fs::remove_file(&play_path);
+                        crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&play_path);
+                        ensure_youtube_audio_file(&window, &path, &play_path).await?;
+                        continue 'decode;
+                    }
+                    let msg = format!("디코딩 실패: {}", e);
+                    return Err(if is_yt { YoutubeManager::user_facing_error(&msg) } else { msg });
                 }
             }
         }
+        break;
     }
     
-    let mut decoder = decoder_result.ok_or_else(|| format!("디코딩 실패: {}", first_error_msg))?;
+    let mut decoder = decoder_result.ok_or_else(|| {
+        let msg = format!("디코딩 실패: {}", first_error_msg);
+        if is_yt { YoutubeManager::user_facing_error(&msg) } else { msg }
+    })?;
     
     if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version { return Ok(0); }
     
@@ -405,6 +494,7 @@ pub fn get_alignment_sync_state() -> Result<PlaybackProgress, String> {
 
 #[tauri::command]
 pub async fn stop_playback() -> Result<(), String> {
+    PLAYBACK_VERSION.fetch_add(1, Ordering::SeqCst);
     if let Ok(handler) = &*AUDIO_HANDLER {
         let controller = handler.controller.lock();
         controller.clear();
