@@ -79,6 +79,32 @@ pub fn youtube_cache_bytes_ready(len: u64) -> bool {
     len >= YOUTUBE_STREAM_MIN_BYTES
 }
 
+/// True when the file looks like a real audio container, not an empty/partial stub.
+pub fn youtube_cache_container_ok(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut buf = [0u8; 16];
+    let n = match std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    if n < 8 {
+        return false;
+    }
+    if buf.starts_with(b"ID3") || buf.starts_with(b"OggS") || buf.starts_with(b"fLaC") {
+        return true;
+    }
+    if buf.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
+        return true; // WebM / EBML
+    }
+    if buf[4..8] == *b"ftyp" {
+        return true; // MP4 / M4A
+    }
+    if n >= 2 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0 {
+        return true; // MPEG ADTS
+    }
+    false
+}
+
 pub fn cache_key_variants(path: &str) -> Vec<String> {
     let mut variants = vec![path.trim().replace('\\', "/")];
     if let Some(id) = extract_youtube_video_id(path) {

@@ -380,10 +380,38 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
                         tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
                         continue;
                     }
+
+                    // Fallback to FFmpeg transcoding for unsupported formats (e.g. Opus, WebM)
+                    let temp_dir = window.state::<crate::state::AppPaths>().temp.clone();
+                    let file_stem = play_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let transcoded_wav = temp_dir.join(format!("{}_transcoded.wav", file_stem));
+
+                    sys_log(&format!(
+                        "[AUDIO] Native Rodio decoding failed for {:?} ({}). Trying FFmpeg WAV transcode fallback -> {:?}",
+                        play_path, first_error_msg, transcoded_wav
+                    ));
+
+                    let transcode_res = if transcoded_wav.exists() && std::fs::metadata(&transcoded_wav).map(|m| m.len() > 1024).unwrap_or(false) {
+                        Ok(())
+                    } else {
+                        crate::ffmpeg_tools::transcode_to_wav_fallback(&play_path, &transcoded_wav)
+                    };
+
+                    if let Ok(()) = transcode_res {
+                        if let Ok(wav_reader) = StreamingReader::new(transcoded_wav.clone(), false) {
+                            if let Ok(d) = rodio::Decoder::new(std::io::BufReader::new(wav_reader)) {
+                                sys_log("[AUDIO] Successfully opened audio via FFmpeg transcoded WAV fallback");
+                                decoder_result = Some(d);
+                                break 'decode;
+                            }
+                        }
+                    }
+
                     if is_yt && !cache_retried && start_pos_ms.is_none() {
                         cache_retried = true;
                         sys_log(&format!("[AUDIO] YouTube decode failed, re-downloading: {}", e));
                         let _ = std::fs::remove_file(&play_path);
+                        let _ = std::fs::remove_file(&transcoded_wav);
                         crate::audio_player::DOWNLOAD_ERRORS.lock().remove(&play_path);
                         ensure_youtube_audio_file(&window, &path, &play_path).await?;
                         continue 'decode;

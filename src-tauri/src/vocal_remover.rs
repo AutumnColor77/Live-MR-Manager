@@ -1240,6 +1240,20 @@ impl WaveformRemover {
     }
 
     fn load_any_audio(&self, path: &Path) -> Result<(Vec<f32>, u32, u8)> {
+        match self.load_audio_symphonia(path) {
+            Ok(res) => Ok(res),
+            Err(e) => {
+                sys_log(&format!(
+                    "[AI-ENGINE] Symphonia audio load failed for {:?} ({}). Retrying with FFmpeg fallback...",
+                    path, e
+                ));
+                crate::ffmpeg_tools::decode_to_pcm_f32(path)
+                    .map_err(|fe| anyhow!("Audio loading failed (Symphonia: {}, FFmpeg: {})", e, fe))
+            }
+        }
+    }
+
+    fn load_audio_symphonia(&self, path: &Path) -> Result<(Vec<f32>, u32, u8)> {
         let file = std::fs::File::open(path)?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
         

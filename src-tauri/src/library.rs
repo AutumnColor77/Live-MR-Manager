@@ -67,7 +67,8 @@ pub fn probe_audio_duration(path: &str) -> Option<String> {
             return Some(format!("{}:{:02}", s / 60, s % 60));
         }
     }
-    None
+    // Fallback: FFmpeg duration probe for unsupported formats (e.g. Opus, WebM)
+    crate::ffmpeg_tools::probe_duration_with_ffmpeg(std::path::Path::new(path))
 }
 
 #[tauri::command]

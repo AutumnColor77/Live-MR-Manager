@@ -1,5 +1,27 @@
 # Release Notes
 
+## v0.7.5 (2026-08-23)
+
+Opus/WebM 등 미지원 오디오 코덱에 대한 FFmpeg Fallback 파이프라인 구축 및 유튜브 재생·분리 안정성 강화 릴리즈입니다. 기준: v0.7.4.
+
+### 오디오 엔진 & 미지원 코덱 Fallback
+
+- **FFmpeg 직접 디코딩 Fallback (`decode_to_pcm_f32`)**:
+  - 네이티브 디코더(`Symphonia`)가 지원하지 않는 `Opus`, `WebM`, `특수 AAC` 등의 음원을 AI MR 분리 시 FFmpeg 파이프를 통해 f32 PCM으로 즉시 로드하여 `unsupported codec` 오류 없이 정상 분리합니다.
+- **라이브러리 재생 Fallback (`transcode_to_wav_fallback`)**:
+  - 미지원 코덱 파일 재생 시 백그라운드에서 표준 16비트 PCM WAV 캐시를 생성하여 Rodio 플레이어 엔진(피치 조절, 템포 조절, 볼륨 제어, 시크)의 모든 기능을 동일하게 지원합니다.
+- **오디오 메타데이터 Duration Fallback**:
+  - Symphonia/Rodio로 길이를 파싱할 수 없는 특수 오디오 포맷도 FFmpeg를 통해 정확한 재생 시간을 추출합니다.
+
+### YouTube 재생 및 포맷 셀렉터 개선
+
+- **AAC 스트림 우선순위 강화**:
+  - `ba[ext=m4a]/ba[acodec^=mp4a]/140` 형식을 최우선 요청하도록 개선하여 호환성 높은 스트림을 우선 확보합니다.
+- **Fallback 클라이언트 및 브라우저 쿠키 연동 강화**:
+  - YouTube 추출 차단 발생 시 Edge 쿠키 및 fallback client를 통한 다운로드 안정성을 강화했습니다.
+
+---
+
 ## v0.7.4 (2026-08-19)
 
 유튜브 재생 안정화와 Songbook·가사·오버레이 UX를 묶은 릴리즈입니다. 기준: v0.7.3.

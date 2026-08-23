@@ -9,7 +9,7 @@ use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use crate::model_manager::{ModelManager, ModelSpec};
 use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
-use crate::youtube_url::normalize_cache_key;
+use crate::youtube_url::{normalize_cache_key, youtube_audio_cache_filename, youtube_cache_bytes_ready};
 use super::{SeparationProgress, ROFORMER_ENGINE, ENGINE_MODEL_ID, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
 static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -351,7 +351,8 @@ impl SeparationTask {
             return Ok(p);
         }
 
-        // YouTube Handling
+        // YouTube: reuse a finished playback cache when possible, otherwise download
+        // with the same HTTPS-m4a path as playback (not ffmpeg remux, which 403s).
         window.emit("separation-progress", SeparationProgress {
             path: path.to_string(),
             percentage: 0.0,
@@ -360,26 +361,34 @@ impl SeparationTask {
             model: Self::get_configured_model_name(),
         }).ok();
 
-        match YoutubeManager::get_video_metadata(path).await {
-            Ok(metadata) => {
-                let paths = window.state::<crate::state::AppPaths>();
-                let temp_dir = paths.temp.clone();
-                let final_path = temp_dir.join(format!("yt_{}.m4a", metadata.id.unwrap_or_else(|| "unknown".into())));
-                
-                if final_path.exists() {
-                    return Ok(final_path);
-                }
+        let paths = window.state::<crate::state::AppPaths>();
+        let final_path = paths.temp.join(youtube_audio_cache_filename(path));
+        let cache_idle = !crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(&final_path);
+        let cache_ok = cache_idle
+            && std::fs::metadata(&final_path)
+                .map(|m| youtube_cache_bytes_ready(m.len()))
+                .unwrap_or(false)
+            && !crate::audio_player::DOWNLOAD_ERRORS.lock().contains_key(&final_path);
 
-                match YoutubeManager::download_audio(window, path, final_path.clone(), true).await {
-                    Ok(_) => Ok(final_path),
-                    Err(e) => {
-                        Self::emit_error(window, path, &format!("YT Error: {}", e), "NETWORK", &Self::get_configured_model_name());
-                        Err(e)
-                    }
-                }
-            },
+        if cache_ok {
+            sys_log(&format!(
+                "[AI-ENGINE] Reusing YouTube cache for separation: {:?}",
+                final_path
+            ));
+            return Ok(final_path);
+        }
+        if final_path.exists() && cache_idle {
+            sys_log(&format!(
+                "[AI-ENGINE] Discarding incomplete YouTube cache: {:?}",
+                final_path
+            ));
+            let _ = std::fs::remove_file(&final_path);
+        }
+
+        match YoutubeManager::download_audio(window, path, final_path.clone(), true).await {
+            Ok(p) => Ok(p),
             Err(e) => {
-                Self::emit_error(window, path, &format!("YT Metadata Error: {}", e), "NETWORK", &Self::get_configured_model_name());
+                Self::emit_error(window, path, &format!("YT Error: {}", e), "NETWORK", &Self::get_configured_model_name());
                 Err(e)
             }
         }

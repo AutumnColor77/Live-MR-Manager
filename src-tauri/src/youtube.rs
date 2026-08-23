@@ -301,11 +301,12 @@ impl YoutubeManager {
     }
 
     fn youtube_player_client_arg(fallback: bool) -> &'static str {
-        // Default `web` formats often 403 (SABR / nsig). TV+Android still expose HTTPS audio.
+        // Default `web` formats often 403 (SABR / nsig). Prefer clients that still
+        // expose progressive HTTPS audio. android_sdkless avoids PO-token blocks.
         if fallback {
-            "youtube:player_client=ios,mweb,web"
+            "youtube:player_client=ios,mweb,web_embedded,tv_embedded"
         } else {
-            "youtube:player_client=tv,android,web_safari"
+            "youtube:player_client=android_sdkless,tv,android,web_safari"
         }
     }
 
@@ -329,6 +330,10 @@ impl YoutubeManager {
     }
 
     fn push_youtube_compat_args(args: &mut Vec<String>, fallback_clients: bool) {
+        Self::push_youtube_compat_args_ex(args, fallback_clients, false);
+    }
+
+    fn push_youtube_compat_args_ex(args: &mut Vec<String>, fallback_clients: bool, cookies_from_browser: bool) {
         args.extend_from_slice(&[
             "--extractor-args".into(),
             Self::youtube_player_client_arg(fallback_clients).into(),
@@ -338,9 +343,30 @@ impl YoutubeManager {
             "5".into(),
             "--no-playlist".into(),
         ]);
+        if cookies_from_browser {
+            // Windows: Edge cookie DB is usually available even if Chrome is not.
+            args.extend_from_slice(&["--cookies-from-browser".into(), "edge".into()]);
+        }
         if let Some(node) = Self::find_node_runtime() {
             args.extend_from_slice(&["--js-runtimes".into(), format!("node:{}", node)]);
         }
+    }
+
+    /// Full-file (separation) downloads must not use `-x` remux: that often
+    /// selects SABR-only `ba` formats that 403. Prefer progressive HTTPS m4a.
+    fn download_format_args(wait_for_full: bool, fallback_clients: bool) -> Vec<String> {
+        let selector = if wait_for_full {
+            if fallback_clients {
+                "ba[ext=m4a][protocol^=http]/ba[acodec^=mp4a]/140/bestaudio[protocol^=http]/bestaudio/best"
+            } else {
+                "ba[ext=m4a][protocol^=http]/ba[acodec^=mp4a]/ba[ext=m4a]/140/bestaudio[protocol^=http]/bestaudio/best"
+            }
+        } else if fallback_clients {
+            "ba[ext=m4a]/ba[acodec^=mp4a]/140/bestaudio/best"
+        } else {
+            "ba[ext=m4a]/ba[acodec^=mp4a]/140/ba/best"
+        };
+        vec!["-f".into(), selector.into()]
     }
 
     fn release_download_slot(destination: &Path, error: Option<String>) {
@@ -799,14 +825,14 @@ impl YoutubeManager {
         destination: PathBuf,
         wait_for_full: bool,
     ) -> Result<PathBuf, String> {
-        match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false).await {
+        match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false, false).await {
             Ok(path) => Ok(path),
             Err(err) => {
                 let _ = crate::audio_player::sys_log(&format!("[Youtube] download failed: {}", err));
                 let extractor = Self::is_extractor_failure(&err);
                 if extractor && Self::refresh_managed_yt_dlp_once().await {
                     let _ = std::fs::remove_file(&destination);
-                    match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false)
+                    match Self::download_audio_once(window, url, destination.clone(), wait_for_full, false, false)
                         .await
                     {
                         Ok(path) => return Ok(path),
@@ -823,7 +849,7 @@ impl YoutubeManager {
                         "[Youtube] Retrying download with fallback player clients",
                     );
                     let _ = std::fs::remove_file(&destination);
-                    match Self::download_audio_once(window, url, destination, wait_for_full, true)
+                    match Self::download_audio_once(window, url, destination.clone(), wait_for_full, true, false)
                         .await
                     {
                         Ok(path) => return Ok(path),
@@ -832,7 +858,29 @@ impl YoutubeManager {
                                 "[Youtube] fallback-client download failed: {}",
                                 err2
                             ));
-                            return Err(Self::user_facing_error(&err2));
+                            let _ = crate::audio_player::sys_log(
+                                "[Youtube] Retrying download with Edge cookies",
+                            );
+                            let _ = std::fs::remove_file(&destination);
+                            match Self::download_audio_once(
+                                window,
+                                url,
+                                destination,
+                                wait_for_full,
+                                true,
+                                true,
+                            )
+                            .await
+                            {
+                                Ok(path) => return Ok(path),
+                                Err(err3) => {
+                                    let _ = crate::audio_player::sys_log(&format!(
+                                        "[Youtube] cookie download failed: {}",
+                                        err3
+                                    ));
+                                    return Err(Self::user_facing_error(&err3));
+                                }
+                            }
                         }
                     }
                 }
@@ -847,6 +895,7 @@ impl YoutubeManager {
         destination: PathBuf,
         wait_for_full: bool,
         fallback_clients: bool,
+        cookies_from_browser: bool,
     ) -> Result<PathBuf, String> {
         let exe = Self::find_yt_dlp().await;
         let ffmpeg_location = Self::resolve_ffmpeg_location().await;
@@ -901,23 +950,8 @@ impl YoutubeManager {
                 "--buffer-size".into(),
                 "16K".into(),
             ];
-            Self::push_youtube_compat_args(&mut args, fallback_clients);
-
-            if wait_for_full {
-                // High quality post-processing for separation
-                args.extend_from_slice(&[
-                    "-f".into(),
-                    "ba".into(),
-                    "-x".into(),
-                    "--audio-format".into(),
-                    "m4a".into(),
-                ]);
-            } else if fallback_clients {
-                args.extend_from_slice(&["-f".into(), "bestaudio/best".into()]);
-            } else {
-                // Streaming friendly: no post-processing
-                args.extend_from_slice(&["-f".into(), "ba[ext=m4a]/ba".into()]);
-            }
+            Self::push_youtube_compat_args_ex(&mut args, fallback_clients, cookies_from_browser);
+            args.extend(Self::download_format_args(wait_for_full, fallback_clients));
 
             args.extend_from_slice(&[
                 "-o".into(),

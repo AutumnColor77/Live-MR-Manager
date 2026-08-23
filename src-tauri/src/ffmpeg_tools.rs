@@ -184,3 +184,131 @@ pub fn find_ffmpeg_executable_or_download() -> Option<PathBuf> {
     .ok()
     .flatten()
 }
+
+/// Fallback decoder: decodes any audio format supported by FFmpeg (e.g. Opus, WebM) into interleaved f32 PCM samples (44100Hz, stereo).
+pub fn decode_to_pcm_f32(path: &Path) -> Result<(Vec<f32>, u32, u8), String> {
+    let ffmpeg = find_ffmpeg_executable_or_download()
+        .ok_or_else(|| "FFmpeg 실행 파일을 찾을 수 없습니다.".to_string())?;
+
+    let mut cmd = std::process::Command::new(&ffmpeg);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    cmd.args(&[
+        "-nostdin",
+        "-v", "error",
+        "-i", path.to_str().ok_or_else(|| "Invalid input path".to_string())?,
+        "-f", "f32le",
+        "-ac", "2",
+        "-ar", "44100",
+        "pipe:1",
+    ]);
+
+    let output = cmd.output().map_err(|e| format!("FFmpeg 디코딩 실행 실패: {}", e))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("FFmpeg 디코딩 실패: {}", err.trim()));
+    }
+
+    let bytes = output.stdout;
+    if bytes.len() % 4 != 0 {
+        return Err("FFmpeg f32le 디코딩 데이터 크기가 올바르지 않습니다.".into());
+    }
+
+    let num_samples = bytes.len() / 4;
+    let mut samples = Vec::with_capacity(num_samples);
+    for chunk in bytes.chunks_exact(4) {
+        let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        samples.push(sample);
+    }
+
+    crate::audio_player::sys_log(&format!(
+        "[FFmpeg] Successfully decoded fallback audio {:?} ({} samples, 44100Hz, 2ch)",
+        path,
+        samples.len()
+    ));
+
+    Ok((samples, 44100, 2))
+}
+
+/// Transcodes an unsupported audio file into a 16-bit PCM WAV for Rodio playback fallback.
+pub fn transcode_to_wav_fallback(input_path: &Path, output_wav: &Path) -> Result<(), String> {
+    let ffmpeg = find_ffmpeg_executable_or_download()
+        .ok_or_else(|| "FFmpeg 실행 파일을 찾을 수 없습니다.".to_string())?;
+
+    if let Some(parent) = output_wav.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut cmd = std::process::Command::new(&ffmpeg);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    cmd.args(&[
+        "-nostdin",
+        "-y",
+        "-v", "error",
+        "-i", input_path.to_str().ok_or_else(|| "Invalid input path".to_string())?,
+        "-vn",
+        "-c:a", "pcm_s16le",
+        "-ar", "44100",
+        output_wav.to_str().ok_or_else(|| "Invalid output path".to_string())?,
+    ]);
+
+    let output = cmd.output().map_err(|e| format!("FFmpeg 변환 실행 실패: {}", e))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("FFmpeg 변환 실패: {}", err.trim()));
+    }
+
+    crate::audio_player::sys_log(&format!(
+        "[FFmpeg] Successfully transcoded {:?} -> {:?}",
+        input_path,
+        output_wav
+    ));
+
+    Ok(())
+}
+
+/// Extract duration string (e.g. "3:45") via FFmpeg when Symphonia fails.
+pub fn probe_duration_with_ffmpeg(path: &Path) -> Option<String> {
+    let ffmpeg = find_ffmpeg_executable_or_download()?;
+    let mut cmd = std::process::Command::new(&ffmpeg);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    cmd.args(&[
+        "-nostdin",
+        "-i", path.to_str()?,
+    ]);
+
+    let output = cmd.output().ok()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    
+    // Look for "Duration: 00:03:09.24,"
+    let dur_idx = stderr.find("Duration: ")?;
+    let tail = &stderr[dur_idx + "Duration: ".len()..];
+    let dur_str = tail.split(',').next()?.trim(); // e.g. "00:03:09.24"
+    let parts: Vec<&str> = dur_str.split(':').collect();
+    if parts.len() >= 3 {
+        let hours: u64 = parts[0].parse().unwrap_or(0);
+        let mins: u64 = parts[1].parse().unwrap_or(0);
+        let secs: f64 = parts[2].parse().unwrap_or(0.0);
+        let total_secs = (hours * 3600 + mins * 60) as f64 + secs;
+        let total_s = total_secs.round() as u64;
+        let m = total_s / 60;
+        let s = total_s % 60;
+        return Some(format!("{}:{:02}", m, s));
+    }
+
+    None
+}
