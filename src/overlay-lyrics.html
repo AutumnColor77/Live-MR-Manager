@@ -73,8 +73,6 @@
       top: auto !important;
       transform: scale(var(--overlay-scale, 1)) !important;
       transform-origin: center center !important;
-      opacity: 1 !important;
-      animation: none !important;
       width: min(400px, 100%);
       max-width: 100%;
       min-width: 0;
@@ -100,6 +98,12 @@
       transition: opacity 0.35s ease, border-radius 0.3s ease;
       will-change: transform, opacity;
       opacity: 0;
+    }
+
+    .overlay-container:not(.visible) {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
     }
 
     .overlay-glass {
@@ -367,7 +371,10 @@
     function updateOverlay(data) {
       if (!data) return;
 
-      if (!data.is_playing && !isPreview && !data.is_force_visible) {
+      const isPlaying = data.is_playing === true || data.isPlaying === true;
+      const forced = data.is_force_visible === true || data.isForceVisible === true;
+
+      if (!isPlaying && !isPreview && !forced) {
         hideOverlay();
         return;
       }
@@ -402,14 +409,14 @@
       else duration = '0.7s';
       document.documentElement.style.setProperty('--anim-duration', duration);
       
-      const hasCurrent = data.current_lyric && data.current_lyric.trim() !== "";
-      const hasNext = data.next_lyric && data.next_lyric.trim() !== "";
+      const hasCurrent = !!(data.current_lyric && data.current_lyric.trim() !== "");
+      const hasNext = !!(data.next_lyric && data.next_lyric.trim() !== "");
       const nextTitle = (data.title || "").trim();
       const nextArtist = (data.artist || "").trim();
       const trackSignature = `${nextTitle}__${nextArtist}__${(data.thumbnail || "").slice(0, 80)}`;
       const trackChanged = !!nextTitle && trackSignature !== lastTrackSignature;
 
-      const shouldShow = hasCurrent || hasNext || data.is_force_visible || isPreview;
+      const shouldShow = forced || (isPlaying && (hasCurrent || hasNext));
 
       const applyShow = () => {
         overlay.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
@@ -418,8 +425,12 @@
         
         if (shouldShow) {
           lyricsArea.classList.add('active');
-          const newCurrent = hasCurrent ? data.current_lyric : "";
-          const newNext = hasNext ? data.next_lyric : "";
+          const newCurrent = hasCurrent
+            ? data.current_lyric
+            : (forced ? '가사 미리보기 첫 번째 줄' : '');
+          const newNext = hasNext
+            ? data.next_lyric
+            : (forced ? '가사 미리보기 다음 줄' : '');
           const shouldPromote = displayedNext && newCurrent && displayedNext === newCurrent;
           if (shouldPromote) {
             animateLinePromotion(newCurrent, newNext);

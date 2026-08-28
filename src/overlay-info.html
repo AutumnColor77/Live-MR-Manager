@@ -68,7 +68,6 @@
       top: auto !important;
       transform: scale(var(--overlay-scale, 1)) !important;
       transform-origin: center center !important;
-      opacity: 1 !important;
       width: min(400px, 100%);
       max-width: 100%;
     }
@@ -93,6 +92,12 @@
         opacity 0.32s ease;
       will-change: transform, opacity;
       opacity: 0;
+    }
+
+    .overlay-container:not(.visible) {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
     }
 
     .overlay-glass {
@@ -338,7 +343,7 @@
         const trackChanged = !!nextTitle && trackSignature !== lastTrackSignature;
         const displayTitle = nextTitle || lastDisplayTitle || "Ready";
         const displayArtist = nextArtist || lastDisplayArtist || "";
-        const shouldShow = playing || forced || isPreview;
+        const shouldShow = forced || playing;
 
         // Styles
         lastUserScale = Number(style.scale) || 1.0;
@@ -414,12 +419,15 @@
             container.classList.add('visible');
           }
         } else {
-          // Avoid flicker when backend briefly reports non-playing during transitions.
-          if (!pendingHideTimer) {
-            pendingHideTimer = setTimeout(() => {
-              container.classList.remove('visible');
-              pendingHideTimer = null;
-            }, 220);
+          if (container.classList.contains('visible')) {
+            if (!pendingHideTimer) {
+              pendingHideTimer = setTimeout(() => {
+                container.classList.remove('visible');
+                pendingHideTimer = null;
+              }, 220);
+            }
+          } else {
+            container.classList.remove('visible');
           }
         }
         if (nextTitle) {

@@ -88,6 +88,12 @@
       opacity: 0;
     }
 
+    .overlay-container:not(.visible) {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
     .overlay-glass {
       display: flex;
       flex-direction: column;
@@ -442,13 +448,14 @@
 
       const show = data.show_queue !== false && data.showQueue !== false;
       const playing = data.is_playing === true || data.isPlaying === true;
+      const forced = data.is_force_visible === true || data.isForceVisible === true;
       const items = Array.isArray(data.queue_up_next)
         ? data.queue_up_next
         : (Array.isArray(data.queueUpNext) ? data.queueUpNext : []);
 
-      // 미리보기에서는 항상 샘플/현재 상태로 표시해 등장 애니·설정을 바로 확인
-      const visible = isPreviewMode || (show && (playing || items.length > 0));
-      const usePreviewSamples = isPreviewMode && items.length === 0;
+      // 상시보기(forced)가 켜져 있으면 항상 표시, 꺼져있으면 재생 중(playing)일 때만 표시
+      const visible = forced || (show && playing);
+      const usePreviewSamples = forced && items.length === 0;
 
       if (!visible) {
         container.classList.remove('visible');

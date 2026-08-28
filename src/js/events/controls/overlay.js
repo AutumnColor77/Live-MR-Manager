@@ -240,7 +240,10 @@ export function initOverlayListeners() {
     if (overlayRoundingVal) overlayRoundingVal.textContent = `${rounding}px`;
 
     const bgColor = overlayBgColor.value.replace('#', '');
-    const isForceVisible = !!(toggleOverlayForceVisible && toggleOverlayForceVisible.checked);
+    const isForceVisible = !!(
+      (toggleOverlayForceVisible && toggleOverlayForceVisible.checked) ||
+      (toggleOverlayQueueForceVisible && toggleOverlayQueueForceVisible.checked)
+    );
     const animationDirection = overlayAnimationDirection?.value || 'left';
     const queueExpandDirection = overlayQueueExpandDirection?.value || 'both';
     const themeMode = document.documentElement.getAttribute('data-theme') || 'dark';
@@ -254,9 +257,7 @@ export function initOverlayListeners() {
         scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize,
         ...(currentTarget === 'queue' ? { queueExpandDirection } : {}),
       };
-      if (currentTarget !== 'queue') {
-        config.isForceVisible = isForceVisible;
-      }
+      config.isForceVisible = isForceVisible;
 
       localStorage.setItem('overlay-settings', JSON.stringify(config));
     }
@@ -359,18 +360,12 @@ export function initOverlayListeners() {
       if (mode === 'lyrics') {
         loadOverlaySettings();
         overlayIframe.src = previewSrc('overlay-lyrics.html');
-        await updateOverlayLyrics({
-          current: '',
-          next: '첫 번째 가사가 여기에 미리 표시됩니다.',
-          index: -1,
-        }).catch((err) => console.error(err));
       } else if (mode === 'queue') {
         loadOverlaySettings();
         overlayIframe.src = buildQueuePreviewSrc();
       } else {
         loadOverlaySettings();
         overlayIframe.src = previewSrc('overlay-info.html');
-        await updateOverlayLyrics({ current: '', next: '', index: -1 }).catch((err) => console.error(err));
       }
       requestAnimationFrame(resizeOverlayPreview);
     };
@@ -416,8 +411,9 @@ export function initOverlayListeners() {
       if (updateBgPalette) updateBgPalette(`#${final.bgColor}`);
     }
 
-    if (toggleOverlayForceVisible && config.isForceVisible !== undefined) {
-      toggleOverlayForceVisible.checked = config.isForceVisible;
+    if (config.isForceVisible !== undefined) {
+      if (toggleOverlayForceVisible) toggleOverlayForceVisible.checked = config.isForceVisible;
+      if (toggleOverlayQueueForceVisible) toggleOverlayQueueForceVisible.checked = config.isForceVisible;
     }
 
     if (overlayFont) {
@@ -490,7 +486,7 @@ export function initOverlayListeners() {
     }
   };
 
-  [overlayScale, overlayBgOpacity, overlayRounding, toggleOverlayForceVisible].forEach(el => {
+  [overlayScale, overlayBgOpacity, overlayRounding].forEach(el => {
     if (!el) return;
     el.addEventListener('change', () => updateOverlaySettings());
     if (el.type === 'range') {
@@ -546,7 +542,14 @@ export function initOverlayListeners() {
     }, { passive: false });
   }
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
-  if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
+  if (toggleOverlayForceVisible) {
+    toggleOverlayForceVisible.addEventListener('change', () => {
+      if (toggleOverlayQueueForceVisible) {
+        toggleOverlayQueueForceVisible.checked = toggleOverlayForceVisible.checked;
+      }
+      updateOverlaySettings();
+    });
+  }
 
   if (toggleOverlayQueueVisible) {
     import('../../playback-queue.js').then(({ isOverlayQueueVisible, setOverlayQueueVisible }) => {
@@ -559,10 +562,14 @@ export function initOverlayListeners() {
 
   if (toggleOverlayQueueForceVisible) {
     toggleOverlayQueueForceVisible.addEventListener('change', () => {
+      if (toggleOverlayForceVisible) {
+        toggleOverlayForceVisible.checked = toggleOverlayQueueForceVisible.checked;
+      }
       if (getPreviewMode() === 'queue' && overlayIframe) {
         overlayIframe.src = buildQueuePreviewSrc();
         requestAnimationFrame(resizeOverlayPreview);
       }
+      updateOverlaySettings();
     });
   }
 
