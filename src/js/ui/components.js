@@ -181,7 +181,7 @@ function upsertTaskCards(listEl, tasks, { emptyText, onCancel, formatStatus, sho
           </div>
         </div>
         <div class="task-actions">
-          <div class="task-provider-badge" ${showProvider ? '' : 'hidden'}></div>
+          ${showProvider ? '<div class="task-provider-badge"></div>' : ''}
           <button class="btn-task-cancel">취소</button>
         </div>
       </div>
@@ -219,10 +219,16 @@ function upsertTaskCards(listEl, tasks, { emptyText, onCancel, formatStatus, sho
       percentage.hidden = !!vm.hidePercent;
     }
     const badge = card.querySelector('.task-provider-badge');
-    if (badge && showProvider) {
-      badge.hidden = false;
-      badge.textContent = vm.providerLabel;
-      badge.classList.toggle('provider-gpu', vm.isGPU);
+    if (badge) {
+      if (showProvider && vm.providerLabel) {
+        badge.hidden = false;
+        badge.style.display = 'flex';
+        badge.textContent = vm.providerLabel;
+        badge.classList.toggle('provider-gpu', vm.isGPU);
+      } else {
+        badge.hidden = true;
+        badge.style.display = 'none';
+      }
     }
     const progressBar = card.querySelector('.task-progress-bar');
     if (progressBar) {
@@ -391,6 +397,8 @@ export function updateTaskUI() {
         case 'done':
           displayStatus = task.note ? `완료 (${task.note})` : '완료';
           terminal = true;
+          hidePercent = false;
+          indeterminate = false;
           break;
         case 'error':
         case 'awaiting-model':

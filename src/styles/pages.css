@@ -317,9 +317,9 @@
 
 .task-header-info {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 20px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .task-icon {
@@ -348,6 +348,7 @@
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  justify-content: flex-end;
 }
 
 .task-title {
@@ -364,6 +365,8 @@
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
+  justify-content: flex-end;
+  align-self: flex-end;
 }
 
 .task-provider-badge,
@@ -388,6 +391,11 @@
 .task-provider-badge {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-dim);
+}
+
+.task-provider-badge[hidden],
+.task-card [hidden] {
+  display: none !important;
 }
 
 .provider-gpu {

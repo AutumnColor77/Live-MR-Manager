@@ -159,6 +159,8 @@ async function processOne(item) {
   if (!hasUnsynced) {
     // 가사는 있지만 이미 전부 싱크됨 - 할 일 없음, 완료로 처리
     item.status = 'done';
+    item.percentage = 100;
+    item.phase = 'done';
     item.note = '이미 싱크됨';
     return;
   }
@@ -217,7 +219,12 @@ async function processOne(item) {
   }
 
   item.status = 'done';
+  item.percentage = 100;
+  item.phase = 'done';
   item.note = `${appliedCount}줄 반영됨`;
+
+  import('./ui/library.js').then((m) => m.renderLibrary?.()).catch(() => {});
+  import('./utils.js').then((m) => m.showNotification?.(`「${song?.title || item.title || '곡'}」 가사 정렬이 완료되었습니다.`, 'success')).catch(() => {});
 
   // 이 곡이 지금 가사 싱크 에디터에 열려 있으면 결과를 즉시 반영.
   notifyItemComplete(item.path, lines);
@@ -248,6 +255,15 @@ async function runQueue() {
         }
       }
       notifyQueueChanged();
+      if (item.status === 'done') {
+        // 100% 게이지 상태를 잠시 보여준 뒤 대기열에서 제거
+        await new Promise((r) => setTimeout(r, 600));
+        const idx = state.alignmentQueue.findIndex((i) => i.path === item.path);
+        if (idx !== -1) {
+          state.alignmentQueue.splice(idx, 1);
+          notifyQueueChanged();
+        }
+      }
     }
   } finally {
     isRunning = false;

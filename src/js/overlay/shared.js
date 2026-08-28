@@ -16,7 +16,10 @@
 
   function connectWS(onMessage, port) {
     const wsPort = port || 14201;
-    const host = global.location.hostname || 'localhost';
+    let host = global.location.hostname || 'localhost';
+    if (host === 'tauri.localhost' || host === 'localhost.tauri' || !host) {
+      host = '127.0.0.1';
+    }
     const socket = new WebSocket(`ws://${host}:${wsPort}`);
     socket.onmessage = (event) => {
       try {
