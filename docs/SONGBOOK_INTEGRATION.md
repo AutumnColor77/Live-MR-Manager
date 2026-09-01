@@ -12,11 +12,12 @@
 
 앱 헤더/신청목록의 Google·네이버 버튼으로만 시작합니다.
 
-1. `begin_songbook_oauth`가 nonce(`state`)를 Settings DB에 저장합니다(약 180초).
+1. `begin_songbook_oauth`가 nonce(`state`)와 Songbook base URL을 Settings DB에 저장합니다(약 180초).
 2. 브라우저는 `desktop-connect` URL에 그 `state`를 실어 엽니다.
-3. 딥링크 콜백 `live-mr-manager://oauth/callback?token=…&state=…`에서 pending state를 소비합니다. 콜백에 `state`가 있으면 반드시 일치해야 하고, Songbook이 `state`를 생략하면 로그인 창이 열려 있는 동안만 허용합니다.
-4. 앱에서 로그인을 시작하지 않은 딥링크, 만료된 요청, 불일치 `state`는 거절됩니다.
-5. 로그에는 토큰을 마스킹합니다 (`redact_oauth_url_for_log`).
+3. 딥링크 콜백 `live-mr-manager://oauth/callback?code=…`에서 pending state를 소비합니다. 콜백에 `state`가 있으면 반드시 일치해야 하고, Songbook이 `state`를 생략하면 로그인 창이 열려 있는 동안만 허용합니다.
+4. 앱은 `POST /api/auth/desktop-exchange`로 일회용 `code` **또는** 로그인 시작 때 만든 `state`를 세션 토큰과 교환합니다. 딥링크에 세션 토큰(`?token=`)은 쓰지 않습니다. 브라우저가 커스텀 프로토콜을 막아도 앱이 `state`로 폴링해 로그인을 끝냅니다.
+5. 앱에서 로그인을 시작하지 않은 딥링크, 만료된 요청, 불일치 `state`, 만료·재사용된 `code`는 거절됩니다.
+6. 로그에는 `code`/`token`을 마스킹합니다 (`redact_oauth_url_for_log`).
 
 구현: [`src-tauri/src/songbook_auth.rs`](../src-tauri/src/songbook_auth.rs), [`src-tauri/crates/lmrm-logic/src/oauth.rs`](../src-tauri/crates/lmrm-logic/src/oauth.rs).
 

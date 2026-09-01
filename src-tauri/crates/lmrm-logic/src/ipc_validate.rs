@@ -248,6 +248,39 @@ pub fn validate_session_token(token: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+const MIN_HANDOFF_CODE_LEN: usize = 16;
+const MAX_HANDOFF_CODE_LEN: usize = 256;
+
+/// One-time desktop handoff code from Songbook (`randomToken(24)` hex).
+pub fn validate_handoff_code(code: &str) -> Result<String, String> {
+    let trimmed = require_nonempty(code, "로그인 코드")?;
+    require_max_len(trimmed, MAX_HANDOFF_CODE_LEN, "로그인 코드")?;
+    if trimmed.len() < MIN_HANDOFF_CODE_LEN {
+        return Err("로그인 코드가 올바르지 않습니다.".into());
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("로그인 코드가 올바르지 않습니다.".into());
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+' | '/' | '='))
+    {
+        return Err("로그인 코드가 올바르지 않습니다.".into());
+    }
+    Ok(trimmed.to_string())
+}
+
+pub fn songbook_desktop_exchange_url(base: &str) -> Result<String, String> {
+    let trimmed = require_nonempty(base, "Songbook 주소")?;
+    if !is_allowed_songbook_base(trimmed) {
+        return Err("허용되지 않은 Songbook 주소입니다.".into());
+    }
+    Ok(format!(
+        "{}/api/auth/desktop-exchange",
+        trimmed.trim_end_matches('/')
+    ))
+}
+
 pub fn validate_search_query(query: &str) -> Result<String, String> {
     let trimmed = require_nonempty(query, "검색어")?;
     require_max_len(trimmed, MAX_SEARCH_QUERY_LEN, "검색어")?;
@@ -335,6 +368,28 @@ mod tests {
         assert!(validate_session_token("has space").is_err());
         assert!(validate_session_token("bad\ntoken").is_err());
         assert!(validate_session_token(&"a".repeat(MAX_SESSION_TOKEN_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn handoff_code_validation() {
+        assert!(validate_handoff_code("0123456789abcdef01234567").is_ok());
+        assert!(validate_handoff_code("short").is_err());
+        assert!(validate_handoff_code("").is_err());
+        assert!(validate_handoff_code("has space and more!!").is_err());
+        assert!(validate_handoff_code(&"a".repeat(MAX_HANDOFF_CODE_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn desktop_exchange_url_is_allowlisted() {
+        assert_eq!(
+            songbook_desktop_exchange_url("https://www.livemrsongbook.com").unwrap(),
+            "https://www.livemrsongbook.com/api/auth/desktop-exchange"
+        );
+        assert_eq!(
+            songbook_desktop_exchange_url("http://localhost:5173/").unwrap(),
+            "http://localhost:5173/api/auth/desktop-exchange"
+        );
+        assert!(songbook_desktop_exchange_url("https://evil.example").is_err());
     }
 
     #[test]

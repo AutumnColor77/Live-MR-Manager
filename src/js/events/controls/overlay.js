@@ -52,6 +52,7 @@ export function initOverlayListeners() {
   const overlayIframe = document.getElementById('overlay-iframe');
   const overlayPreviewWrapper = document.querySelector('.overlay-preview-wrapper');
   const overlayPreviewStage = document.getElementById('overlay-preview-stage');
+  const overlayPreviewScaler = document.getElementById('overlay-preview-scaler');
   const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
   const overlayAnimationDirection = document.getElementById('overlay-animation-direction');
   const toggleOverlayLan = document.getElementById('toggle-overlay-lan');
@@ -118,39 +119,39 @@ export function initOverlayListeners() {
     queueExpandDirection: 'both',
   });
 
-  // 미리보기 스테이지는 대기열과 동일(1500×1000). OBS 실소스 크기는 가이드 문구 기준.
+  // 미리보기 iframe = OBS 스테이지 + 그림자 여유(preview HTML과 동일)
   const OBS_PREVIEW_SIZE = {
-    info: { w: 1500, h: 1000 },
-    lyrics: { w: 1500, h: 1000 },
+    info: { w: 1500, h: 540 },
+    lyrics: { w: 1500, h: 435 },
     queue: { w: 1500, h: 1000 },
   };
 
   const previewSrc = (file, extra = '') => `${file}?preview=true${extra}`;
 
   const resizeOverlayPreview = () => {
-    if (!overlayIframe || !overlayPreviewWrapper) return;
+    if (!overlayIframe || !overlayPreviewWrapper || !overlayPreviewScaler) return;
     const mode = getPreviewMode();
     const { w: canvasW, h: canvasH } = OBS_PREVIEW_SIZE[mode] || OBS_PREVIEW_SIZE.info;
 
     overlayPreviewWrapper.dataset.previewMode = mode;
 
+    const stageEl = overlayPreviewStage || overlayPreviewWrapper;
     const pad = 48;
-    const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - 8);
-    const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - 8);
+    const stageWidth = Math.max(1, stageEl.clientWidth);
+    const stageHeight = Math.max(1, stageEl.clientHeight);
     const scale = Math.min(
-      wrapperWidth / (canvasW + pad),
-      wrapperHeight / (canvasH + pad)
+      stageWidth / (canvasW + pad),
+      stageHeight / (canvasH + pad)
     );
+    const scaledW = canvasW * scale;
+    const scaledH = canvasH * scale;
+
+    overlayPreviewScaler.style.width = `${scaledW}px`;
+    overlayPreviewScaler.style.height = `${scaledH}px`;
 
     overlayIframe.style.width = `${canvasW}px`;
     overlayIframe.style.height = `${canvasH}px`;
-    overlayIframe.style.position = 'relative';
-    overlayIframe.style.left = '';
-    overlayIframe.style.top = '';
-    overlayIframe.style.transformOrigin = 'center center';
     overlayIframe.style.transform = `scale(${scale})`;
-    overlayIframe.style.border = 'none';
-    overlayIframe.style.background = 'transparent';
   };
 
   const setupPalette = (paletteId, colorInput, hexInput) => {

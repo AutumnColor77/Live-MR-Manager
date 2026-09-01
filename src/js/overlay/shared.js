@@ -63,7 +63,7 @@
     const bodyStyle = getComputedStyle(document.body);
     const padX = (parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0);
     const padY = (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
-    const shadow = 40;
+    const shadow = 50;
     const availW = Math.max(1, document.body.clientWidth - padX - shadow * 2);
     const availH = Math.max(1, document.body.clientHeight - padY - shadow * 2);
     const fit = Math.min(availW / w, availH / h);

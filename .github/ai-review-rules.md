@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | SEC-01 | No secrets in source | Discord webhook URLs, OAuth client secrets, API keys, session tokens |
 | SEC-02 | IPC input validation | New `#[tauri::command]` params must validate path/URL/token/length |
-| SEC-03 | Opener / deep-link abuse | Arbitrary URL open, scheme confusion, token injection |
+| SEC-03 | Opener / deep-link abuse | Arbitrary URL open, scheme confusion, token injection, accepting `?token=` in Songbook desktop callback instead of `?code=` + `/api/auth/desktop-exchange` |
 | SEC-04 | Path traversal / SSRF | Untrusted paths into `fs`, HTTP clients without host allowlists |
 | SEC-05 | Capability regression | Re-adding `opener:default`, `assetProtocol: **` or `$HOME/**`, `csp: null` |
 | SEC-06 | Secret logging | Logging full bearer tokens, webhook URLs, `.env` contents |

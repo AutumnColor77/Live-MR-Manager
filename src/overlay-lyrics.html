@@ -50,16 +50,23 @@
       position: relative;
     }
 
-    html[data-preview],
-    html[data-preview] body {
+    html[data-preview] {
       width: 1500px !important;
-      height: 1000px !important;
+      height: 435px !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
     }
     html[data-preview] body {
+      width: 1500px !important;
+      height: 375px !important;
+      flex-shrink: 0;
       display: block;
       padding: 0;
       box-sizing: border-box;
-      overflow: hidden;
+      overflow: visible;
+      position: relative;
     }
     html[data-preview] .overlay-container,
     html[data-preview] .overlay-container.dir-left,

@@ -2,7 +2,7 @@
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OauthCallback {
-    pub token: String,
+    pub code: String,
     pub state: Option<String>,
 }
 
@@ -36,23 +36,32 @@ pub fn parse_oauth_callback_url(raw: &str) -> Option<OauthCallback> {
     {
         return None;
     }
-    let token = query_param(trimmed, "token")?;
+    // Session tokens must not appear in the deep link. One-time handoff codes only.
+    let code = query_param(trimmed, "code")?;
     let state = query_param(trimmed, "state");
-    Some(OauthCallback { token, state })
+    Some(OauthCallback { code, state })
 }
 
-/// Strip bearer tokens from deep-link URLs before writing to app.log.
+fn redact_query_value(raw: &mut String, key: &str) {
+    let needle = format!("{key}=");
+    let mut search_from = 0;
+    while let Some(rel) = raw[search_from..].find(&needle) {
+        let start = search_from + rel;
+        let after = start + needle.len();
+        let rest = &raw[after..];
+        let end = rest
+            .find(|c| c == '&' || c == '#' || c == ' ' || c == '"')
+            .unwrap_or(rest.len());
+        raw.replace_range(after..after + end, "<redacted>");
+        search_from = after + "<redacted>".len();
+    }
+}
+
+/// Strip one-time codes and leftover bearer tokens from deep-link URLs before app.log.
 pub fn redact_oauth_url_for_log(raw: &str) -> String {
     let mut out = raw.to_string();
-    let Some(start) = out.find("token=") else {
-        return out;
-    };
-    let after = start + "token=".len();
-    let rest = &out[after..];
-    let end = rest
-        .find(|c| c == '&' || c == '#' || c == ' ' || c == '"')
-        .unwrap_or(rest.len());
-    out.replace_range(after..after + end, "<redacted>");
+    redact_query_value(&mut out, "code");
+    redact_query_value(&mut out, "token");
     out
 }
 
@@ -73,72 +82,80 @@ mod tests {
     use super::*;
     use crate::ipc_validate;
 
+    const FIXTURE_CODE: &str = "0123456789abcdef0123456789abcdef01234567";
+
     #[test]
-    fn parses_desktop_oauth_callback_with_token() {
-        // Low-entropy fixture (not a real credential). Allowed in .gitleaks.toml.
-        let url = "live-mr-manager://oauth/callback?token=test-fixture-plain";
-        let parsed = parse_oauth_callback_url(url).expect("parse");
-        assert_eq!(parsed.token, "test-fixture-plain");
+    fn parses_desktop_oauth_callback_with_code() {
+        let url = format!("live-mr-manager://oauth/callback?code={FIXTURE_CODE}");
+        let parsed = parse_oauth_callback_url(&url).expect("parse");
+        assert_eq!(parsed.code, FIXTURE_CODE);
         assert_eq!(parsed.state, None);
     }
 
     #[test]
-    fn parses_url_encoded_token() {
-        let url = "live-mr-manager://oauth/callback?token=hello%2Bworld%2Fplain";
+    fn parses_url_encoded_code() {
+        let url = "live-mr-manager://oauth/callback?code=0123456789abcdef%2Bplain";
         assert_eq!(
-            parse_oauth_callback_url(url).map(|c| c.token),
-            Some("hello+world/plain".into())
+            parse_oauth_callback_url(url).map(|c| c.code),
+            Some("0123456789abcdef+plain".into())
         );
     }
 
     #[test]
     fn rejects_non_deep_link_schemes() {
-        assert!(parse_oauth_callback_url("https://example.com/oauth/callback?token=x").is_none());
-        assert!(parse_oauth_callback_url("http://localhost/oauth/callback?token=x").is_none());
+        assert!(parse_oauth_callback_url("https://example.com/oauth/callback?code=x").is_none());
+        assert!(parse_oauth_callback_url("http://localhost/oauth/callback?code=x").is_none());
     }
 
     #[test]
     fn rejects_deep_link_without_oauth_path() {
-        assert!(parse_oauth_callback_url("live-mr-manager://settings?token=x").is_none());
+        let url = format!("live-mr-manager://settings?code={FIXTURE_CODE}");
+        assert!(parse_oauth_callback_url(&url).is_none());
     }
 
     #[test]
-    fn rejects_oauth_callback_without_token() {
-        assert!(parse_oauth_callback_url("live-mr-manager://oauth/callback?code=1").is_none());
-        assert!(parse_oauth_callback_url("live-mr-manager://oauth/callback?token=").is_none());
+    fn rejects_oauth_callback_without_code_or_with_token_only() {
+        assert!(parse_oauth_callback_url("live-mr-manager://oauth/callback?token=legacy").is_none());
+        assert!(parse_oauth_callback_url("live-mr-manager://oauth/callback?code=").is_none());
+        assert!(parse_oauth_callback_url("live-mr-manager://oauth/callback").is_none());
     }
 
     #[test]
-    fn stops_token_at_fragment_or_ampersand() {
-        let url = "live-mr-manager://oauth/callback?token=part1&state=zz#frag";
+    fn stops_code_at_fragment_or_ampersand() {
+        let url =
+            "live-mr-manager://oauth/callback?code=0123456789abcdef01234567&state=zz#frag";
         let parsed = parse_oauth_callback_url(url).expect("parse");
-        assert_eq!(parsed.token, "part1");
+        assert_eq!(parsed.code, "0123456789abcdef01234567");
         assert_eq!(parsed.state.as_deref(), Some("zz"));
     }
 
     #[test]
     fn trims_quotes_around_deep_link() {
-        let url = "\"live-mr-manager://oauth/callback?token=quotedToken\"";
+        let url = format!("\"live-mr-manager://oauth/callback?code={FIXTURE_CODE}\"");
         assert_eq!(
-            parse_oauth_callback_url(url).map(|c| c.token),
-            Some("quotedToken".into())
+            parse_oauth_callback_url(&url).map(|c| c.code),
+            Some(FIXTURE_CODE.into())
         );
     }
 
     #[test]
     fn accepts_oauth_query_variant() {
-        let url = "live-mr-manager://oauth?token=shortForm";
+        let url = format!("live-mr-manager://oauth?code={FIXTURE_CODE}");
         assert_eq!(
-            parse_oauth_callback_url(url).map(|c| c.token),
-            Some("shortForm".into())
+            parse_oauth_callback_url(&url).map(|c| c.code),
+            Some(FIXTURE_CODE.into())
         );
     }
 
     #[test]
-    fn redacts_token_query_for_logs() {
-        let raw = "live-mr-manager://oauth/callback?token=secret-value&state=abc";
-        let redacted = redact_oauth_url_for_log(raw);
-        assert!(!redacted.contains("secret-value"));
+    fn redacts_code_and_token_query_for_logs() {
+        let raw = format!(
+            "live-mr-manager://oauth/callback?code={FIXTURE_CODE}&token=legacy-secret&state=abc"
+        );
+        let redacted = redact_oauth_url_for_log(&raw);
+        assert!(!redacted.contains(FIXTURE_CODE));
+        assert!(!redacted.contains("legacy-secret"));
+        assert!(redacted.contains("code=<redacted>"));
         assert!(redacted.contains("token=<redacted>"));
         assert!(redacted.contains("state=abc"));
     }

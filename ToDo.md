@@ -133,7 +133,7 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 
 멜로밍 대체용 자체 Songbook(Cloudflare Workers) 연동입니다. 음원은 로컬만 — 메타·썸네일·유튜브 URL을 Push/Pull하고, 웹 Admin 재생은 앱 폴러로 연동합니다.
 
-- [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타. **(2026-09)** `begin_songbook_oauth` nonce·콜백 `state` 검증·토큰 로그 마스킹
+- [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타. **(2026-09)** `begin_songbook_oauth` nonce·콜백 `state` 검증·`?code=` + `desktop-exchange`·로그 마스킹
 - [X] **라이브러리 보내기**: 본인 채널 Push(POST/PATCH), demo 제외, 채널 없으면 생성
 - [X] **Push 삭제 정합 (v0.7.0)**: 로컬에 없는 원격 곡 `enabled=false`(웹 숨김), 토스트「제거 N」
 - [X] **썸네일 축소 업로드**: 동기화 전 JPEG data URL 압축

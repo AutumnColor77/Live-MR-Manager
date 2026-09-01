@@ -297,7 +297,7 @@ async function startProviderLogin(provider) {
   const btn = document.getElementById('songbook-login-btn');
   let desktopUrl;
   try {
-    const oauthState = await invoke('begin_songbook_oauth');
+    const oauthState = await invoke('begin_songbook_oauth', { baseUrl: songbookBase() });
     desktopUrl = desktopLoginUrl(provider, oauthState);
   } catch (err) {
     console.error('[SongbookAuth] begin_songbook_oauth failed', err);
@@ -425,6 +425,15 @@ export function initSongbookAuth() {
     const payload = event?.payload ?? event;
     void syncAuthUi(payload);
   }).catch((err) => console.warn('[SongbookAuth] listen failed', err));
+
+  listen('songbook-auth-error', (event) => {
+    const payload = event?.payload ?? event;
+    const message =
+      (payload && typeof payload === 'object' && payload.message)
+        ? String(payload.message)
+        : '로그인에 실패했습니다. 다시 시도해 주세요.';
+    showNotification(message, 'error');
+  }).catch((err) => console.warn('[SongbookAuth] error listen failed', err));
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();

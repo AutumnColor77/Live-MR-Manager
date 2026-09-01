@@ -9,7 +9,7 @@
 - **비신뢰 HTML 차단**: 라이브러리 카드·토스트·메타 검색·필터 드롭다운에 `escapeHtml`/`textContent`를 적용해 유튜브 제목·시청자 신청곡이 DOM에 삽입되지 않습니다.
 - **IPC 경로·URL**: `read_audio_file`은 오디오 파일만, `play_track` HTTP는 YouTube 호스트만 허용합니다.
 - **오버레이 썸네일**: 앱 데이터 루트의 이미지(매직 바이트)만 data URI로 읽어 브로드캐스트합니다.
-- **Songbook OAuth**: 딥링크 로그에서 토큰을 마스킹하고, 로그인 시작 시 nonce(`state`)를 발급해 콜백을 검증합니다.
+- **Songbook OAuth**: 딥링크는 일회용 `code`만 받고 `POST /api/auth/desktop-exchange`로 세션을 교환합니다. 로그에서 `code`/`token`을 마스킹하고, 로그인 시작 시 nonce(`state`)를 발급해 콜백을 검증합니다.
 - **공급망**: 관리형 yt-dlp를 GitHub `2026.08.19` + SHA-256으로 고정. TLS 인증서 검증 생략(`--no-check-certificates`)과 Edge 쿠키 자동 재시도를 제거. 내장 UVR 모델도 SHA-256 검증.
 - **커스텀 모델 URL**: 사설망/루프백 호스트 차단, HTTPS 리다이렉트만 허용.
 - **asset 프로토콜**: `$HOME/**` 전역 스코프를 제거하고 `$HOME/Music/**`만 유지합니다.

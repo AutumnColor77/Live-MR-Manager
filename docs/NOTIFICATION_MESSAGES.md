@@ -207,6 +207,12 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 로그인을 다시 시작해 주세요. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | 로그인 요청이 만료되었습니다. 다시 시도해 주세요. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | OAuth state가 일치하지 않습니다. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 로그인 코드가 올바르지 않습니다. | `src-tauri/crates/lmrm-logic/src/ipc_validate.rs` |
+| 오류 | 로그인 코드가 만료되었거나 올바르지 않습니다. 다시 시도해 주세요. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 로그인 서버에 연결하지 못했습니다. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 로그인 서버가 세션을 주지 않았습니다. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 로그인에 실패했습니다. 다시 시도해 주세요. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 허용되지 않은 Songbook 주소입니다. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | 연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요. | `src/js/events/songbook-auth.js` |
 | 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |

@@ -20,4 +20,6 @@ regexes = [
   '''token=unittest-''',
   '''token=test-fixture''',
   '''token=test-fixture-plain''',
+  '''token=legacy''',
+  '''token=legacy-secret''',
 ]

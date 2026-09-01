@@ -1243,8 +1243,9 @@ html[data-theme="sky"] .task-progress-container {
   background: color-mix(in srgb, var(--surface-2) 65%, var(--bg-color) 35%);
   overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
   padding: 12px;
 }
 
@@ -1309,22 +1310,32 @@ html[data-theme="dark"] .overlay-preview-wrapper::before {
 
 .overlay-preview-stage {
   position: relative;
+  flex: 1 1 0;
+  align-self: stretch;
   width: 100%;
-  height: 100%;
+  height: 0;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+.overlay-preview-scaler {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
 }
 
 .overlay-preview-iframe {
-  position: relative;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
   border: none;
   background: transparent !important;
   color-scheme: dark;
-  transform-origin: center center;
+  transform-origin: top left;
 }
 
 /* Narrow: stack preview (compact) above scrolling settings */
