@@ -4,6 +4,16 @@
 
 import { convertFileSrc, invoke } from './tauri-bridge.js';
 
+/** Escape untrusted text for HTML text and quoted attributes. */
+export function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function formatTime(sec) {
   if (isNaN(sec) || sec < 0) return "0:00";
   const m = Math.floor(sec / 60);
@@ -42,10 +52,16 @@ export function showNotification(msg, type = "info") {
     error: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
   };
 
-  toast.innerHTML = `
-    <div class="toast-icon">${icons[type] || icons.info}</div>
-    <div class="toast-message">${msg}</div>
-  `;
+  const icon = document.createElement('div');
+  icon.className = 'toast-icon';
+  icon.innerHTML = icons[type] || icons.info;
+
+  const message = document.createElement('div');
+  message.className = 'toast-message';
+  message.textContent = String(msg ?? '');
+
+  toast.appendChild(icon);
+  toast.appendChild(message);
   container.appendChild(toast);
 
   // 3초 후 애니메이션과 함께 제거
@@ -85,13 +101,17 @@ export function showUpdateAvailable(info) {
       </svg>
     </div>
     <div class="toast-body">
-      <div class="toast-message">새 버전 v${latest}이(가) 있습니다. (현재 v${current})</div>
+      <div class="toast-message"></div>
       <div class="toast-actions">
         <button type="button" class="toast-btn primary" data-action="download">다운로드</button>
         <button type="button" class="toast-btn" data-action="dismiss">나중에</button>
       </div>
     </div>
   `;
+  const msgEl = toast.querySelector('.toast-message');
+  if (msgEl) {
+    msgEl.textContent = `새 버전 v${latest}이(가) 있습니다. (현재 v${current})`;
+  }
 
   toast.querySelector('[data-action="download"]')?.addEventListener("click", async () => {
     try {

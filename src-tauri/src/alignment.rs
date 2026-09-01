@@ -549,6 +549,7 @@ pub async fn get_model_list(handle: AppHandle) -> Result<Vec<String>, String> {
 
 #[command]
 pub async fn read_audio_file(path: String) -> Result<Vec<u8>, String> {
+    let path = crate::ipc_validate::validate_local_audio_path(&path)?;
     fs::read(path).map_err(|e| format!("Failed to read file: {}", e))
 }
 

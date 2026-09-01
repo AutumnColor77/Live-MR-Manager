@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::net::{TcpListener, TcpStream};
@@ -424,31 +425,80 @@ async fn handle_ws_connection(peers: PeerMap, raw_stream: TcpStream, addr: Socke
 
 use base64::{Engine as _, engine::general_purpose};
 
+const MAX_THUMBNAIL_BYTES: u64 = 8 * 1024 * 1024;
+
+fn is_image_extension(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+    )
+}
+
+fn looks_like_image(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+        || bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+        || bytes.starts_with(b"GIF87a")
+        || bytes.starts_with(b"GIF89a")
+        || (bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP")
+        || bytes.starts_with(b"BM")
+}
+
+fn path_is_under(path: &Path, root: &Path) -> bool {
+    let (Ok(canon_path), Ok(canon_root)) = (path.canonicalize(), root.canonicalize()) else {
+        return false;
+    };
+    canon_path.starts_with(canon_root)
+}
+
+fn thumbnail_roots() -> Vec<PathBuf> {
+    let Some(paths) = crate::state::APP_PATHS.lock().clone() else {
+        return Vec::new();
+    };
+    vec![paths.root, paths.cache, paths.temp, paths.separated, paths.models]
+}
+
 fn ensure_thumbnail_data_uri(thumbnail: String) -> String {
     if thumbnail.is_empty() || thumbnail.starts_with("http") || thumbnail.starts_with("data:") {
         return thumbnail;
     }
 
-    // Handle tauri/asset protocols by stripping them if they are local-ish
     let path_str = if thumbnail.starts_with("tauri://localhost/_up_/") {
         thumbnail.replace("tauri://localhost/_up_/", "")
     } else if thumbnail.starts_with("asset://localhost/") {
-         thumbnail.replace("asset://localhost/", "")
+        thumbnail.replace("asset://localhost/", "")
     } else {
         thumbnail.clone()
     };
 
-    // Attempt to read local file and convert to Data URI
-    if let Ok(bytes) = std::fs::read(&path_str) {
-        let b64 = general_purpose::STANDARD.encode(bytes);
-        let ext = std::path::Path::new(&path_str)
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("png");
-        return format!("data:image/{};base64,{}", ext, b64);
+    let path = PathBuf::from(&path_str);
+    if !is_image_extension(&path) {
+        return thumbnail;
     }
-
-    thumbnail
+    if !thumbnail_roots().iter().any(|root| path_is_under(&path, root)) {
+        return thumbnail;
+    }
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return thumbnail;
+    };
+    if !meta.is_file() || meta.len() > MAX_THUMBNAIL_BYTES {
+        return thumbnail;
+    }
+    let Ok(bytes) = std::fs::read(&path) else {
+        return thumbnail;
+    };
+    if !looks_like_image(&bytes) {
+        return thumbnail;
+    }
+    let b64 = general_purpose::STANDARD.encode(bytes);
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("png");
+    format!("data:image/{};base64,{}", ext, b64)
 }
 
 pub async fn broadcast_overlay_state(mut state: OverlayState) {

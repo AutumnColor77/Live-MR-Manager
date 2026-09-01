@@ -3,7 +3,7 @@
  */
 import { state } from './state.js';
 import { getAudioMetadata, saveLibrary, searchYoutube, youtubePreviewAudio, togglePlayback } from './audio.js';
-import { showNotification } from './utils.js';
+import { escapeHtml, showNotification } from './utils.js';
 import { isDuplicateYoutubeTrack, normalizeYoutubeUrl } from './youtube-utils.js';
 import { listen } from './tauri-bridge.js';
 
@@ -17,14 +17,6 @@ let previewIndex = null;
 let previewBusyIndex = null;
 let previewToken = 0;
 let previewStatusUnlisten = null;
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function setStatus(message) {
   const el = document.getElementById('yt-search-status');

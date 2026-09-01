@@ -26,15 +26,15 @@ FFmpeg·yt-dlp처럼 사용자가 원 배포처에서 런타임에 직접 받는
 | --- | --- |
 | 앱 기본 모델 (`MODELS`) | §1 전부 + 상업 이용 명확 |
 | 설정 UI “추천/원클릭” 카탈로그 | §1 전부. NC 모델 금지 |
-| 사용자 커스텀 로컬/URL 등록 | 사용자가 스스로 권리를 확인. 앱은 공식 보증하지 않음. **URL은 HTTPS만**, 기대 SHA-256(64 hex)·용량 상한(2 GiB)·스트리밍 검증·원자적 설치 적용 (`model_commands.rs`) |
+| 사용자 커스텀 로컬/URL 등록 | 사용자가 스스로 권리를 확인. 앱은 공식 보증하지 않음. **URL은 공개 HTTPS만**, 사설망/루프백 차단, HTTPS 리다이렉트 재검증, 기대 SHA-256(64 hex)·용량 상한(2 GiB)·스트리밍 검증·원자적 설치 적용 (`model_commands.rs`) |
 | 프로젝트 GitHub Release에 가중치 업로드 | §1 + NOTICE/LICENSE 파일을 같은 릴리스에 포함 |
 
-## 3. 현재 기본 분리 모델 (v0.5.1)
+## 3. 현재 기본 분리 모델 (v0.7.6)
 
 | ID | 파일 | 판정 | 조치 |
 | --- | --- | --- | --- |
-| `kim` | Kim_Vocal_2.onnx | **잠정 MIT** | UVR README 크레딧 요청 근거. HF `seanghay/uvr_models`에 license 태그 없음 → UI/고지에 “잠정” 표기, UVR 크레딧 유지, 작성자 확인 추적 |
-| `inst_hq_3` | UVR-MDX-NET-Inst_HQ_3.onnx | **잠정 MIT** | 동일 |
+| `kim` | Kim_Vocal_2.onnx | **잠정 MIT** | SHA-256 `ce74ef3b6a6024ce44211a07be9cf8bc6d87728cc852a68ab34eb8e58cde9c8b`. UVR README 크레딧 요청 근거. HF `seanghay/uvr_models`에 license 태그 없음 → UI/고지에 “잠정” 표기, UVR 크레딧 유지, 작성자 확인 추적 |
+| `inst_hq_3` | UVR-MDX-NET-Inst_HQ_3.onnx | **잠정 MIT** | SHA-256 `317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc`. 동일 |
 
 근거: [UVR License 절](https://github.com/Anjok07/ultimatevocalremovergui#license) — 모델 사용 시 MIT 준수·크레딧.  
 잔여 리스크: [Issue #1242](https://github.com/Anjok07/ultimatevocalremovergui/issues/1242)에서 상업 제품 사용 여부가 작성자 확인 대기.

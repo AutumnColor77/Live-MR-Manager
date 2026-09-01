@@ -42,8 +42,10 @@ reviews:
 
     - path: "src-tauri/tauri.conf.json"
       instructions: >
-        Flag CSP null/disabled, overly broad assetProtocol scopes, and insecure
-        withGlobalTauri patterns if newly introduced.
+        Flag CSP null/disabled, overly broad assetProtocol scopes (including
+        restoring $HOME/**), and insecure withGlobalTauri patterns if newly
+        introduced. Do not expand assetProtocol beyond $HOME/Music/** without
+        a security justification.
 
     - path: "scripts/**"
       instructions: >

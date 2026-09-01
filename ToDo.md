@@ -37,7 +37,7 @@
 - [X] **(개선) MR 수동 관리 시스템**: 메타데이터 모달 내 MR 수동 플래그 추가 및 AI 분리 시 체크박스 자동 잠금(Lock) 구현
 - [X] **(개선) MR/보컬 트랙 삭제 후 재생**: 분리된 트랙 삭제 시, 플레이어가 자동으로 원본 트랙을 재생하도록 즉시 소스 연결 로직 구현 완료.
 - [X] **모델 관리자 UI**: AI 모델 상태 배지, 다운로드 및 삭제 관리 UI 기초 구현 완료.
-- [X] **커스텀 분리 모델 URL 등록 (v0.6.0)**: HTTPS·SHA-256·용량 상한·스트리밍 검증·원자적 설치, 진행률 UI
+- [X] **커스텀 분리 모델 URL 등록 (v0.6.0)**: HTTPS·SHA-256·용량 상한·스트리밍 검증·원자적 설치, 진행률 UI. **(2026-09)** 사설망/루프백 차단·HTTPS 리다이렉트 재검증
 - [X] **AI 분리 취소 안정화 (v0.4.8)**: 경로 정규화 기반 취소 키 통일 및 분리 스레드/진행률 루프 cancel flag 연동 완료
 - [X] **MR 배지·캐시 경로 통일 (v0.4.10)**: `cache_key_variants` 기반 MR 파일 탐색으로 라이브러리 로드/F5 후 MR 배지 유지, 카드에서 `check_mr_separated` 재확인
 - [X] **KEY/BPM 분석 MR 경로 수정 (v0.4.10)**: MR `inst.wav` 탐색을 재생·`check_mr_separated`와 동일한 URL 변형 키로 통일
@@ -105,6 +105,7 @@
 - [X] **GitHub 업데이트 확인 (v0.4.10)**: 설정에서 수동 확인·백그라운드 주기 검사 (`updater.rs`)
 - [X] **OBS 오버레이 릴리즈 연결 및 상시보기 수정 (v0.7.6)**: CSP `frame-ancestors 'self'`, `ws:` 프로토콜 허용, `tauri.localhost` 호스트 보정, 상시보기 해제 시 미리보기/OBS 완벽 은닉
 - [X] **AI 가사 정렬 대기열 UX 개선 (v0.7.6)**: 불필요한 배지 박스 제거, 취소 버튼 하단 정렬, 완료 시 100% 도달 후 자동 삭제
+- [X] **데스크톱 보안 강화 (2026-09)**: HTML 이스케이프, IPC 오디오/YouTube 검증, OAuth state·로그 마스킹, yt-dlp/UVR SHA-256 핀, 커스텀 모델 사설망 차단, assetProtocol `$HOME/**` 축소
 - [ ] **에러 핸들링 강화**: 오디오 디코딩 및 AI 추론 시 발생할 수 있는 예외 상황에 대한 상세 리포팅 시스템
 - [ ] **자동 업데이트**: 앱 자동 다운로드·설치 (현재: GitHub Releases 수동 확인만. §7 Phase 4 companion manifest 연동 예정)
 
@@ -132,7 +133,7 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 
 멜로밍 대체용 자체 Songbook(Cloudflare Workers) 연동입니다. 음원은 로컬만 — 메타·썸네일·유튜브 URL을 Push/Pull하고, 웹 Admin 재생은 앱 폴러로 연동합니다.
 
-- [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타
+- [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타. **(2026-09)** `begin_songbook_oauth` nonce·콜백 `state` 검증·토큰 로그 마스킹
 - [X] **라이브러리 보내기**: 본인 채널 Push(POST/PATCH), demo 제외, 채널 없으면 생성
 - [X] **Push 삭제 정합 (v0.7.0)**: 로컬에 없는 원격 곡 `enabled=false`(웹 숨김), 토스트「제거 N」
 - [X] **썸네일 축소 업로드**: 동기화 전 JPEG data URL 압축

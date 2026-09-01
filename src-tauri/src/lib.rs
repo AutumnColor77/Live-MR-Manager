@@ -177,6 +177,7 @@ pub fn run() {
             cache_settings::get_overlay_lan_setting,
             cache_settings::set_overlay_lan_setting,
             songbook_auth::get_songbook_auth,
+            songbook_auth::begin_songbook_oauth,
             songbook_auth::set_songbook_user,
             songbook_auth::clear_songbook_auth
         ])

@@ -18,12 +18,12 @@
 ## C. 런타임 다운로드
 
 - [ ] FFmpeg URL이 BtbN의 고정 태그 LGPL 자산이며 코드·문서의 SHA-256이 일치한다
-- [ ] yt-dlp Windows exe 경로·GPLv3+ 고지가 `THIRD_PARTY_NOTICES.md`와 일치한다
+- [ ] yt-dlp Windows exe가 **고정 태그+SHA-256**이며 코드·`THIRD_PARTY_NOTICES.md`와 일치한다 (`releases/latest` 금지)
 - [ ] FFmpeg·yt-dlp를 프로젝트 GitHub Release·운영 서버에 재호스팅하지 않는다
 - [ ] FFmpeg·yt-dlp는 별도 프로세스로만 호출하며 `libav*` 등을 앱에 링크하지 않는다
 - [ ] 설정 > 법적 고지의 외부 도구 설명·원 배포처 소스 링크가 동작한다
-- [ ] 기본 MR 모델 URL·UVR 크레딧·잠정 MIT 표기가 UI/문서와 일치한다
-- [ ] 커스텀 모델 URL 등록: HTTPS 전용·SHA-256 필수·용량 상한이 릴리스 빌드에서 동작한다 (NC 모델은 공식 목록에 넣지 않음)
+- [ ] 기본 MR 모델 URL·UVR 크레딧·잠정 MIT 표기·**SHA-256**이 UI/문서와 일치한다
+- [ ] 커스텀 모델 URL 등록: HTTPS 전용·사설망 차단·SHA-256 필수·용량 상한이 릴리스 빌드에서 동작한다 (NC 모델은 공식 목록에 넣지 않음)
 
 ## D. 신규 AI 모델 / 외부 PR
 

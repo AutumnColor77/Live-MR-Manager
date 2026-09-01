@@ -555,8 +555,8 @@ impl SeparationTask {
         let db = crate::state::DB.lock();
         let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
         
-        let (_, model_filename, _) = crate::state::MODELS.iter()
-            .find(|(id, _, _)| *id == model_id)
+        let (_, model_filename, _, _) = crate::state::MODELS.iter()
+            .find(|(id, _, _, _)| *id == model_id)
             .unwrap_or(&crate::state::MODELS[0]);
             
         model_filename.to_string()

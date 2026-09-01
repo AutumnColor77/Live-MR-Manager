@@ -16,6 +16,8 @@ Pull Request 또는 패치를 제출하면, 해당 기여물을 **MIT License** 
 
 - 상업 이용이 금지된 모델(CC-BY-NC 등)은 공식 기본값·추천 목록·프로젝트 Release에 넣지 않습니다.
 - Apache-2.0 등 허용 모델을 변환·재배포할 때는 NOTICE/원본 고지를 함께 제공합니다.
+- FFmpeg·yt-dlp·내장 UVR 모델은 **릴리스 태그+SHA-256**으로 고정합니다. `releases/latest` floating 다운로드를 다시 넣지 마세요.
+- Tauri `assetProtocol.scope`에 `$HOME/**`를 되돌리지 마세요. 로컬 음원은 `$HOME/Music/**` 등 필요한 경로만 허용합니다.
 
 ## 개발
 

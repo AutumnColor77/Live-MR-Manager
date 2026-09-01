@@ -126,8 +126,8 @@ pub struct ModelListEntry {
 
 #[tauri::command]
 pub fn list_all_models() -> Vec<ModelListEntry> {
-    let mut out: Vec<ModelListEntry> = crate::state::MODELS.iter()
-        .map(|(id, name, _)| ModelListEntry {
+        let mut out: Vec<ModelListEntry> = crate::state::MODELS.iter()
+        .map(|(id, name, _, _)| ModelListEntry {
             id: id.to_string(),
             name: name.to_string(),
             is_custom: false,
@@ -205,13 +205,32 @@ async fn download_custom_model_https(
     if !url.starts_with("https://") {
         return Err(format!("HTTPS URL만 허용됩니다: {}", url));
     }
+    let url = crate::ipc_validate::validate_public_https_url(url)?;
 
     let client = reqwest::Client::builder()
         .user_agent("Live-MR-Manager/custom-model")
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let denied = || {
+                std::io::Error::new(std::io::ErrorKind::PermissionDenied, "redirect blocked")
+            };
+            if attempt.previous().len() >= 5 {
+                return attempt.error(denied());
+            }
+            if attempt.url().scheme() != "https" {
+                return attempt.error(denied());
+            }
+            match attempt.url().host_str() {
+                Some(host) if crate::ipc_validate::is_blocked_download_host(host) => {
+                    attempt.error(denied())
+                }
+                Some(_) => attempt.follow(),
+                None => attempt.error(denied()),
+            }
+        }))
         .build()
         .map_err(|e| format!("HTTP 클라이언트 생성 실패: {}", e))?;
 
-    let response = client.get(url).send().await.map_err(|e| format!("요청 실패: {}", e))?;
+    let response = client.get(&url).send().await.map_err(|e| format!("요청 실패: {}", e))?;
     if !response.status().is_success() {
         return Err(format!("다운로드 실패: HTTP {}", response.status()));
     }
@@ -355,16 +374,14 @@ pub async fn add_custom_model(
             return Err("다운로드 URL을 입력해주세요.".into());
         }
         crate::ipc_validate::require_max_len(url, crate::ipc_validate::MAX_URL_LEN, "다운로드 URL")?;
-        if !url.starts_with("https://") {
-            return Err(format!("HTTPS URL만 허용됩니다: {}", url));
-        }
+        let url = crate::ipc_validate::validate_public_https_url(url)?;
         let sha = normalize_sha256_hex(
             expected_sha256
                 .as_deref()
                 .ok_or_else(|| "URL 등록에는 SHA-256 해시가 필요합니다.".to_string())?,
         )?;
         let temp = models_dir.join(format!("{}.part", filename));
-        if let Err(e) = download_custom_model_https(&window, url, &sha, &temp).await {
+        if let Err(e) = download_custom_model_https(&window, &url, &sha, &temp).await {
             let _ = std::fs::remove_file(&temp);
             return Err(e);
         }

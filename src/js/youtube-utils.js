@@ -70,7 +70,7 @@ export function coerceHttpMediaUrl(raw) {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) {
     const id = extractYoutubeVideoId(value);
-    return id ? normalizeYoutubeUrl(value) : value;
+    return id ? normalizeYoutubeUrl(value) : null;
   }
   if (value.startsWith('//')) {
     return coerceHttpMediaUrl(`https:${value}`);

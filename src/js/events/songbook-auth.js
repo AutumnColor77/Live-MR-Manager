@@ -289,13 +289,21 @@ async function syncAuthUi(payload) {
   return state;
 }
 
-function desktopLoginUrl(provider) {
-  return songbookDesktopConnectUrl(provider, '/me');
+function desktopLoginUrl(provider, state) {
+  return songbookDesktopConnectUrl(provider, '/me', state);
 }
 
 async function startProviderLogin(provider) {
   const btn = document.getElementById('songbook-login-btn');
-  const desktopUrl = desktopLoginUrl(provider);
+  let desktopUrl;
+  try {
+    const oauthState = await invoke('begin_songbook_oauth');
+    desktopUrl = desktopLoginUrl(provider, oauthState);
+  } catch (err) {
+    console.error('[SongbookAuth] begin_songbook_oauth failed', err);
+    showNotification('로그인을 시작하지 못했습니다.', 'error');
+    return;
+  }
   console.log('[SongbookAuth] opening', desktopUrl);
   if (btn) btn.disabled = true;
   setMenuOpen(false);

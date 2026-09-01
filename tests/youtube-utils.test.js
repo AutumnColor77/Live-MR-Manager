@@ -61,6 +61,11 @@ describe('youtube-utils', () => {
     expect(coerceHttpMediaUrl('www.youtube.com/watch?v=abc12345678')).toBe('https://youtu.be/abc12345678');
   });
 
+  it('rejects non-youtube http(s) URLs', () => {
+    expect(coerceHttpMediaUrl('https://example.com/watch')).toBeNull();
+    expect(coerceHttpMediaUrl('http://127.0.0.1/secret')).toBeNull();
+  });
+
   it('resolves karaoke_url for songbook placeholders', () => {
     expect(
       resolvePlayableAudioPath({

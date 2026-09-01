@@ -4,6 +4,7 @@
 import { state } from '../state.js';
 import { elements } from './elements.js';
 import { getSongCategory } from './library.js';
+import { escapeHtml } from '../utils.js';
 
 export function openLibraryManager() {
   if (!elements.managerModal) return;
@@ -274,9 +275,9 @@ async function updateUnmappedTags() {
     }
 
     elements.unclassifiedTagsList.innerHTML = tagEntries.map(([name, count]) => `
-      <div class="tag-item" title="Frequency: ${count}">
-        <span class="tag-name">${name}</span>
-        <span class="tag-count" style="font-size: 0.75rem; opacity: 0.5; margin-left: 6px;">(${count})</span>
+      <div class="tag-item" title="Frequency: ${escapeHtml(String(count))}">
+        <span class="tag-name">${escapeHtml(name)}</span>
+        <span class="tag-count" style="font-size: 0.75rem; opacity: 0.5; margin-left: 6px;">(${escapeHtml(String(count))})</span>
       </div>
     `).join("");
     
@@ -316,7 +317,7 @@ export function renderManagerTable() {
     return `
     <tr data-index="${originalIndex}">
       <td style="width: 40px; text-align: center;">
-        <input type="checkbox" class="manager-check" data-path="${song.path}">
+        <input type="checkbox" class="manager-check" data-path="${escapeHtml(song.path)}">
       </td>
       <td>
         <input type="text" data-field="title" value="${escapeHtml(song.title)}" data-index="${originalIndex}">
@@ -333,7 +334,7 @@ export function renderManagerTable() {
       <td>
         <input type="text" data-field="tags" value="${escapeHtml(tagsStr)}" data-index="${originalIndex}">
       </td>
-      <td style="text-align: center;">${durationStr}</td>
+      <td style="text-align: center;">${escapeHtml(durationStr)}</td>
       <td style="text-align: center;">
         <button class="btn-row-del" data-index="${originalIndex}">삭제</button>
       </td>
@@ -355,13 +356,6 @@ function formatDuration(ms) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 export function initTableResizing() {

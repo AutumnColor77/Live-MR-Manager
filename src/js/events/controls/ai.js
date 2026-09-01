@@ -1,6 +1,7 @@
 /**
  * AI toggle and model control listeners
  */
+import { escapeHtml } from '../../utils.js';
 import { state } from '../../state.js';
 import { elements } from '../../ui/elements.js';
 import { toggleAiFeature } from '../../audio.js';
@@ -66,7 +67,7 @@ export async function refreshModelDropdown() {
     .map((m) => {
       const selected = m.id === effectiveActive ? "selected" : "";
       const label = labelFor(m);
-      return `<div class="option-item ${selected}" data-value="${m.id}">${label}</div>`;
+      return `<div class="option-item ${selected}" data-value="${escapeHtml(m.id)}">${escapeHtml(label)}</div>`;
     })
     .join("");
 

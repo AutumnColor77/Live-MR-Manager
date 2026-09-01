@@ -8,6 +8,18 @@
 
 로그인 후 헤더에는 **프로필 사진·닉네임**(또는 채널명)이 표시됩니다.
 
+## OAuth (데스크톱 로그인)
+
+앱 헤더/신청목록의 Google·네이버 버튼으로만 시작합니다.
+
+1. `begin_songbook_oauth`가 nonce(`state`)를 Settings DB에 저장합니다(약 180초).
+2. 브라우저는 `desktop-connect` URL에 그 `state`를 실어 엽니다.
+3. 딥링크 콜백 `live-mr-manager://oauth/callback?token=…&state=…`에서 pending state를 소비합니다. 콜백에 `state`가 있으면 반드시 일치해야 하고, Songbook이 `state`를 생략하면 로그인 창이 열려 있는 동안만 허용합니다.
+4. 앱에서 로그인을 시작하지 않은 딥링크, 만료된 요청, 불일치 `state`는 거절됩니다.
+5. 로그에는 토큰을 마스킹합니다 (`redact_oauth_url_for_log`).
+
+구현: [`src-tauri/src/songbook_auth.rs`](../src-tauri/src/songbook_auth.rs), [`src-tauri/crates/lmrm-logic/src/oauth.rs`](../src-tauri/crates/lmrm-logic/src/oauth.rs).
+
 라이브러리에서 **신청목록에 추가**는 시청자 신청 API(`POST /api/c/:slug/requests`)를 씁니다. 곡은 보내기로 노래책에 있어야 합니다.
 
 ## Push (앱 → 웹)
@@ -34,7 +46,7 @@
 
 [`youtube-utils.js`](../src/js/youtube-utils.js) · [`player.js`](../src/js/player.js) · [`songbook-sync.js`](../src/js/songbook-sync.js)
 
-- `resolvePlayableAudioPath`: `originalUrl`/`original_url`/`karaoke_url` 등 + scheme-less 유튜브 URL(`youtu.be/...`) 정규화
+- `resolvePlayableAudioPath`: `originalUrl`/`original_url`/`karaoke_url` 등 + scheme-less 유튜브 URL(`youtu.be/...`) 정규화. **YouTube 호스트만** 재생·다운로드합니다.
 - `songbook:song:{id}` 플레이스홀더 재생 시 Songbook admin 목록을 **재조회**해 서버 URL 반영 후 `path` 승격
 - Songbook에 URL이 **전혀 없으면** 재생 불가 → 토스트: 「이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다.」
 

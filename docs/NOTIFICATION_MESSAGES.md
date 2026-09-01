@@ -2,13 +2,13 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-09-01 (Songbook 플레이스홀더 재생 URL 해석·오버레이 UX 보강)
-- 고유 문구 수: **약 190+** (자동 수집 + 동적 문구 보강, 중복 제거)
+- 수집일: 2026-09-01 (Songbook OAuth state·IPC 검증·모델 무결성 문구 포함)
+- 고유 문구 수: **약 200+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
 
 > 문구 정리·톤앤매너 통일용 참고 문서입니다. 앱 동작에는 영향 없습니다.
-> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (v0.7.4 포함), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
+> 기능 변경 요약은 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) (Unreleased 포함), 사용자 안내는 [`UserManual.md`](../UserManual.md)를 참고하세요.
 
 ## 토스트 알림 (`showNotification`)
 
@@ -163,6 +163,11 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 모델 파일을 찾을 수 없습니다: {:?} | `src-tauri/src/alignment.rs` |
 | 오류 | 무결성 검증에 실패했습니다({}). | `src-tauri/src/model_commands.rs` |
 | 오류 | 무결성 검증에 실패했습니다({}). 다시 시도해 주세요. | `src-tauri/src/alignment.rs` |
+| 오류 | 모델 무결성 검증 실패 (expected {}, got {}) | `src-tauri/src/model_manager.rs` |
+| 오류 | YouTube URL만 허용됩니다. | `src-tauri/crates/lmrm-logic/src/ipc_validate.rs` |
+| 오류 | URL에 사용자 정보는 허용되지 않습니다. | `src-tauri/crates/lmrm-logic/src/ipc_validate.rs` |
+| 오류 | 내부망 또는 로컬 주소는 허용되지 않습니다. | `src-tauri/crates/lmrm-logic/src/ipc_validate.rs` |
+| 오류 | 지원하지 않는 오디오 확장자입니다: .{ext} | `src-tauri/crates/lmrm-logic/src/ipc_validate.rs` |
 | 오류 | 분석할 오디오가 너무 짧습니다. | `src-tauri/src/key_bpm.rs` |
 | 오류 | 서버가 보고한 파일 크기({} bytes)가 허용 상한({} bytes)을 초과합니다. | `src-tauri/src/alignment.rs` |
 | 오류 | 알 수 없는 소스 종류: {} | `src-tauri/src/model_commands.rs` |
@@ -198,6 +203,10 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 안내 | 브라우저에서 연결 중… | `src/js/events/songbook-auth.js` |
 | 성공 | Songbook 로그인 완료 | `src/js/events/songbook-auth.js` |
 | 오류 | 로그인 창을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
+| 오류 | 로그인을 시작하지 못했습니다. | `src/js/events/songbook-auth.js` |
+| 오류 | 로그인을 다시 시작해 주세요. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | 로그인 요청이 만료되었습니다. 다시 시도해 주세요. | `src-tauri/src/songbook_auth.rs` |
+| 오류 | OAuth state가 일치하지 않습니다. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | 연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요. | `src/js/events/songbook-auth.js` |
 | 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |

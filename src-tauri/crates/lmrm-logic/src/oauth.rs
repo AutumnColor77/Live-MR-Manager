@@ -1,6 +1,31 @@
 //! Songbook OAuth deep-link parsing (no Tauri / DB dependencies).
 
-pub fn parse_oauth_callback_url(raw: &str) -> Option<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OauthCallback {
+    pub token: String,
+    pub state: Option<String>,
+}
+
+fn query_param(raw: &str, key: &str) -> Option<String> {
+    let q_start = raw.find('?')?;
+    let query = raw[q_start + 1..].split('#').next().unwrap_or("");
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let k = parts.next().unwrap_or("");
+        if k != key {
+            continue;
+        }
+        let v = parts.next().unwrap_or("");
+        let decoded = urlencoding::decode(v).ok()?.into_owned();
+        if decoded.is_empty() {
+            return None;
+        }
+        return Some(decoded);
+    }
+    None
+}
+
+pub fn parse_oauth_callback_url(raw: &str) -> Option<OauthCallback> {
     let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
     if !trimmed.starts_with("live-mr-manager:") {
         return None;
@@ -11,18 +36,36 @@ pub fn parse_oauth_callback_url(raw: &str) -> Option<String> {
     {
         return None;
     }
-    let idx = trimmed.find("token=")?;
-    let rest = &trimmed[idx + "token=".len()..];
+    let token = query_param(trimmed, "token")?;
+    let state = query_param(trimmed, "state");
+    Some(OauthCallback { token, state })
+}
+
+/// Strip bearer tokens from deep-link URLs before writing to app.log.
+pub fn redact_oauth_url_for_log(raw: &str) -> String {
+    let mut out = raw.to_string();
+    let Some(start) = out.find("token=") else {
+        return out;
+    };
+    let after = start + "token=".len();
+    let rest = &out[after..];
     let end = rest
         .find(|c| c == '&' || c == '#' || c == ' ' || c == '"')
         .unwrap_or(rest.len());
-    let encoded = &rest[..end];
-    let token = urlencoding::decode(encoded).ok()?.into_owned();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token)
+    out.replace_range(after..after + end, "<redacted>");
+    out
+}
+
+pub fn oauth_states_match(expected: &str, provided: &str) -> bool {
+    let a = expected.as_bytes();
+    let b = provided.as_bytes();
+    if a.len() != b.len() {
+        return false;
     }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 #[cfg(test)]
@@ -34,18 +77,17 @@ mod tests {
     fn parses_desktop_oauth_callback_with_token() {
         // Low-entropy fixture (not a real credential). Allowed in .gitleaks.toml.
         let url = "live-mr-manager://oauth/callback?token=test-fixture-plain";
-        assert_eq!(
-            parse_oauth_callback_url(url).as_deref(),
-            Some("test-fixture-plain")
-        );
+        let parsed = parse_oauth_callback_url(url).expect("parse");
+        assert_eq!(parsed.token, "test-fixture-plain");
+        assert_eq!(parsed.state, None);
     }
 
     #[test]
     fn parses_url_encoded_token() {
         let url = "live-mr-manager://oauth/callback?token=hello%2Bworld%2Fplain";
         assert_eq!(
-            parse_oauth_callback_url(url).as_deref(),
-            Some("hello+world/plain")
+            parse_oauth_callback_url(url).map(|c| c.token),
+            Some("hello+world/plain".into())
         );
     }
 
@@ -69,19 +111,43 @@ mod tests {
     #[test]
     fn stops_token_at_fragment_or_ampersand() {
         let url = "live-mr-manager://oauth/callback?token=part1&state=zz#frag";
-        assert_eq!(parse_oauth_callback_url(url).as_deref(), Some("part1"));
+        let parsed = parse_oauth_callback_url(url).expect("parse");
+        assert_eq!(parsed.token, "part1");
+        assert_eq!(parsed.state.as_deref(), Some("zz"));
     }
 
     #[test]
     fn trims_quotes_around_deep_link() {
         let url = "\"live-mr-manager://oauth/callback?token=quotedToken\"";
-        assert_eq!(parse_oauth_callback_url(url).as_deref(), Some("quotedToken"));
+        assert_eq!(
+            parse_oauth_callback_url(url).map(|c| c.token),
+            Some("quotedToken".into())
+        );
     }
 
     #[test]
     fn accepts_oauth_query_variant() {
         let url = "live-mr-manager://oauth?token=shortForm";
-        assert_eq!(parse_oauth_callback_url(url).as_deref(), Some("shortForm"));
+        assert_eq!(
+            parse_oauth_callback_url(url).map(|c| c.token),
+            Some("shortForm".into())
+        );
+    }
+
+    #[test]
+    fn redacts_token_query_for_logs() {
+        let raw = "live-mr-manager://oauth/callback?token=secret-value&state=abc";
+        let redacted = redact_oauth_url_for_log(raw);
+        assert!(!redacted.contains("secret-value"));
+        assert!(redacted.contains("token=<redacted>"));
+        assert!(redacted.contains("state=abc"));
+    }
+
+    #[test]
+    fn oauth_state_compare_is_length_checked() {
+        assert!(oauth_states_match("abcd", "abcd"));
+        assert!(!oauth_states_match("abcd", "abce"));
+        assert!(!oauth_states_match("abc", "abcd"));
     }
 
     #[test]

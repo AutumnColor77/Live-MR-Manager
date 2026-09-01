@@ -5,6 +5,7 @@ import { state, getAllGenres, getAllCategories } from '../state.js';
 import { elements } from './elements.js';
 import { getSongCategory } from './library.js';
 import { invoke } from '../tauri-bridge.js';
+import { escapeHtml } from '../utils.js';
 
 export async function updateGenreDropdowns() {
   const genres = ["전체", ...(await getAllGenres())];
@@ -13,9 +14,10 @@ export async function updateGenreDropdowns() {
   
   const optionsContainer = dropdown.querySelector(".select-options");
   if (optionsContainer) {
-    optionsContainer.innerHTML = genres.map(g => `
-      <div class="option-item ${g === "전체" ? "selected" : ""}" data-value="${g === "전체" ? "all" : g}">${g}</div>
-    `).join("");
+    optionsContainer.innerHTML = genres.map(g => {
+      const value = g === "전체" ? "all" : g;
+      return `<div class="option-item ${g === "전체" ? "selected" : ""}" data-value="${escapeHtml(value)}">${escapeHtml(g)}</div>`;
+    }).join("");
   }
 }
 
@@ -64,7 +66,7 @@ export async function updateCategoryDropdown() {
       .map((c) => {
         const value = c === "전체" ? "all" : c;
         const selected = value === current ? "selected" : "";
-        return `<div class="option-item ${selected}" data-value="${value}">${c}</div>`;
+        return `<div class="option-item ${selected}" data-value="${escapeHtml(value)}">${escapeHtml(c)}</div>`;
       })
       .join("");
   }

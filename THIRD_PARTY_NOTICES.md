@@ -1,7 +1,7 @@
 # 제3자 고지 (Third-Party Notices)
 
 > 법률 자문이 아닙니다. Live MR Manager 배포·재배포 시 참고용 기술 인벤토리입니다.
-> 최종 갱신: 2026-07-29 · 앱 버전 기준 v0.5.1
+> 최종 갱신: 2026-09-01 · 앱 버전 기준 v0.7.6 (Unreleased 보안 패치 반영)
 
 본 프로젝트 소스 코드는 [MIT License](LICENSE)입니다. 아래 항목은 **프로젝트 코드와 별개**인 제3자 구성요소입니다.
 
@@ -38,11 +38,12 @@ Rust·npm 전체 SBOM은 빌드 시점 `Cargo.lock` / `package-lock.json`을 기
 | 도구 | 다운로드 URL | 배포 라이선스 | 고지 의무 |
 | --- | --- | --- | --- |
 | FFmpeg (BtbN win64 LGPL) | [고정 월말 빌드](https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-06-30-13-34) | **LGPL-2.1-or-later** (해당 빌드 구성) | 자산 `ffmpeg-N-125365-g9a01c1cb6a-win64-lgpl.zip`; SHA-256 `75cb786fa14299eb1c1cacc2542a15c8da690e551ab41858383dc425c605b8ab`; 소스: [FFmpeg](https://ffmpeg.org/), 빌드: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) |
-| yt-dlp Windows exe | `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe` | 소스 Unlicense, **PyInstaller exe는 GPLv3+** | [yt-dlp README](https://github.com/yt-dlp/yt-dlp), [THIRD_PARTY_LICENSES](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt) |
+| yt-dlp Windows exe | [고정 태그 `2026.08.19`](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19) `yt-dlp.exe` | 소스 Unlicense, **PyInstaller exe는 GPLv3+** | SHA-256 `66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a`; [yt-dlp README](https://github.com/yt-dlp/yt-dlp), [THIRD_PARTY_LICENSES](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt) |
 
 정책:
 
 - FFmpeg·yt-dlp는 원 배포처에서 사용자 PC로 직접 받으며, 프로젝트 GitHub Release·운영 서버에 **재호스팅하지 않음**.
+- yt-dlp는 FFmpeg와 같이 **릴리스 태그+SHA-256**으로 고정합니다. `releases/latest` floating 다운로드는 쓰지 않습니다.
 - 설치 패키지(`*_setup.exe`)에 FFmpeg·yt-dlp를 **번들하지 않음**.
 - 두 도구는 `std::process::Command`로 별도 프로세스 실행만 허용함. FFmpeg `libav*`를 앱에 정적·동적 링크하려면 별도 라이선스 검토가 필요함.
 - 앱/문서에 도구명·출처·라이선스·소스 위치를 고지함.
@@ -58,8 +59,8 @@ GNU GPL FAQ는 설치 프로그램과 설치되는 파일을 별개의 저작물
 
 | model id | 파일 | 미러 | 상태 | 비고 |
 | --- | --- | --- | --- | --- |
-| `kim` | `Kim_Vocal_2.onnx` | [seanghay/uvr_models](https://huggingface.co/seanghay/uvr_models) | **잠정 MIT (크레딧 필수)** | UVR README가 모델 사용 시 MIT 준수·크레딧을 요청. HF 미러에는 `license` 태그 없음. 상업 이용 명시 확인은 [UVR#1242](https://github.com/Anjok07/ultimatevocalremovergui/issues/1242) 미해결. |
-| `inst_hq_3` | `UVR-MDX-NET-Inst_HQ_3.onnx` | 동일 | **잠정 MIT (크레딧 필수)** | UVR 코어 개발자 학습 모델로 README에 포함. 동일하게 HF 라이선스 태그 없음. |
+| `kim` | `Kim_Vocal_2.onnx` | [seanghay/uvr_models](https://huggingface.co/seanghay/uvr_models) | **잠정 MIT (크레딧 필수)** | SHA-256 `ce74ef3b6a6024ce44211a07be9cf8bc6d87728cc852a68ab34eb8e58cde9c8b` (HF LFS oid). UVR README가 모델 사용 시 MIT 준수·크레딧을 요청. HF 미러에는 `license` 태그 없음. 상업 이용 명시 확인은 [UVR#1242](https://github.com/Anjok07/ultimatevocalremovergui/issues/1242) 미해결. |
+| `inst_hq_3` | `UVR-MDX-NET-Inst_HQ_3.onnx` | 동일 | **잠정 MIT (크레딧 필수)** | SHA-256 `317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc`. UVR 코어 개발자 학습 모델로 README에 포함. 동일하게 HF 라이선스 태그 없음. |
 
 ### UVR 크레딧 (필수)
 
@@ -78,7 +79,7 @@ Ultimate Vocal Remover (UVR) — [Anjok07](https://github.com/anjok07), [aufr33]
 설정 → **커스텀 모델 관리**에서 이용자가 직접 등록하는 ONNX입니다. **프로젝트 공식 카탈로그가 아니며**, 라이선스·재배포·상업 이용 가능 여부는 이용자 책임입니다.
 
 - **로컬 파일**: 이용자가 지정한 경로의 파일을 앱 데이터 폴더로 복사·검증합니다.
-- **HTTPS URL**: HTTPS만 허용, 기대 SHA-256(64 hex) 필수, 용량 상한(2 GiB), 스트리밍 해시 검증 후 원자적 설치. 구현: [`src-tauri/src/model_commands.rs`](src-tauri/src/model_commands.rs).
+- **HTTPS URL**: HTTPS만 허용, 기대 SHA-256(64 hex) 필수, 용량 상한(2 GiB), 사설망/루프백 호스트 차단, HTTPS 리다이렉트만 허용, 스트리밍 해시 검증 후 원자적 설치. 구현: [`src-tauri/src/model_commands.rs`](src-tauri/src/model_commands.rs).
 - CC-BY-NC 등 비상업 모델은 공식 추천/Release에 넣지 않습니다. 커스텀으로 넣는 경우에도 이용자가 권리를 확인해야 합니다.
 
 ---

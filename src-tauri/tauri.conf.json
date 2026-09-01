@@ -34,7 +34,6 @@
           "$DESKTOP/**",
           "$AUDIO/**",
           "$HOME/Music/**",
-          "$HOME/**",
           "$TEMP/**"
         ]
       }

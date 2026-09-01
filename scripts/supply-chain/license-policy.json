@@ -110,7 +110,7 @@
     {
       "name": "yt-dlp Windows exe",
       "license": "GPL-3.0-or-later",
-      "condition": "origin download only; not bundled; separate process"
+      "condition": "origin download only; not bundled; separate process; pinned release tag + SHA-256 (not releases/latest)"
     }
   ]
 }

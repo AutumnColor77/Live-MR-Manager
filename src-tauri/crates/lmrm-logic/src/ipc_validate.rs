@@ -1,6 +1,7 @@
 //! Shared validation helpers for Tauri IPC commands.
 //! Keep checks cheap, deterministic, and free of secret logging.
 
+use std::net::IpAddr;
 use std::path::{Component, PathBuf};
 
 pub const MAX_LOG_MSG_LEN: usize = 4_096;
@@ -143,6 +144,64 @@ pub fn validate_youtube_or_http_url(url: &str) -> Result<String, String> {
     }
 }
 
+fn is_global_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation())
+        }
+        IpAddr::V6(v6) => {
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local())
+        }
+    }
+}
+
+pub fn is_blocked_download_host(host: &str) -> bool {
+    let h = host.trim().trim_matches(['[', ']']).to_ascii_lowercase();
+    if h == "localhost"
+        || h.ends_with(".localhost")
+        || h == "metadata.google.internal"
+        || h.ends_with(".internal")
+    {
+        return true;
+    }
+    if let Ok(ip) = h.parse::<IpAddr>() {
+        return !is_global_ip(ip);
+    }
+    false
+}
+
+/// HTTPS download destination: no userinfo, no private/loopback hosts.
+/// Callers must also disable redirects so an allowlisted host cannot bounce inward.
+pub fn validate_public_https_url(url: &str) -> Result<String, String> {
+    let trimmed = require_nonempty(url, "URL")?;
+    require_max_len(trimmed, MAX_URL_LEN, "URL")?;
+    if !trimmed.starts_with("https://") {
+        return Err("HTTPS URL만 허용됩니다.".into());
+    }
+    let parsed = url::Url::parse(trimmed).map_err(|_| "URL 형식이 올바르지 않습니다.".to_string())?;
+    if parsed.scheme() != "https" {
+        return Err("HTTPS URL만 허용됩니다.".into());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("URL에 사용자 정보는 허용되지 않습니다.".into());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "URL 호스트가 없습니다.".to_string())?;
+    if is_blocked_download_host(host) {
+        return Err("내부망 또는 로컬 주소는 허용되지 않습니다.".into());
+    }
+    Ok(trimmed.to_string())
+}
+
 pub fn validate_local_audio_path(path: &str) -> Result<String, String> {
     let pb = validate_filesystem_path(path)?;
     let ext = pb
@@ -228,6 +287,21 @@ mod tests {
         assert!(validate_youtube_or_http_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").is_ok());
         assert!(validate_youtube_or_http_url("https://youtu.be/dQw4w9WgXcQ").is_ok());
         assert!(validate_youtube_or_http_url("https://example.com/watch").is_err());
+    }
+
+    #[test]
+    fn public_https_url_blocks_ssrf_targets() {
+        assert!(validate_public_https_url(
+            "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx"
+        )
+        .is_ok());
+        assert!(validate_public_https_url("http://example.com/model.onnx").is_err());
+        assert!(validate_public_https_url("https://127.0.0.1/model.onnx").is_err());
+        assert!(validate_public_https_url("https://localhost/model.onnx").is_err());
+        assert!(validate_public_https_url("https://192.168.0.5/model.onnx").is_err());
+        assert!(validate_public_https_url("https://10.0.0.8/model.onnx").is_err());
+        assert!(validate_public_https_url("https://169.254.169.254/latest/meta-data").is_err());
+        assert!(validate_public_https_url("https://user:pass@example.com/x").is_err());
     }
 
     #[test]

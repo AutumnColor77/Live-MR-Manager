@@ -2,6 +2,7 @@
  * js/ui/suggestions.js - Search Suggestions & Autocomplete
  */
 import { elements } from './elements.js';
+import { escapeHtml } from '../utils.js';
 
 export function updateSuggestions(suggestions, onSelect) {
   const container = document.getElementById("search-suggestions");
@@ -15,7 +16,7 @@ export function updateSuggestions(suggestions, onSelect) {
   container.innerHTML = suggestions.map(s => `
     <div class="suggestion-item">
       <i class="fas fa-history"></i>
-      <span>${s}</span>
+      <span>${escapeHtml(s)}</span>
     </div>
   `).join("");
   

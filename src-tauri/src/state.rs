@@ -15,9 +15,9 @@ use crate::vocal_remover::WaveformRemover;
 use crate::audio_player::sys_log;
 use crate::types::SongMetadata;
 
-pub const MODELS: &[(&str, &str, &str)] = &[
-    ("kim", "Kim_Vocal_2.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx"),
-    ("inst_hq_3", "UVR-MDX-NET-Inst_HQ_3.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx"),
+pub const MODELS: &[(&str, &str, &str, &str)] = &[
+    ("kim", "Kim_Vocal_2.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx", "ce74ef3b6a6024ce44211a07be9cf8bc6d87728cc852a68ab34eb8e58cde9c8b"),
+    ("inst_hq_3", "UVR-MDX-NET-Inst_HQ_3.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx", "317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc"),
 ];
 
 // --- App Config (persisted outside the DB so it's readable before DB init) ---

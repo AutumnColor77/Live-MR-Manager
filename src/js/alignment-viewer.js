@@ -1,4 +1,4 @@
-import { showNotification, getThumbnailUrl } from './utils.js';
+import { showNotification, getThumbnailUrl, escapeHtml } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
@@ -1088,22 +1088,21 @@ export class ForcedAlignmentViewer {
         const collapsed = this.getTrackGroupCollapsed();
 
         const renderItem = (t) => {
-            const title = t.title || 'Unknown Title';
-            const artist = t.artist || 'Unknown Artist';
-            const thumbnail = t.thumbnail || '';
-            const path = t.path;
+            const title = escapeHtml(t.title || 'Unknown Title');
+            const artist = escapeHtml(t.artist || 'Unknown Artist');
+            const path = escapeHtml(t.path || '');
             const syncStatus = getLyricSyncStatus(t);
-            const thumbUrl = getThumbnailUrl(thumbnail, t);
-            const isCurrent = path === this.state.currentPath;
+            const thumbUrl = escapeHtml(getThumbnailUrl(t.thumbnail || '', t));
+            const isCurrent = t.path === this.state.currentPath;
 
             return `
-                <div class="track-item${isCurrent ? ' is-current' : ''}" data-path="${path.replace(/"/g, '&quot;')}">
+                <div class="track-item${isCurrent ? ' is-current' : ''}" data-path="${path}">
                     <div class="track-thumb">
                         ${thumbUrl ? `<img src="${thumbUrl}" alt="">` : `<div class="thumb-placeholder">♪</div>`}
                     </div>
                     <div class="track-info">
-                        <div class="track-name" title="${title.replace(/"/g, '&quot;')}">${title}</div>
-                        <div class="track-artist" title="${artist.replace(/"/g, '&quot;')}">${artist}</div>
+                        <div class="track-name" title="${title}">${title}</div>
+                        <div class="track-artist" title="${artist}">${artist}</div>
                     </div>
                     <span class="sync-status-badge sync-status-${syncStatus}">${SYNC_STATUS_LABEL[syncStatus] || syncStatus}</span>
                 </div>

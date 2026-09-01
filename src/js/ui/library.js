@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
-import { getThumbnailUrl } from '../utils.js';
+import { escapeHtml, getThumbnailUrl } from '../utils.js';
 import { filterSongLibrary, getSongCategoryFromMetadata, getLyricSyncStatus } from '../library-filters.js';
 import { updateCardStatusBadge, updateThumbnailOverlay, showSongContextMenu } from './components.js';
 
@@ -71,7 +71,20 @@ export function addSongCard(song, index) {
   const isButton = state.viewMode === "button";
   const isList = state.viewMode === "list";
 
-  const thumbUrl = getThumbnailUrl(song.thumbnail, song);
+  const thumbUrl = escapeHtml(getThumbnailUrl(song.thumbnail, song));
+  const title = escapeHtml(song.title || '제목 정보 없음');
+  const titleAttr = escapeHtml(song.title || '');
+  const artist = escapeHtml(song.artist || '가수 정보 없음');
+  const duration = escapeHtml(song.duration || '--:--');
+  const genre = escapeHtml((song.genre || '미분류').toUpperCase());
+  const category = getSongCategory(song);
+  const categoryHtml = category ? `<span class="category-badge">${escapeHtml(category)}</span>` : '';
+  const tagsHtml = (tags, emptyLabel) => {
+    if (song.tags && song.tags.length > 0) {
+      return song.tags.map((t) => `<span class="tag-badge">${escapeHtml(t)}</span>`).join('');
+    }
+    return `<span class="tag-no-info">${emptyLabel}</span>`;
+  };
   const syncStatus = getLyricSyncStatus(song);
   const syncBadge = syncStatus === "none" ? "" : `
       <span class="lyric-sync-badge lyric-sync-${syncStatus}" title="가사 ${syncStatus === 'synced' ? '싱크 완료' : '미싱크'}">
@@ -83,7 +96,7 @@ export function addSongCard(song, index) {
 
   card.innerHTML = `
     <div class="thumbnail">
-      <img src="${thumbUrl}" alt="${song.title}" style="width:100%; height:100%; object-fit:cover;">
+      <img src="${thumbUrl}" alt="${titleAttr}" style="width:100%; height:100%; object-fit:cover;">
       ${syncBadge}
       ${selectMark}
       <div class="thumb-overlay">
@@ -112,12 +125,12 @@ export function addSongCard(song, index) {
       return `
       <div class="song-info-content button-layout">
         <div class="col col-info">
-          <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
-          <div class="song-artist">${song.artist || '가수 정보 없음'}</div>
+          <div class="song-name" title="${titleAttr}">${title}</div>
+          <div class="song-artist">${artist}</div>
         </div>
         <div class="col col-status-duration">
           <div class="status-badge-wrapper">${badgeHtml}</div>
-          <span class="duration-text">${song.duration || '--:--'}</span>
+          <span class="duration-text">${duration}</span>
         </div>
       </div>
       `;
@@ -132,49 +145,42 @@ export function addSongCard(song, index) {
         badgeHtml = `<span class="status-badge mr">MR</span>`;
       }
 
-      const category = getSongCategory(song);
-
       return `
         <div class="col col-info">
-          <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
-          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+          <div class="song-name" title="${titleAttr}">${title}</div>
+          <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${artist}</div>
         </div>
         <div class="col col-genre">
           <div class="status-badge-wrapper">${badgeHtml}</div>
-          ${category ? `<span class="category-badge">${category}</span>` : ''}
-          <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
+          ${categoryHtml}
+          <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${genre}</span>
         </div>
         <div class="col col-tags">
           <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
-            ${song.tags && song.tags.length > 0
-              ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
-              : '<span class="tag-no-info">태그 없음</span>'}
+            ${tagsHtml(song.tags, '태그 없음')}
           </div>
         </div>
         <div class="col col-duration">
-          <span class="duration-text">${song.duration || '--:--'}</span>
+          <span class="duration-text">${duration}</span>
         </div>
       `;
     })() : (() => {
-      const category = getSongCategory(song);
       return `
       <div class="song-info-content grid-layout">
-        <div class="song-name" title="${song.title || ''}">${song.title || '제목 정보 없음'}</div>
-        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${song.artist || '가수 정보 없음'}</div>
+        <div class="song-name" title="${titleAttr}">${title}</div>
+        <div class="song-artist-badge ${!song.artist ? 'no-info' : ''}">${artist}</div>
         
         <div class="metadata-row">
           <div class="badge-group-inline">
-            ${category ? `<span class="category-badge">${category}</span>` : ''}
-            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${(song.genre || '미분류').toUpperCase()}</span>
+            ${categoryHtml}
+            <span class="genre-badge ${!song.genre ? 'no-info' : ''}">${genre}</span>
           </div>
-          <span class="duration-text">${song.duration || '--:--'}</span>
+          <span class="duration-text">${duration}</span>
         </div>
 
         <div class="tag-row">
           <div class="tag-container ${!song.tags || song.tags.length === 0 ? 'no-info' : ''}">
-            ${song.tags && song.tags.length > 0
-              ? song.tags.map(t => `<span class="tag-badge">${t}</span>`).join('')
-              : '<span class="tag-no-info">태그 정보 없음</span>'}
+            ${tagsHtml(song.tags, '태그 정보 없음')}
           </div>
         </div>
       </div>

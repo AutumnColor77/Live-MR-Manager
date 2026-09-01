@@ -3,6 +3,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const TOKEN_KEY: &str = "songbook_session_token";
 const USER_JSON_KEY: &str = "songbook_user_json";
+const OAUTH_STATE_KEY: &str = "songbook_oauth_state";
+const OAUTH_STATE_AT_KEY: &str = "songbook_oauth_state_at";
+const OAUTH_STATE_TTL_SECS: u64 = 180;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +52,53 @@ fn db_delete(key: &str) -> Result<(), String> {
 
 pub use lmrm_logic::oauth::parse_oauth_callback_url;
 
-pub fn apply_session_token(app: &AppHandle, token: &str) -> Result<(), String> {
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn random_oauth_state() -> Result<String, String> {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+fn consume_pending_oauth_state(callback_state: Option<&str>) -> Result<(), String> {
+    let stored = db_get(OAUTH_STATE_KEY);
+    let started_at = db_get(OAUTH_STATE_AT_KEY)
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let _ = db_delete(OAUTH_STATE_KEY);
+    let _ = db_delete(OAUTH_STATE_AT_KEY);
+
+    let stored = stored.ok_or_else(|| "로그인을 다시 시작해 주세요.".to_string())?;
+    if unix_now().saturating_sub(started_at) > OAUTH_STATE_TTL_SECS {
+        return Err("로그인 요청이 만료되었습니다. 다시 시도해 주세요.".into());
+    }
+    if let Some(got) = callback_state {
+        if !lmrm_logic::oauth::oauth_states_match(&stored, got) {
+            return Err("OAuth state가 일치하지 않습니다.".into());
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn begin_songbook_oauth() -> Result<String, String> {
+    let state = random_oauth_state()?;
+    db_set(OAUTH_STATE_KEY, &state)?;
+    db_set(OAUTH_STATE_AT_KEY, &unix_now().to_string())?;
+    Ok(state)
+}
+
+pub fn apply_session_token(
+    app: &AppHandle,
+    token: &str,
+    callback_state: Option<&str>,
+) -> Result<(), String> {
+    consume_pending_oauth_state(callback_state)?;
     let token = crate::ipc_validate::validate_session_token(token)?;
     db_set(TOKEN_KEY, &token)?;
     let _ = db_delete(USER_JSON_KEY);
@@ -72,9 +121,12 @@ pub fn apply_session_token(app: &AppHandle, token: &str) -> Result<(), String> {
 
 pub fn handle_deep_link_urls(app: &AppHandle, urls: &[String]) {
     for raw in urls {
-        crate::audio_player::sys_log(&format!("[SongbookAuth] deep-link recv: {raw}"));
-        if let Some(token) = parse_oauth_callback_url(raw) {
-            if let Err(err) = apply_session_token(app, &token) {
+        crate::audio_player::sys_log(&format!(
+            "[SongbookAuth] deep-link recv: {}",
+            lmrm_logic::oauth::redact_oauth_url_for_log(raw)
+        ));
+        if let Some(parsed) = parse_oauth_callback_url(raw) {
+            if let Err(err) = apply_session_token(app, &parsed.token, parsed.state.as_deref()) {
                 crate::audio_player::sys_log(&format!(
                     "[SongbookAuth] failed to store token: {err}"
                 ));
@@ -115,6 +167,8 @@ pub fn set_songbook_user(user: SongbookUser) -> Result<(), String> {
 pub fn clear_songbook_auth(app: AppHandle) -> Result<(), String> {
     db_delete(TOKEN_KEY)?;
     db_delete(USER_JSON_KEY)?;
+    let _ = db_delete(OAUTH_STATE_KEY);
+    let _ = db_delete(OAUTH_STATE_AT_KEY);
     let _ = app.emit(
         "songbook-auth-changed",
         SongbookAuthState {
@@ -125,4 +179,3 @@ pub fn clear_songbook_auth(app: AppHandle) -> Result<(), String> {
     );
     Ok(())
 }
-

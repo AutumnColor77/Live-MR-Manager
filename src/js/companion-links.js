@@ -43,8 +43,9 @@ export function songbookOAuthLoginUrl(provider = 'google', next = '/me') {
 }
 
 /** 앱 로그인 진입점 — 브라우저에 Songbook 세션이 있으면 OAuth 없이 바로 앱으로 핸드오프 */
-export function songbookDesktopConnectUrl(provider = 'google', next = '/me') {
+export function songbookDesktopConnectUrl(provider = 'google', next = '/me', state) {
   const q = new URLSearchParams({ provider, next, client: 'desktop' });
+  if (state) q.set('state', String(state));
   return `${songbookBase()}/api/auth/desktop-connect?${q}`;
 }
 

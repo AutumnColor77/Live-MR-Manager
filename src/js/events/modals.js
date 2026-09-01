@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { invoke } from '../tauri-bridge.js';
-import { initMetaStarRatings, showNotification } from '../utils.js';
+import { escapeHtml, initMetaStarRatings, showNotification } from '../utils.js';
 
 export function initModalListeners() {
   initMetaStarRatings();
@@ -230,15 +230,15 @@ export function initModalListeners() {
           item.className = "search-result-item";
           const isUnknownGenre = !res.genre || res.genre.toLowerCase() === "unknown" || res.genre.toLowerCase() === "unknown genre";
           const genreHtml = !isUnknownGenre
-            ? `<div class="track-genre-preview">${res.genre}</div>`
+            ? `<div class="track-genre-preview">${escapeHtml(res.genre)}</div>`
             : "";
           const tagsHtml = res.tags && res.tags.length > 0
-            ? `<div class="track-tags-preview">${res.tags.map(t => `<span class="tag-badge-mini">${t}</span>`).join("")}</div>`
+            ? `<div class="track-tags-preview">${res.tags.map(t => `<span class="tag-badge-mini">${escapeHtml(t)}</span>`).join("")}</div>`
             : "";
           item.innerHTML = `
             <div class="search-result-info">
-              <div class="track-name">${res.name || res.title || ""}</div>
-              <div class="artist-name">${res.artist || ""}</div>
+              <div class="track-name">${escapeHtml(res.name || res.title || "")}</div>
+              <div class="artist-name">${escapeHtml(res.artist || "")}</div>
               ${genreHtml}
             </div>
             ${tagsHtml}

@@ -13,6 +13,7 @@ use futures::StreamExt;
 use std::process::Stdio;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use sha2::{Digest, Sha256};
 use crate::youtube_url::youtube_cache_bytes_ready;
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,8 +52,9 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(12);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(45);
 const PREVIEW_URL_TIMEOUT: Duration = Duration::from_secs(20);
 const PREVIEW_URL_TTL: Duration = Duration::from_secs(4 * 60);
-const YT_DLP_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const STREAM_HEADER_WAIT: Duration = Duration::from_secs(60);
+const YT_DLP_RELEASE_TAG: &str = "2026.08.19";
+const YT_DLP_SHA256: &str = "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a";
 static YT_DLP_FORCE_REFRESH_USED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Clone)]
@@ -182,33 +184,40 @@ impl YoutubeManager {
         crate::ffmpeg_tools::resolve_ffmpeg_dir().await
     }
 
-    fn managed_bin_is_fresh(path: &Path) -> bool {
-        let Ok(meta) = std::fs::metadata(path) else {
-            return false;
-        };
-        let Ok(modified) = meta.modified() else {
-            return false;
-        };
-        modified
-            .elapsed()
-            .map(|age| age <= YT_DLP_MAX_AGE)
-            .unwrap_or(false)
+    fn managed_hash_path() -> PathBuf {
+        Self::managed_cache_dir().join("yt-dlp.exe.sha256")
+    }
+
+    fn managed_bin_is_current(path: &Path) -> bool {
+        path.is_file()
+            && std::fs::read_to_string(Self::managed_hash_path())
+                .map(|hash| hash.trim().eq_ignore_ascii_case(YT_DLP_SHA256))
+                .unwrap_or(false)
     }
 
     async fn download_managed_yt_dlp(target: &Path) -> Option<PathBuf> {
         // Windows PyInstaller build: combined work under GPLv3+ (yt-dlp source is Unlicense).
         // Downloaded at runtime into tools cache — not shipped inside the app installer.
         // See THIRD_PARTY_NOTICES.md.
-        let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+        let url = format!(
+            "https://github.com/yt-dlp/yt-dlp/releases/download/{YT_DLP_RELEASE_TAG}/yt-dlp.exe"
+        );
         if let Some(parent) = target.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let tmp = target.with_extension("exe.partial");
-        let response = reqwest::get(url).await.ok()?;
+        let response = reqwest::get(&url).await.ok()?;
         if !response.status().is_success() {
             return None;
         }
         let bytes = response.bytes().await.ok()?;
+        let actual_hash = format!("{:x}", Sha256::digest(&bytes));
+        if !actual_hash.eq_ignore_ascii_case(YT_DLP_SHA256) {
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Youtube] yt-dlp SHA-256 mismatch: expected {YT_DLP_SHA256}, got {actual_hash}"
+            ));
+            return None;
+        }
         let mut file = tokio::fs::File::create(&tmp).await.ok()?;
         if file.write_all(&bytes).await.is_err() {
             let _ = tokio::fs::remove_file(&tmp).await;
@@ -221,6 +230,7 @@ impl YoutubeManager {
             let _ = std::fs::remove_file(&tmp);
         }
         if target.exists() {
+            let _ = std::fs::write(Self::managed_hash_path(), YT_DLP_SHA256);
             Some(target.to_path_buf())
         } else {
             None
@@ -229,11 +239,11 @@ impl YoutubeManager {
 
     async fn ensure_managed_yt_dlp(force: bool) -> Option<PathBuf> {
         let target = Self::managed_cache_dir().join(Self::managed_bin_name());
-        if target.is_file() && !force && Self::managed_bin_is_fresh(&target) {
+        if target.is_file() && !force && Self::managed_bin_is_current(&target) {
             return Some(target);
         }
 
-        if force || !target.is_file() || !Self::managed_bin_is_fresh(&target) {
+        if force || !target.is_file() || !Self::managed_bin_is_current(&target) {
             let _ = crate::audio_player::sys_log(&format!(
                 "[Youtube] Refreshing managed yt-dlp (force={}, exists={})",
                 force,
@@ -242,7 +252,7 @@ impl YoutubeManager {
             if let Some(p) = Self::download_managed_yt_dlp(&target).await {
                 return Some(p);
             }
-            if target.is_file() {
+            if Self::managed_bin_is_current(&target) {
                 return Some(target);
             }
         }
@@ -457,7 +467,6 @@ impl YoutubeManager {
                 "--no-playlist",
                 "--skip-download",
                 "--no-warnings",
-                "--no-check-certificates",
                 "--socket-timeout",
                 "8",
                 "--extractor-retries",
@@ -630,7 +639,6 @@ impl YoutubeManager {
                 "--flat-playlist",
                 "--skip-download",
                 "--no-warnings",
-                "--no-check-certificates",
                 "--socket-timeout",
                 "10",
                 "--extractor-retries",
@@ -755,7 +763,6 @@ impl YoutubeManager {
             "ba[ext=m4a]/bestaudio/best".into(),
             "--no-playlist".into(),
             "--no-warnings".into(),
-            "--no-check-certificates".into(),
             "--socket-timeout".into(),
             "12".into(),
         ];
@@ -858,29 +865,7 @@ impl YoutubeManager {
                                 "[Youtube] fallback-client download failed: {}",
                                 err2
                             ));
-                            let _ = crate::audio_player::sys_log(
-                                "[Youtube] Retrying download with Edge cookies",
-                            );
-                            let _ = std::fs::remove_file(&destination);
-                            match Self::download_audio_once(
-                                window,
-                                url,
-                                destination,
-                                wait_for_full,
-                                true,
-                                true,
-                            )
-                            .await
-                            {
-                                Ok(path) => return Ok(path),
-                                Err(err3) => {
-                                    let _ = crate::audio_player::sys_log(&format!(
-                                        "[Youtube] cookie download failed: {}",
-                                        err3
-                                    ));
-                                    return Err(Self::user_facing_error(&err3));
-                                }
-                            }
+                            return Err(Self::user_facing_error(&err2));
                         }
                     }
                 }
@@ -944,7 +929,6 @@ impl YoutubeManager {
                 "--newline".into(),
                 "--progress-template".into(),
                 "%(progress)j".into(),
-                "--no-check-certificates".into(),
                 "--no-part".into(),
                 "--no-warnings".into(),
                 "--buffer-size".into(),

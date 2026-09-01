@@ -302,6 +302,12 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         return Err("이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다.".into());
     }
 
+    let path = if is_http_url(trimmed_path) {
+        crate::ipc_validate::validate_youtube_or_http_url(trimmed_path)?
+    } else {
+        trimmed_path.to_string()
+    };
+
     let play_path = if is_http_url(&path) {
         let seeking = start_pos_ms.is_some();
         if !seeking {

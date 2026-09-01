@@ -11,8 +11,10 @@
 | SEC-02 | IPC input validation | New `#[tauri::command]` params must validate path/URL/token/length |
 | SEC-03 | Opener / deep-link abuse | Arbitrary URL open, scheme confusion, token injection |
 | SEC-04 | Path traversal / SSRF | Untrusted paths into `fs`, HTTP clients without host allowlists |
-| SEC-05 | Capability regression | Re-adding `opener:default`, `assetProtocol: **`, `csp: null` |
+| SEC-05 | Capability regression | Re-adding `opener:default`, `assetProtocol: **` or `$HOME/**`, `csp: null` |
 | SEC-06 | Secret logging | Logging full bearer tokens, webhook URLs, `.env` contents |
+| SEC-07 | XSS / untrusted HTML | `innerHTML` with YouTube titles, Songbook request fields, or other untrusted strings — use `escapeHtml` / `textContent` |
+| SEC-08 | Unsigned floating downloads | Restoring `releases/latest` for yt-dlp, skipping SHA-256 for UVR/yt-dlp, or `--no-check-certificates` |
 
 **Fail-worthy (request changes / Critical):** SEC-01, SEC-05 with world-readable secrets, hardcoded production webhooks.
 
