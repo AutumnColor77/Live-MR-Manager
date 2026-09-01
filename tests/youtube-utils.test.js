@@ -7,6 +7,7 @@ import {
   isDuplicateYoutubeTrack,
   resolvePlayableAudioPath,
   coerceHttpMediaUrl,
+  pickSongbookPushOriginalUrl,
 } from '../src/js/youtube-utils.js';
 
 describe('youtube-utils', () => {
@@ -68,5 +69,29 @@ describe('youtube-utils', () => {
         karaoke_url: 'https://youtu.be/abc12345678',
       }),
     ).toBe('https://youtu.be/abc12345678');
+  });
+
+  it('pickSongbookPushOriginalUrl accepts youtube from path only', () => {
+    expect(
+      pickSongbookPushOriginalUrl({
+        path: 'https://www.youtube.com/watch?v=abc12345678',
+        originalUrl: null,
+      }),
+    ).toBe('https://youtu.be/abc12345678');
+  });
+
+  it('pickSongbookPushOriginalUrl rejects local paths and non-youtube http', () => {
+    expect(
+      pickSongbookPushOriginalUrl({
+        path: 'D:\\Music\\track.mp3',
+        originalUrl: null,
+      }),
+    ).toBeNull();
+    expect(
+      pickSongbookPushOriginalUrl({
+        path: 'D:\\Music\\track.mp3',
+        karaoke_url: 'https://example.com/not-youtube',
+      }),
+    ).toBeNull();
   });
 });

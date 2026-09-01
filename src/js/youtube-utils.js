@@ -91,6 +91,18 @@ export function pickHttpMediaUrl(...candidates) {
   return null;
 }
 
+/** Songbook Push `originalUrl`: YouTube http(s) only — never local file paths. */
+export function pickSongbookPushOriginalUrl(song) {
+  if (!song) return null;
+  for (const raw of [song.originalUrl, song.original_url, song.path]) {
+    const normalized = coerceHttpMediaUrl(raw);
+    if (normalized && extractYoutubeVideoId(normalized)) {
+      return normalizeYoutubeUrl(normalized);
+    }
+  }
+  return null;
+}
+
 /** Extract the first playable http(s) media URL from a metadata record. */
 export function resolveMediaUrlFromRecord(record) {
   if (!record) return null;

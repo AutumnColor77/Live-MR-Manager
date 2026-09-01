@@ -16,8 +16,8 @@
 
 - 제목·아티스트 키로 매칭 후 POST/PATCH
 - 로컬에 없는 원격 곡은 `enabled=false` (공개 숨김)
-- 유튜브 `path`/`originalUrl`이 http(s)이면 `originalUrl`로 전송
-- 로컬 파일 경로는 업로드하지 않음
+- 유튜브 `path`/`originalUrl`/`original_url`만 `originalUrl`로 전송 (`pickSongbookPushOriginalUrl` — **YouTube ID 있는 http(s)만**, 로컬 경로·비-유튜브 URL 금지)
+- 유튜브 없으면 `originalUrl: null` (서버 DB null 정상)
 - **성능 (2026-09)**: 곡당 순차 + throttle 제거, 최대 5건 병렬. 썸네일 JPEG 변환은 업로드 직전 1회(세션 캐시).
 
 ## Pull (웹 → 앱)

@@ -14,7 +14,7 @@ import {
 import { prepareSongbookThumbnail } from './songbook-thumbnail.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
-import { resolveMediaUrlFromRecord } from './youtube-utils.js';
+import { resolveMediaUrlFromRecord, pickSongbookPushOriginalUrl } from './youtube-utils.js';
 
 const SYNC_CONCURRENCY = 5;
 const songbookPlayableUrlCache = new Map();
@@ -110,9 +110,9 @@ function mapSongbookDonationAmount(song) {
   return rounded;
 }
 
-/** YouTube http(s) path only — never upload local file paths. */
+/** YouTube http(s) only — never upload local file paths. */
 function pickOriginalUrl(song) {
-  return resolveMediaUrlFromRecord(song);
+  return pickSongbookPushOriginalUrl(song);
 }
 
 function resolveRemoteMediaUrl(remote) {
