@@ -23,6 +23,9 @@
 - [X] **카테고리 표시/저장 동기화 (v0.4.10)**: `getSongCategory()` 우선순위 정리(`categories` → `curationCategory`), 편집 저장 시 DB·UI 일치
 - [X] **유튜브 노래 검색 추가**: 사이드바 「유튜브 검색」 페이지(yt-dlp `ytsearch`) + 노래 추가 모달은 URL·로컬 유지 (하이브리드)
 - [X] **오버레이 상시 표시 테마**: 미리보기 토글 칩 배경·테두리를 `--accent-rgb`로 통일
+- [X] **사이드바 접힘 그리드 (2026-09)**: container query로 라이브러리 열 수 유지
+- [X] **OBS 미리보기 중앙·애니메이션 (2026-09)**: 미리보기 정중앙, 곡 정보/가사 등장 애니 통일·방향 변경 미리보기
+- [X] **곡 정보 모달 스크롤 (2026-09)**: 창 높이 축소 시 본문만 스크롤
 
 ## 🔉 2. 오디오 고성능 제어 (Advanced Audio)
 
@@ -145,6 +148,10 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 - [X] **가져오기(Pull)**: 웹 enabled 곡 → 앱 라이브러리 (유튜브 URL→재생 가능, 없으면 `songbook:song:` 플레이스홀더)
 - [X] **웹 재생 → 앱 연동**: 신청 폴러가 `nowPlaying` 전이 감지 후 `playQueueItem` (최대 ~4초)
 - [X] **originalUrl Push**: 유튜브 path를 Songbook `original_url`로 전송 (배포·마이그레이션 필요)
+- [X] **Songbook 보내기 병렬화 (2026-09)**: 동시 5건·썸네일 지연 인코딩
+- [X] **Songbook 로그인 UI (2026-09)**: 프로필·닉네임, `/me` 재조회
+- [X] **플레이스홀더 재생 URL (2026-09)**: scheme-less URL·서버 재조회·`karaoke_url` 등
+- [X] **업데이트 토스트 즉시 (2026-09)**: 시작 8초 지연 제거, `peek_app_update`
 - [ ] **원격 hard-delete·양방향 ID 매핑** (Push는 여전히 enabled=false)
 - [ ] **카테고리 매핑 UI** (앱 freeform ↔ Songbook KPOP|POP|JPOP|OST)
 

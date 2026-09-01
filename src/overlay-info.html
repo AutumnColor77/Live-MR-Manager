@@ -50,10 +50,8 @@
       height: 1000px !important;
     }
     html[data-preview] body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px;
+      display: block;
+      padding: 0;
       box-sizing: border-box;
       overflow: hidden;
     }
@@ -62,14 +60,12 @@
     html[data-preview] .overlay-container.dir-right,
     html[data-preview] .overlay-container.dir-top,
     html[data-preview] .overlay-container.dir-bottom {
-      position: relative !important;
-      left: auto !important;
+      position: absolute !important;
+      left: 50% !important;
+      top: 50% !important;
       right: auto !important;
-      top: auto !important;
-      transform: scale(var(--overlay-scale, 1)) !important;
-      transform-origin: center center !important;
-      width: min(400px, 100%);
-      max-width: 100%;
+      width: min(400px, calc(100% - 64px));
+      max-width: min(400px, calc(100% - 64px));
     }
 
     .overlay-container {
@@ -255,6 +251,25 @@
     const MARQUEE_BUMP = Math.round(STAGE_WIDTH * 0.08); // 1500px 기준 범핑
     const isPreviewMode = window.location.search.includes('preview=true');
     let lastUserScale = 1;
+    let lastAnimDirection = '';
+    let pendingAnimReplay = null;
+
+    function replayEntranceAnimation() {
+      if (pendingAnimReplay) {
+        clearTimeout(pendingAnimReplay);
+        pendingAnimReplay = null;
+      }
+      if (pendingTrackShowTimer) {
+        clearTimeout(pendingTrackShowTimer);
+        pendingTrackShowTimer = null;
+      }
+      container.classList.remove('visible');
+      void container.offsetWidth;
+      pendingAnimReplay = setTimeout(() => {
+        container.classList.add('visible');
+        pendingAnimReplay = null;
+      }, 40);
+    }
     
     function applyMarquee(elId, text, attempt = 0) {
       const el = document.getElementById(elId);
@@ -363,9 +378,18 @@
 
         // Layout / Direction
         const dir = style.animation_direction || style.animationDirection || 'right';
-        
+        const directionChanged = !!lastAnimDirection && lastAnimDirection !== dir;
+        lastAnimDirection = dir;
+
         container.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
         container.classList.add(`dir-${dir}`);
+
+        const replayDirectionAnim =
+          directionChanged &&
+          (container.classList.contains('visible') || (isPreviewMode && shouldShow));
+        if (replayDirectionAnim) {
+          replayEntranceAnimation();
+        }
 
         // Content layout first (thumbnail affects available text width)
         const hasThumb = !!(data.thumbnail && data.thumbnail.length > 20);
@@ -405,7 +429,7 @@
             clearTimeout(pendingHideTimer);
             pendingHideTimer = null;
           }
-          if (trackChanged && container.classList.contains('visible')) {
+          if (trackChanged && container.classList.contains('visible') && !replayDirectionAnim) {
             if (pendingTrackShowTimer) {
               clearTimeout(pendingTrackShowTimer);
               pendingTrackShowTimer = null;
@@ -415,7 +439,7 @@
               container.classList.add('visible');
               pendingTrackShowTimer = null;
             }, 170);
-          } else {
+          } else if (!replayDirectionAnim) {
             container.classList.add('visible');
           }
         } else {

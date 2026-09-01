@@ -4,6 +4,8 @@
 import {
   applySongbookChannels,
   clearSongbookChannelCache,
+  getSongbookChannels,
+  pickOwnChannel,
   songbookBase,
   songbookChannelSlug,
   songbookDesktopConnectUrl,
@@ -51,66 +53,148 @@ function setMenuMode(loggedIn) {
   });
 }
 
-function setLoginAvatar(avatar, wrap, btn, { picture, name }) {
-  if (!avatar || !btn) return;
-  const show = Boolean(picture);
-  if (show) {
-    avatar.width = 36;
-    avatar.height = 36;
-    avatar.style.width = '36px';
-    avatar.style.height = '36px';
-    avatar.style.maxWidth = '36px';
-    avatar.style.maxHeight = '36px';
-    avatar.style.objectFit = 'cover';
+function normalizeMeUser(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (data.user && typeof data.user === 'object') return data.user;
+  if (data.profile && typeof data.profile === 'object') return data.profile;
+  if (data.id != null || data.email) return data;
+  return null;
+}
+
+function resolveDisplayName(user, channels) {
+  if (user) {
+    const name = String(
+      user.name || user.nickname || user.displayName || user.display_name || '',
+    ).trim();
+    if (name) return name;
+    const email = String(user.email || '').trim();
+    if (email.includes('@')) return email.split('@')[0];
+  }
+  const list = Array.isArray(channels) ? channels : getSongbookChannels();
+  const own = pickOwnChannel(list);
+  if (own?.name) return String(own.name).trim();
+  return '사용자';
+}
+
+function resolvePicture(user) {
+  if (!user) return '';
+  return String(
+    user.picture
+    || user.avatar
+    || user.avatarUrl
+    || user.avatar_url
+    || user.profileImage
+    || user.profile_image
+    || user.image
+    || '',
+  ).trim();
+}
+
+function initialsFromName(name) {
+  const text = String(name || '').trim();
+  if (!text) return '?';
+  return text.charAt(0).toUpperCase();
+}
+
+function setLoginProfile(btn, avatar, wrap, initialsEl, { picture, name }) {
+  if (!btn) return;
+
+  const displayName = name || '사용자';
+  const letter = initialsFromName(displayName);
+  const hasPicture = Boolean(picture);
+
+  wrap.hidden = false;
+  wrap.removeAttribute('hidden');
+  wrap.style.display = 'block';
+
+  if (hasPicture && avatar) {
+    avatar.width = 28;
+    avatar.height = 28;
+    avatar.hidden = false;
+    avatar.removeAttribute('hidden');
     avatar.style.display = 'block';
     avatar.onerror = () => {
-      setLoginAvatar(avatar, wrap, btn, { picture: '', name: '' });
+      avatar.onerror = null;
+      avatar.hidden = true;
+      avatar.removeAttribute('src');
+      if (initialsEl) {
+        initialsEl.textContent = letter;
+        initialsEl.hidden = false;
+        initialsEl.removeAttribute('hidden');
+      }
+      btn.classList.remove('has-avatar');
     };
     avatar.src = picture;
-    avatar.alt = name || '';
-    if (wrap) {
-      wrap.hidden = false;
-      wrap.removeAttribute('hidden');
-      wrap.style.display = 'block';
-      wrap.style.width = '36px';
-      wrap.style.height = '36px';
-      wrap.style.overflow = 'hidden';
-      wrap.style.flex = '0 0 36px';
+    avatar.alt = displayName;
+    if (initialsEl) {
+      initialsEl.hidden = true;
+      initialsEl.textContent = '';
     }
     btn.classList.add('has-avatar');
   } else {
-    avatar.onerror = null;
-    avatar.removeAttribute('src');
-    avatar.alt = '';
-    if (wrap) {
-      wrap.hidden = true;
-      wrap.style.display = 'none';
+    if (avatar) {
+      avatar.onerror = null;
+      avatar.removeAttribute('src');
+      avatar.hidden = true;
+    }
+    if (initialsEl) {
+      initialsEl.textContent = letter;
+      initialsEl.hidden = false;
+      initialsEl.removeAttribute('hidden');
     }
     btn.classList.remove('has-avatar');
   }
+}
+
+function clearLoginProfile(btn, avatar, wrap, initialsEl) {
+  if (avatar) {
+    avatar.onerror = null;
+    avatar.removeAttribute('src');
+    avatar.alt = '';
+    avatar.hidden = true;
+  }
+  if (initialsEl) {
+    initialsEl.hidden = true;
+    initialsEl.textContent = '';
+  }
+  if (wrap) {
+    wrap.hidden = true;
+    wrap.style.display = 'none';
+  }
+  btn?.classList.remove('has-avatar', 'is-logged-in');
+}
+
+function profileFromState(state) {
+  const channels = state?.user?.channels || getSongbookChannels();
+  const user = state?.user;
+  return {
+    name: resolveDisplayName(user, channels),
+    picture: resolvePicture(user),
+  };
 }
 
 function renderAuthButton(state) {
   const btn = document.getElementById('songbook-login-btn');
   const avatar = document.getElementById('songbook-login-avatar');
   const wrap = document.getElementById('songbook-login-avatar-wrap');
+  const initialsEl = document.getElementById('songbook-login-initials');
   if (!btn) return;
   const label = btn.querySelector('.songbook-login-label');
   const loggedIn = Boolean(state?.loggedIn);
-  const name = state?.user?.name || state?.user?.email || '로그인됨';
-  const picture = String(state?.user?.picture || '').trim();
 
   if (loggedIn) {
+    const { name, picture } = profileFromState(state);
+    btn.classList.add('is-logged-in');
     if (label) label.textContent = name;
     btn.title = `${state.user?.email || name} · 메뉴 열기`;
     btn.dataset.loggedIn = '1';
-    setLoginAvatar(avatar, wrap, btn, { picture, name });
+    setLoginProfile(btn, avatar, wrap, initialsEl, { picture, name });
     setSongbookSyncVisible(true);
   } else {
+    clearLoginProfile(btn, avatar, wrap, initialsEl);
     if (label) label.textContent = '로그인';
     btn.title = 'Songbook 로그인';
     btn.dataset.loggedIn = '0';
-    setLoginAvatar(avatar, wrap, btn, { picture: '', name: '' });
     setSongbookSyncVisible(false);
   }
   setMenuMode(loggedIn);
@@ -130,19 +214,31 @@ async function refreshProfile(token) {
   }
   if (!res.ok) throw new Error(`me failed (${res.status})`);
   const data = await res.json();
-  if (!data.user) throw new Error('no user');
+  const rawUser = normalizeMeUser(data);
+  if (!rawUser) throw new Error('no user');
+  const userId = rawUser.id != null ? String(rawUser.id) : '';
+  if (!userId && !String(rawUser.email || '').trim()) throw new Error('no user');
   const channels = Array.isArray(data.channels) ? data.channels : [];
   const primary = applySongbookChannels(channels);
-  updateSongbookChannelLabel(primary, channels);
-  await invoke('set_songbook_user', {
-    user: {
-      id: data.user.id,
-      email: data.user.email,
-      name: data.user.name,
-      picture: data.user.picture,
-    },
-  });
-  return { ...data.user, channels, primaryChannel: primary };
+  const displayName = resolveDisplayName(rawUser, channels);
+  const picture = resolvePicture(rawUser);
+  const persisted = {
+    id: userId || String(rawUser.email || 'unknown'),
+    email: String(rawUser.email || ''),
+    name: displayName,
+    picture,
+  };
+  try {
+    await invoke('set_songbook_user', { user: persisted });
+  } catch (err) {
+    console.warn('[SongbookAuth] set_songbook_user failed (display still updated)', err);
+  }
+  return {
+    ...rawUser,
+    ...persisted,
+    channels,
+    primaryChannel: primary,
+  };
 }
 
 function normalizeAuthPayload(payload) {
@@ -163,6 +259,7 @@ async function syncAuthUi(payload) {
   if (state?.loggedIn && state.token) {
     try {
       const user = await refreshProfile(state.token);
+      updateSongbookChannelLabel(user.primaryChannel, user.channels);
       state = { ...state, user };
     } catch (err) {
       console.warn('[SongbookAuth] profile refresh failed', err);
@@ -173,6 +270,10 @@ async function syncAuthUi(payload) {
         updateSongbookChannelLabel(null);
         showNotification('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
       } else {
+        const cached = normalizeAuthPayload(await invoke('get_songbook_auth'));
+        if (cached?.user) {
+          state = { ...state, user: cached.user };
+        }
         updateSongbookChannelLabel(null);
       }
     }
@@ -211,7 +312,7 @@ async function startProviderLogin(provider) {
         const state = normalizeAuthPayload(await invoke('get_songbook_auth'));
         if (state?.loggedIn) {
           window.clearInterval(poll);
-          await syncAuthUi(state);
+          await syncAuthUi();
           showNotification('Songbook 로그인 완료', 'success');
         }
       } catch {

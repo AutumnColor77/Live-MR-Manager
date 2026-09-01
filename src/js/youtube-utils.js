@@ -2,6 +2,19 @@
  * youtube-utils.js - Shared YouTube URL parsing helpers
  */
 
+const MEDIA_URL_KEYS = [
+  'originalUrl',
+  'original_url',
+  'youtubeUrl',
+  'youtube_url',
+  'videoUrl',
+  'video_url',
+  'url',
+  'karaokeUrl',
+  'karaoke_url',
+  'path',
+];
+
 export function extractYoutubeVideoId(raw) {
   if (!raw || typeof raw !== "string") return null;
   const trimmed = raw.trim();
@@ -26,6 +39,7 @@ export function extractYoutubeVideoId(raw) {
   if (shortMatch?.[1]) return shortMatch[1];
   const watchMatch = trimmed.match(/[?&]v=([^&#/]+)/i);
   if (watchMatch?.[1]) return watchMatch[1];
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
   return null;
 }
 
@@ -50,10 +64,39 @@ export function isPlaceholderAudioPath(path) {
   return !p || p.startsWith("songbook:") || p.startsWith("meloming:");
 }
 
+/** Normalize scheme-less or partial YouTube URLs to https form. */
+export function coerceHttpMediaUrl(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) {
+    const id = extractYoutubeVideoId(value);
+    return id ? normalizeYoutubeUrl(value) : value;
+  }
+  if (value.startsWith('//')) {
+    return coerceHttpMediaUrl(`https:${value}`);
+  }
+  if (/^(www\.)?(youtube\.com|youtu\.be)\b/i.test(value)) {
+    return coerceHttpMediaUrl(`https://${value.replace(/^\/+/, '')}`);
+  }
+  const id = extractYoutubeVideoId(value);
+  if (id) return normalizeYoutubeUrl(value);
+  return null;
+}
+
 export function pickHttpMediaUrl(...candidates) {
   for (const raw of candidates) {
-    const value = String(raw || "").trim();
-    if (/^https?:\/\//i.test(value)) return value;
+    const url = coerceHttpMediaUrl(raw);
+    if (url) return url;
+  }
+  return null;
+}
+
+/** Extract the first playable http(s) media URL from a metadata record. */
+export function resolveMediaUrlFromRecord(record) {
+  if (!record) return null;
+  for (const key of MEDIA_URL_KEYS) {
+    const url = coerceHttpMediaUrl(record[key]);
+    if (url) return url;
   }
   return null;
 }
@@ -65,9 +108,10 @@ export function pickHttpMediaUrl(...candidates) {
 export function resolvePlayableAudioPath(song) {
   if (!song) return null;
   const path = String(song.path || "").trim();
-  const original = pickHttpMediaUrl(song.originalUrl, song.original_url);
-  const httpPath = pickHttpMediaUrl(path);
+  const httpPath = coerceHttpMediaUrl(path);
   if (httpPath) return httpPath;
+
+  const original = resolveMediaUrlFromRecord(song);
   if (original && isPlaceholderAudioPath(path)) return original;
   if (original && String(song.source || "").toLowerCase() === "youtube") return original;
   const looksLikeLocalAudio = /\.(mp3|wav|flac|m4a|aac|ogg|wma|opus)$/i.test(path);

@@ -425,6 +425,8 @@ h1 {
   scrollbar-gutter: stable;
   padding: 10px 0 40px 0;
   -webkit-overflow-scrolling: touch;
+  container-type: inline-size;
+  container-name: library-pane;
 }
 
 /* Custom Floating Scrollbar (Webkit/WebView2) */

@@ -249,7 +249,7 @@
 | --- | --- |
 | 음원 | 로컬만. Songbook에는 제목·아티스트·카테고리·태그·KEY/BPM·썸네일 등 **메타만** |
 | 로그인 | Google / 네이버 · deep-link 세션 |
-| 동기화 | 앱 → Songbook **보내기**(본인 채널). Pull은 미구현 |
+| 동기화 | 앱 ↔ Songbook **보내기**·**가져오기**(본인 채널). Pull·Push 모두 지원 |
 
 사용자 절차: [UserManual.md](UserManual.md) 「Live MR Songbook」.
 

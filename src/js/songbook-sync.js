@@ -14,6 +14,30 @@ import {
 import { prepareSongbookThumbnail } from './songbook-thumbnail.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
+import { resolveMediaUrlFromRecord } from './youtube-utils.js';
+
+const SYNC_CONCURRENCY = 5;
+const songbookPlayableUrlCache = new Map();
+
+/** Run async work over items with a concurrency cap. */
+async function mapPool(items, concurrency, fn) {
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex;
+      nextIndex += 1;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 function normalizeKey(title, artist) {
   return `${String(title || '')
@@ -88,12 +112,47 @@ function mapSongbookDonationAmount(song) {
 
 /** YouTube http(s) path only — never upload local file paths. */
 function pickOriginalUrl(song) {
-  const candidates = [song?.originalUrl, song?.original_url, song?.path];
-  for (const raw of candidates) {
-    const value = String(raw || '').trim();
-    if (/^https?:\/\//i.test(value)) return value;
+  return resolveMediaUrlFromRecord(song);
+}
+
+function resolveRemoteMediaUrl(remote) {
+  return resolveMediaUrlFromRecord(remote);
+}
+
+/**
+ * Songbook placeholder(`songbook:song:*`) 재생 시 서버에 저장된 URL을 조회.
+ * 로컬 Pull 이후 서버에 URL이 추가된 경우에도 재생 가능하게 한다.
+ */
+export async function lookupSongbookPlayableUrl(song) {
+  const path = String(song?.path || '').trim();
+  const match = /^songbook:song:(.+)$/.exec(path);
+  if (!match) return null;
+  if (songbookPlayableUrlCache.has(path)) {
+    return songbookPlayableUrlCache.get(path);
   }
-  return null;
+
+  try {
+    const { token, user } = await getAuthOrThrow();
+    const channel = await resolveOwnChannel(token, user, { offerCreate: false });
+    const base = songbookBase();
+    const listUrl = `${base}/api/c/${encodeURIComponent(channel.slug)}/admin/songs`;
+    const res = await fetch(listUrl, { headers: authHeaders(token) });
+    if (!res.ok) {
+      songbookPlayableUrlCache.set(path, null);
+      return null;
+    }
+    const json = await res.json();
+    const songs = Array.isArray(json?.songs) ? json.songs : [];
+    const remoteId = match[1];
+    const remote = songs.find((entry) => String(entry?.id || '') === remoteId)
+      || songs.find((entry) => normalizeKey(entry?.title, entry?.artist) === normalizeKey(song?.title, song?.artist));
+    const url = resolveRemoteMediaUrl(remote);
+    songbookPlayableUrlCache.set(path, url || null);
+    return url || null;
+  } catch {
+    songbookPlayableUrlCache.set(path, null);
+    return null;
+  }
 }
 
 function resolveRemoteThumbnail(remoteThumb) {
@@ -105,7 +164,7 @@ function resolveRemoteThumbnail(remoteThumb) {
   return value;
 }
 
-async function toSongPayload(song) {
+function buildMetaPayload(song) {
   const title = String(song?.title || '').trim();
   const artist = String(song?.artist || '').trim() || 'Unknown';
   const bpmRaw = song?.bpm;
@@ -125,10 +184,55 @@ async function toSongPayload(song) {
     bpm,
     difficulty: mapSongbookDifficulty(song),
     donationAmount: mapSongbookDonationAmount(song),
-    thumbnail: await prepareSongbookThumbnail(song),
     originalUrl: pickOriginalUrl(song),
     enabled: true,
   };
+}
+
+function localHttpThumbnail(song) {
+  const raw = String(song?.thumbnail || '').trim();
+  if (/^https?:\/\//i.test(raw) && raw.length <= 2048) return raw;
+  return '';
+}
+
+function thumbnailNeedsUpload(song, remoteThumb) {
+  const raw = String(song?.thumbnail || '').trim();
+  if (!raw) return false;
+  const httpThumb = localHttpThumbnail(song);
+  if (httpThumb) {
+    return thumbnailNeedsPatch(remoteThumb, httpThumb);
+  }
+  const remote = String(remoteThumb || '').trim();
+  if (!remote) return true;
+  return false;
+}
+
+async function buildPostPayload(song) {
+  return {
+    ...buildMetaPayload(song),
+    thumbnail: await prepareSongbookThumbnail(song),
+    enabled: true,
+  };
+}
+
+/** PATCH payload; null if nothing to send. */
+async function buildPatchPayload(song, existing) {
+  const meta = buildMetaPayload(song);
+  const httpThumb = localHttpThumbnail(song);
+  const metaPatch = needsMetaPatch(existing, meta);
+  const thumbPatch = thumbnailNeedsUpload(song, existing.thumbnail);
+
+  if (!metaPatch && !thumbPatch && existing.enabled !== false) {
+    return null;
+  }
+
+  const payload = { ...meta, enabled: true };
+  if (thumbPatch) {
+    payload.thumbnail = await prepareSongbookThumbnail(song);
+  } else if (httpThumb) {
+    payload.thumbnail = httpThumb;
+  }
+  return payload;
 }
 
 function thumbnailNeedsPatch(remoteThumb, localThumb) {
@@ -141,7 +245,7 @@ function thumbnailNeedsPatch(remoteThumb, localThumb) {
   return false;
 }
 
-function needsPatch(remote, localPayload) {
+function needsMetaPatch(remote, localPayload) {
   if (
     String(remote.category || '')
       .trim()
@@ -175,11 +279,16 @@ function needsPatch(remote, localPayload) {
   const remoteDonation = remote.donationAmount ?? null;
   const localDonation = localPayload.donationAmount ?? null;
   if (remoteDonation !== localDonation) return true;
-  if (thumbnailNeedsPatch(remote.thumbnail, localPayload.thumbnail)) return true;
   const remoteUrl = String(remote.originalUrl || remote.original_url || '').trim();
   const localUrl = String(localPayload.originalUrl || '').trim();
   if (remoteUrl !== localUrl) return true;
   if (remote.enabled === false) return true;
+  return false;
+}
+
+function needsPatch(remote, localPayload) {
+  if (needsMetaPatch(remote, localPayload)) return true;
+  if (thumbnailNeedsPatch(remote.thumbnail, localPayload.thumbnail)) return true;
   return false;
 }
 
@@ -326,37 +435,58 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   const list = Array.isArray(localSongs) ? localSongs : [];
   const localKeys = new Set();
 
-  let added = 0;
-  let updated = 0;
-  let removed = 0;
-  let skipped = 0;
-  let failed = 0;
+  const stats = {
+    added: 0,
+    updated: 0,
+    removed: 0,
+    skipped: 0,
+    failed: 0,
+    completed: 0,
+  };
 
-  for (let i = 0; i < list.length; i++) {
-    const song = list[i];
-    const payload = await toSongPayload(song);
-    if (!payload.title) {
-      skipped += 1;
-      onProgress?.({
-        index: i + 1,
-        total: list.length,
-        added,
-        updated,
-        removed,
-        skipped,
-        failed,
-      });
-      continue;
+  const reportProgress = (total) => {
+    onProgress?.({
+      index: stats.completed,
+      total,
+      added: stats.added,
+      updated: stats.updated,
+      removed: stats.removed,
+      skipped: stats.skipped,
+      failed: stats.failed,
+    });
+  };
+
+  let progressLock = Promise.resolve();
+  const bumpProgress = (total, delta) => {
+    progressLock = progressLock.then(() => {
+      stats.added += delta.added || 0;
+      stats.updated += delta.updated || 0;
+      stats.skipped += delta.skipped || 0;
+      stats.failed += delta.failed || 0;
+      stats.completed += 1;
+      reportProgress(total);
+    });
+    return progressLock;
+  };
+
+  await mapPool(list, SYNC_CONCURRENCY, async (song) => {
+    const delta = { added: 0, updated: 0, skipped: 0, failed: 0 };
+    const meta = buildMetaPayload(song);
+    if (!meta.title) {
+      delta.skipped = 1;
+      await bumpProgress(list.length, delta);
+      return;
     }
 
-    const key = normalizeKey(payload.title, payload.artist);
+    const key = normalizeKey(meta.title, meta.artist);
     localKeys.add(key);
     const existing = remoteByKey.get(key);
 
     try {
       if (existing?.id) {
-        if (!needsPatch(existing, payload)) {
-          skipped += 1;
+        const payload = await buildPatchPayload(song, existing);
+        if (!payload) {
+          delta.skipped = 1;
         } else {
           const res = await fetch(`${listUrl}/${encodeURIComponent(existing.id)}`, {
             method: 'PATCH',
@@ -364,48 +494,38 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
             body: JSON.stringify(payload),
           });
           if (res.ok) {
-            updated += 1;
+            delta.updated = 1;
             const body = await res.json().catch(() => null);
             if (body?.song) remoteByKey.set(key, body.song);
           } else {
-            failed += 1;
+            delta.failed = 1;
             console.warn('[SongbookSync] PATCH failed', res.status, await res.text().catch(() => ''));
           }
         }
       } else {
+        const payload = await buildPostPayload(song);
         const res = await fetch(listUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
         });
         if (res.ok) {
-          added += 1;
+          delta.added = 1;
           const body = await res.json().catch(() => null);
           if (body?.song) remoteByKey.set(key, body.song);
           else remoteByKey.set(key, { ...payload, id: 'pending' });
         } else {
-          failed += 1;
+          delta.failed = 1;
           console.warn('[SongbookSync] POST failed', res.status, await res.text().catch(() => ''));
         }
       }
     } catch (err) {
-      failed += 1;
+      delta.failed = 1;
       console.warn('[SongbookSync] request error', err);
     }
 
-    onProgress?.({
-      index: i + 1,
-      total: list.length,
-      added,
-      updated,
-      removed,
-      skipped,
-      failed,
-    });
-    if (i < list.length - 1) {
-      await new Promise((r) => setTimeout(r, 40));
-    }
-  }
+    await bumpProgress(list.length, delta);
+  });
 
   // 앱 라이브러리에 없는 원격 곡 → 공개 목록에서 숨김 (재동기화 시 enabled 복구)
   const toDisable = remoteSongs.filter((s) => {
@@ -413,8 +533,13 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     return !localKeys.has(normalizeKey(s.title, s.artist));
   });
 
-  for (let i = 0; i < toDisable.length; i++) {
-    const remote = toDisable[i];
+  const disableTotal = list.length + toDisable.length;
+  let disableProgressLock = Promise.resolve();
+  let disableCompleted = list.length;
+
+  await mapPool(toDisable, SYNC_CONCURRENCY, async (remote) => {
+    let removedDelta = 0;
+    let failedDelta = 0;
     try {
       const res = await fetch(`${listUrl}/${encodeURIComponent(remote.id)}`, {
         method: 'PATCH',
@@ -422,9 +547,9 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
         body: JSON.stringify({ enabled: false }),
       });
       if (res.ok) {
-        removed += 1;
+        removedDelta = 1;
       } else {
-        failed += 1;
+        failedDelta = 1;
         console.warn(
           '[SongbookSync] disable failed',
           res.status,
@@ -432,24 +557,36 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
         );
       }
     } catch (err) {
-      failed += 1;
+      failedDelta = 1;
       console.warn('[SongbookSync] disable error', err);
     }
-    onProgress?.({
-      index: list.length + i + 1,
-      total: list.length + toDisable.length,
-      added,
-      updated,
-      removed,
-      skipped,
-      failed,
-    });
-    if (i < toDisable.length - 1) {
-      await new Promise((r) => setTimeout(r, 40));
-    }
-  }
 
-  return { added, updated, removed, skipped, failed, total: list.length, slug };
+    disableProgressLock = disableProgressLock.then(() => {
+      stats.removed += removedDelta;
+      stats.failed += failedDelta;
+      disableCompleted += 1;
+      onProgress?.({
+        index: disableCompleted,
+        total: disableTotal,
+        added: stats.added,
+        updated: stats.updated,
+        removed: stats.removed,
+        skipped: stats.skipped,
+        failed: stats.failed,
+      });
+    });
+    await disableProgressLock;
+  });
+
+  return {
+    added: stats.added,
+    updated: stats.updated,
+    removed: stats.removed,
+    skipped: stats.skipped,
+    failed: stats.failed,
+    total: list.length,
+    slug,
+  };
 }
 
 function applyRemoteMetaToLocal(local, remote) {
@@ -469,8 +606,8 @@ function applyRemoteMetaToLocal(local, remote) {
   if (genre) next.genre = genre;
   const thumb = resolveRemoteThumbnail(remote.thumbnail);
   if (thumb) next.thumbnail = thumb;
-  const url = String(remote.originalUrl || remote.original_url || '').trim();
-  if (/^https?:\/\//i.test(url)) {
+  const url = resolveRemoteMediaUrl(remote);
+  if (url) {
     next.originalUrl = url;
     next.original_url = url;
     const localPath = String(local.path || '').trim();
@@ -492,8 +629,8 @@ function applyRemoteMetaToLocal(local, remote) {
 function buildImportedSong(remote) {
   const title = String(remote.title || '').trim();
   const artist = String(remote.artist || '').trim() || 'Unknown';
-  const url = String(remote.originalUrl || remote.original_url || '').trim();
-  const hasUrl = /^https?:\/\//i.test(url);
+  const url = resolveRemoteMediaUrl(remote);
+  const hasUrl = Boolean(url);
   const remoteId = String(remote.id || '').trim() || `unknown-${Date.now()}`;
   const category = String(remote.category || '').trim();
   const now = Math.floor(Date.now() / 1000);
@@ -599,6 +736,8 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
   if (added > 0 || updated > 0) {
     await invoke('save_library', { songs: merged });
   }
+
+  songbookPlayableUrlCache.clear();
 
   return {
     added,

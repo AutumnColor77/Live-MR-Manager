@@ -1313,16 +1313,18 @@ html[data-theme="dark"] .overlay-preview-wrapper::before {
   height: 100%;
   overflow: hidden;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .overlay-preview-iframe {
-  position: absolute;
-  left: 0;
-  top: 0;
+  position: relative;
+  flex-shrink: 0;
   border: none;
   background: transparent !important;
   color-scheme: dark;
-  transform-origin: top left;
+  transform-origin: center center;
 }
 
 /* Narrow: stack preview (compact) above scrolling settings */

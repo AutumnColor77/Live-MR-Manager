@@ -56,25 +56,22 @@
       height: 1000px !important;
     }
     html[data-preview] body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px;
+      display: block;
+      padding: 0;
       box-sizing: border-box;
+      overflow: hidden;
     }
     html[data-preview] .overlay-container,
     html[data-preview] .overlay-container.dir-left,
     html[data-preview] .overlay-container.dir-right,
     html[data-preview] .overlay-container.dir-top,
     html[data-preview] .overlay-container.dir-bottom {
-      position: relative !important;
-      left: auto !important;
+      position: absolute !important;
+      left: 50% !important;
+      top: 50% !important;
       right: auto !important;
-      top: auto !important;
-      transform: scale(var(--overlay-scale, 1)) !important;
-      transform-origin: center center !important;
-      width: min(400px, 100%);
-      max-width: 100%;
+      width: min(400px, calc(100% - 64px));
+      max-width: min(400px, calc(100% - 64px));
       min-width: 0;
     }
 
@@ -95,7 +92,10 @@
       min-height: 96px;
       text-align: center;
 
-      transition: opacity 0.35s ease, border-radius 0.3s ease;
+      transition:
+        transform 0.62s cubic-bezier(0.18, 1.32, 0.38, 1),
+        opacity 0.32s ease,
+        border-radius 0.3s ease;
       will-change: transform, opacity;
       opacity: 0;
     }
@@ -124,36 +124,41 @@
       transition: background 0.3s ease;
     }
 
-    /* RIGHT ALIGNED (comes from right) */
-    .overlay-container.dir-right { transform: translate(calc(100% + var(--enter-gap-x)), -50%) scale(0.97); }
+    /* 권장 스테이지 정중앙 기준 등장 — 현재 곡 정보와 동일 */
+    .overlay-container.dir-right {
+      transform-origin: center center;
+      transform: translate(calc(-50% + var(--enter-gap-x)), -50%) scale(0.93);
+    }
     .overlay-container.dir-right.visible {
       transform: translate(-50%, -50%) scale(var(--overlay-scale));
       opacity: 1;
-      animation: lyrics-pop-right var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
     }
 
-    /* LEFT ALIGNED (comes from left) */
-    .overlay-container.dir-left { transform: translate(calc(-100% - var(--enter-gap-x)), -50%) scale(0.97); }
+    .overlay-container.dir-left {
+      transform-origin: center center;
+      transform: translate(calc(-50% - var(--enter-gap-x)), -50%) scale(0.93);
+    }
     .overlay-container.dir-left.visible {
       transform: translate(-50%, -50%) scale(var(--overlay-scale));
       opacity: 1;
-      animation: lyrics-pop-left var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
     }
 
-    /* TOP ALIGNED (comes from top) */
-    .overlay-container.dir-top { transform: translate(-50%, calc(-100% - var(--enter-gap-y))) scale(0.97); }
+    .overlay-container.dir-top {
+      transform-origin: center center;
+      transform: translate(-50%, calc(-50% - var(--enter-gap-y))) scale(0.93);
+    }
     .overlay-container.dir-top.visible {
       transform: translate(-50%, -50%) scale(var(--overlay-scale));
       opacity: 1;
-      animation: lyrics-pop-top var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
     }
 
-    /* BOTTOM ALIGNED (comes from bottom) */
-    .overlay-container.dir-bottom { transform: translate(-50%, calc(100% + var(--enter-gap-y))) scale(0.97); }
+    .overlay-container.dir-bottom {
+      transform-origin: center center;
+      transform: translate(-50%, calc(-50% + var(--enter-gap-y))) scale(0.93);
+    }
     .overlay-container.dir-bottom.visible {
       transform: translate(-50%, -50%) scale(var(--overlay-scale));
       opacity: 1;
-      animation: lyrics-pop-bottom var(--anim-duration, 0.55s) cubic-bezier(0.2, 0.9, 0.3, 1) both;
     }
 
     .lyrics-container {
@@ -266,23 +271,6 @@
 
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    @keyframes lyrics-pop-right {
-      0% { transform: translate(calc(100% + var(--enter-gap-x)), -50%) scale(0.97); }
-      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
-    }
-    @keyframes lyrics-pop-left {
-      0% { transform: translate(calc(-100% - var(--enter-gap-x)), -50%) scale(0.97); }
-      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
-    }
-    @keyframes lyrics-pop-top {
-      0% { transform: translate(-50%, calc(-100% - var(--enter-gap-y))) scale(0.97); }
-      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
-    }
-    @keyframes lyrics-pop-bottom {
-      0% { transform: translate(-50%, calc(100% + var(--enter-gap-y))) scale(0.97); }
-      100% { transform: translate(-50%, -50%) scale(var(--overlay-scale)); }
-    }
-
     /* 미리보기 등장은 html[data-preview] 규칙 사용 */
   </style>
 </head>
@@ -317,6 +305,28 @@
     let lastTrackSignature = "";
     let pendingTrackShowTimer = null;
     let lastUserScale = 1;
+    let lastAnimDirection = '';
+    let pendingAnimReplay = null;
+
+    function replayEntranceAnimation() {
+      if (pendingAnimReplay) {
+        clearTimeout(pendingAnimReplay);
+        pendingAnimReplay = null;
+      }
+      if (pendingTrackShowTimer) {
+        clearTimeout(pendingTrackShowTimer);
+        pendingTrackShowTimer = null;
+      }
+      overlay.classList.remove('visible');
+      void overlay.offsetWidth;
+      pendingAnimReplay = setTimeout(() => {
+        overlay.classList.add('visible');
+        pendingAnimReplay = null;
+      }, 40);
+    }
+
+    function showOverlay() { overlay.classList.add('visible'); }
+    function hideOverlay() { overlay.classList.remove('visible'); }
 
     // Lyric text is untrusted (LRC files / forced-alignment output / fetched
     // metadata), so it's never assigned via innerHTML. Multi-line cues
@@ -387,7 +397,7 @@
       const bgColor = (style.bg_color || "0f0f14").replace('#', '');
       const bgOpacity = style.bg_opacity !== undefined ? style.bg_opacity : 0.6;
       const rounding = style.rounding !== undefined ? style.rounding : 20;
-      const direction = style.animation_direction || 'right';
+      const direction = style.animation_direction || style.animationDirection || 'right';
 
       lastUserScale = Number(scale) || 1.0;
       if (isPreview) {
@@ -403,12 +413,7 @@
       document.documentElement.style.setProperty('--accent-color', `#${color}`);
       document.documentElement.style.setProperty('--text-main', `#${textColorHex}`);
       document.documentElement.style.setProperty('--text-sub', `rgba(${hexToRgb(textColorHex)}, 0.58)`);
-      
-      let duration = '0.85s';
-      if (direction === 'right' || direction === 'left') duration = '1.5s';
-      else duration = '0.7s';
-      document.documentElement.style.setProperty('--anim-duration', duration);
-      
+
       const hasCurrent = !!(data.current_lyric && data.current_lyric.trim() !== "");
       const hasNext = !!(data.next_lyric && data.next_lyric.trim() !== "");
       const nextTitle = (data.title || "").trim();
@@ -418,58 +423,55 @@
 
       const shouldShow = forced || (isPlaying && (hasCurrent || hasNext));
 
-      const applyShow = () => {
-        overlay.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
-        overlay.classList.add(`dir-${direction}`);
-        overlay.dataset.currentDirection = direction;
-        
-        if (shouldShow) {
-          lyricsArea.classList.add('active');
-          const newCurrent = hasCurrent
-            ? data.current_lyric
-            : (forced ? '가사 미리보기 첫 번째 줄' : '');
-          const newNext = hasNext
-            ? data.next_lyric
-            : (forced ? '가사 미리보기 다음 줄' : '');
-          const shouldPromote = displayedNext && newCurrent && displayedNext === newCurrent;
-          if (shouldPromote) {
-            animateLinePromotion(newCurrent, newNext);
-          } else {
-            setLineTexts(newCurrent, newNext);
-          }
-          if (trackChanged && overlay.classList.contains('visible')) {
-            if (pendingTrackShowTimer) {
-              clearTimeout(pendingTrackShowTimer);
-              pendingTrackShowTimer = null;
-            }
-            hideOverlay();
-            pendingTrackShowTimer = setTimeout(() => {
-              showOverlay();
-              pendingTrackShowTimer = null;
-            }, 170);
-          } else {
-            showOverlay();
-          }
-        } else {
-          lyricsArea.classList.remove('active');
-          hideOverlay();
-        }
-      };
+      const directionChanged = !!lastAnimDirection && lastAnimDirection !== direction;
+      lastAnimDirection = direction;
 
-      const oldDirection = overlay.dataset.currentDirection;
-      if (oldDirection && oldDirection !== direction && overlay.classList.contains('visible')) {
-        hideOverlay();
-        setTimeout(applyShow, 300);
-      } else {
-        applyShow();
+      overlay.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');
+      overlay.classList.add(`dir-${direction}`);
+
+      const replayDirectionAnim =
+        directionChanged &&
+        (overlay.classList.contains('visible') || (isPreview && shouldShow));
+      if (replayDirectionAnim) {
+        replayEntranceAnimation();
       }
+
+      if (shouldShow) {
+        lyricsArea.classList.add('active');
+        const newCurrent = hasCurrent
+          ? data.current_lyric
+          : (forced ? '가사 미리보기 첫 번째 줄' : '');
+        const newNext = hasNext
+          ? data.next_lyric
+          : (forced ? '가사 미리보기 다음 줄' : '');
+        const shouldPromote = displayedNext && newCurrent && displayedNext === newCurrent;
+        if (shouldPromote) {
+          animateLinePromotion(newCurrent, newNext);
+        } else {
+          setLineTexts(newCurrent, newNext);
+        }
+        if (trackChanged && overlay.classList.contains('visible') && !replayDirectionAnim) {
+          if (pendingTrackShowTimer) {
+            clearTimeout(pendingTrackShowTimer);
+            pendingTrackShowTimer = null;
+          }
+          hideOverlay();
+          pendingTrackShowTimer = setTimeout(() => {
+            showOverlay();
+            pendingTrackShowTimer = null;
+          }, 170);
+        } else if (!replayDirectionAnim) {
+          showOverlay();
+        }
+      } else {
+        lyricsArea.classList.remove('active');
+        hideOverlay();
+      }
+
       if (nextTitle) {
         lastTrackSignature = trackSignature;
       }
     }
-
-    function showOverlay() { overlay.classList.add('visible'); }
-    function hideOverlay() { overlay.classList.remove('visible'); }
 
     if (isPreview) {
       document.documentElement.setAttribute('data-preview', 'true');

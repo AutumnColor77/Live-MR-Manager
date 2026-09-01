@@ -6,6 +6,7 @@ import {
   youtubePathsMatch,
   isDuplicateYoutubeTrack,
   resolvePlayableAudioPath,
+  coerceHttpMediaUrl,
 } from '../src/js/youtube-utils.js';
 
 describe('youtube-utils', () => {
@@ -52,5 +53,20 @@ describe('youtube-utils', () => {
         originalUrl: 'https://youtu.be/abc',
       }),
     ).toBe('C:\\Music\\track.mp3');
+  });
+
+  it('coerces scheme-less youtube paths', () => {
+    expect(coerceHttpMediaUrl('youtu.be/abc12345678')).toBe('https://youtu.be/abc12345678');
+    expect(coerceHttpMediaUrl('www.youtube.com/watch?v=abc12345678')).toBe('https://youtu.be/abc12345678');
+  });
+
+  it('resolves karaoke_url for songbook placeholders', () => {
+    expect(
+      resolvePlayableAudioPath({
+        path: 'songbook:song:abc',
+        source: 'songbook',
+        karaoke_url: 'https://youtu.be/abc12345678',
+      }),
+    ).toBe('https://youtu.be/abc12345678');
   });
 });

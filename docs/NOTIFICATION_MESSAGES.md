@@ -2,7 +2,7 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-08-05 (신청목록·Push 제거·순서 변경 토스트 보강)
+- 수집일: 2026-09-01 (Songbook 플레이스홀더 재생 URL 해석·오버레이 UX 보강)
 - 고유 문구 수: **약 190+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
@@ -46,7 +46,7 @@
 | 오류 | 재생 오류: {err} | `src/js/events/backend.js`<br>selectTrack 진행 중이 아닐 때만 (탐색 실패 등) |
 | 오류 | 재생 제어 실패 | `src/js/audio.js` |
 | 오류 | 재생에 실패했습니다: {err} | `src/js/player.js` |
-| 경고 | 이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다. | `src/js/player.js` |
+| 경고 | 이 곡은 웹에서 가져온 정보만 있습니다. 유튜브 URL이 없어 재생할 수 없습니다. | `src/js/player.js`<br>Songbook `songbook:song:*` 플레이스홀더이고 서버·로컬 모두 재생 URL 없을 때 |
 | 오류 | 재생에 실패했습니다: 유튜브 오디오를 준비하는 데 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도해 주세요. | `src/js/player.js` 유튜브 90초 타임아웃 |
 | 오류 | 재생에 실패했습니다: 재생 준비 시간이 초과되었습니다. | `src/js/player.js` 로컬 30초 타임아웃 |
 | 오류 | 재설정 실패: {err} | `src/js/events/controls/settings.js` |

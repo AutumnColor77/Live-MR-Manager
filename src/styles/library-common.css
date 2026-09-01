@@ -105,20 +105,20 @@
 }
 
 /*
- * Column breakpoints must use WINDOW width, not the main pane alone:
- * Main pane needs ≥1108px for 5 columns (1048 tracks + 60px horizontal safe area).
- * Sidebar is 210px + 1px border = 211px.
- * 6 columns: 1260 + 60 = 1320px main → window ≥ 1320 + 211 = 1531px
- * 7 columns: 1472 + 60 = 1532px main → window ≥ 1532 + 211 = 1743px
+ * Column breakpoints use .scroll-area (library-pane) width so sidebar
+ * collapse/expand and window resize all reflow correctly.
+ * 5 columns: 1048 + 60 = 1108px pane (default)
+ * 6 columns: 1260 + 60 = 1320px pane
+ * 7 columns: 1472 + 60 = 1532px pane
  */
-@media (min-width: 1531px) {
-  :root {
+@container library-pane (min-width: 1320px) {
+  .song-grid {
     --library-max-width: 1260px;
   } /* 6 columns */
 }
 
-@media (min-width: 1743px) {
-  :root {
+@container library-pane (min-width: 1532px) {
+  .song-grid {
     --library-max-width: 1472px;
   } /* 7 columns */
 }

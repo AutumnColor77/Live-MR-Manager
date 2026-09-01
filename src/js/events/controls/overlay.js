@@ -124,11 +124,6 @@ export function initOverlayListeners() {
     lyrics: { w: 1500, h: 1000 },
     queue: { w: 1500, h: 1000 },
   };
-  const PREVIEW_CARD_BASE = {
-    info: { w: 400, h: 460 },
-    lyrics: { w: 400, h: 460 },
-    queue: { w: 400, h: 460 },
-  };
 
   const previewSrc = (file, extra = '') => `${file}?preview=true${extra}`;
 
@@ -136,25 +131,24 @@ export function initOverlayListeners() {
     if (!overlayIframe || !overlayPreviewWrapper) return;
     const mode = getPreviewMode();
     const { w: canvasW, h: canvasH } = OBS_PREVIEW_SIZE[mode] || OBS_PREVIEW_SIZE.info;
-    const card = PREVIEW_CARD_BASE[mode] || PREVIEW_CARD_BASE.info;
-    const userScale = Math.max(0.5, parseFloat(overlayScale?.value) || 1);
 
     overlayPreviewWrapper.dataset.previewMode = mode;
 
-    const pad = 80;
-    const contentW = card.w * userScale + pad;
-    const contentH = card.h * userScale + pad;
+    const pad = 48;
     const wrapperWidth = Math.max(1, overlayPreviewWrapper.clientWidth - 8);
     const wrapperHeight = Math.max(1, overlayPreviewWrapper.clientHeight - 8);
-    const scale = Math.min(wrapperWidth / contentW, wrapperHeight / contentH);
+    const scale = Math.min(
+      wrapperWidth / (canvasW + pad),
+      wrapperHeight / (canvasH + pad)
+    );
 
     overlayIframe.style.width = `${canvasW}px`;
     overlayIframe.style.height = `${canvasH}px`;
-    overlayIframe.style.position = 'absolute';
-    overlayIframe.style.left = '50%';
-    overlayIframe.style.top = '50%';
+    overlayIframe.style.position = 'relative';
+    overlayIframe.style.left = '';
+    overlayIframe.style.top = '';
     overlayIframe.style.transformOrigin = 'center center';
-    overlayIframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    overlayIframe.style.transform = `scale(${scale})`;
     overlayIframe.style.border = 'none';
     overlayIframe.style.background = 'transparent';
   };

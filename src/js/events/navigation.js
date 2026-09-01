@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { renderLibrary } from '../ui/library.js';
 import { updateBroadcastTasksControlVisibility } from '../ui/components.js';
+import { setupGridResizeObserver } from '../ui/core.js';
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -14,6 +15,10 @@ function applySidebarCollapsed(collapsed) {
   if (!sidebar) return;
 
   sidebar.classList.toggle("collapsed", collapsed);
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+
+  state.lastColumns = 0;
+  requestAnimationFrame(() => setupGridResizeObserver());
 
   if (toggleBtn) {
     const label = collapsed ? "사이드바 펼치기" : "사이드바 접기";

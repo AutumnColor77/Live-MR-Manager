@@ -1,12 +1,15 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use std::time::Duration;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 
 const GITHUB_OWNER: &str = "AutumnColor77";
 const GITHUB_REPO: &str = "Live-MR-Manager";
 const USER_AGENT: &str = "Live-MR-Manager-UpdateChecker";
-/// 앱 최초 기동 후 한 번만 자동 확인 (이후는 설정의 「업데이트 확인」 버튼)
-const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(8);
+
+static UPDATE_INFO_CACHE: Lazy<Mutex<Option<AppUpdateInfo>>> = Lazy::new(|| Mutex::new(None));
+static UPDATE_FETCH_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 
 use lmrm_logic::version::{default_release_url, strip_version_prefix, version_gt};
 
@@ -86,6 +89,26 @@ async fn fetch_latest_release() -> Result<(String, String), String> {
         .ok_or_else(|| "GitHub에서 최신 버전 정보를 가져오지 못했습니다.".to_string())
 }
 
+async fn cached_build_update_info(force_refresh: bool) -> Result<AppUpdateInfo, String> {
+    if !force_refresh {
+        if let Some(info) = UPDATE_INFO_CACHE.lock().clone() {
+            return Ok(info);
+        }
+    }
+
+    let _guard = UPDATE_FETCH_LOCK.lock().await;
+
+    if !force_refresh {
+        if let Some(info) = UPDATE_INFO_CACHE.lock().clone() {
+            return Ok(info);
+        }
+    }
+
+    let info = build_update_info().await?;
+    *UPDATE_INFO_CACHE.lock() = Some(info.clone());
+    Ok(info)
+}
+
 pub async fn build_update_info() -> Result<AppUpdateInfo, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let (latest_tag, release_url) = fetch_latest_release().await?;
@@ -102,7 +125,12 @@ pub async fn build_update_info() -> Result<AppUpdateInfo, String> {
 
 #[tauri::command]
 pub async fn check_for_app_update() -> Result<AppUpdateInfo, String> {
-    build_update_info().await
+    cached_build_update_info(true).await
+}
+
+#[tauri::command]
+pub async fn peek_app_update() -> Result<AppUpdateInfo, String> {
+    cached_build_update_info(false).await
 }
 
 #[tauri::command]
@@ -119,7 +147,7 @@ pub async fn open_app_update_page(url: String) -> Result<(), String> {
 }
 
 async fn check_and_notify(app: AppHandle) {
-    match build_update_info().await {
+    match cached_build_update_info(false).await {
         Ok(info) if info.has_update => {
             crate::audio_player::sys_log(&format!(
                 "[Updater] New version available: {} (current {})",
@@ -141,7 +169,6 @@ pub fn start_update_checker(app: AppHandle) {
     }
 
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(STARTUP_CHECK_DELAY).await;
         check_and_notify(app).await;
     });
 }

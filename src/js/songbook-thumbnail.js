@@ -8,6 +8,15 @@ export const SONGBOOK_THUMB_MAX_SIDE = 96;
 /** Songbook SONG_THUMBNAIL_MAX_DATA_URL_CHARS 와 맞춤 */
 export const SONGBOOK_THUMB_MAX_CHARS = 80_000;
 
+/** 동기화 세션 내 썸네일 인코딩 결과 재사용 */
+const thumbCache = new Map();
+
+function thumbCacheKey(song) {
+  const path = String(song?.path || '').trim();
+  const raw = String(song?.thumbnail || '').trim();
+  return `${path}\0${raw}`;
+}
+
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(value);
 }
@@ -122,9 +131,19 @@ export async function prepareSongbookThumbnail(song) {
     return raw;
   }
 
+  const cacheKey = thumbCacheKey(song);
+  if (thumbCache.has(cacheKey)) {
+    return thumbCache.get(cacheKey);
+  }
+
   const src = resolveThumbnailSrc(song);
-  if (!src) return '';
+  if (!src) {
+    thumbCache.set(cacheKey, '');
+    return '';
+  }
 
   const resized = await resizeImageSrcToJpegDataUrl(src);
-  return resized || '';
+  const result = resized || '';
+  thumbCache.set(cacheKey, result);
+  return result;
 }

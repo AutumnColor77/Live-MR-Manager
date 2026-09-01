@@ -158,6 +158,7 @@ pub fn run() {
             alignment::cancel_alignment_model_download, alignment::delete_alignment_model,
             system::remote_js_log,
             updater::check_for_app_update,
+            updater::peek_app_update,
             updater::open_app_update_page,
             metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,

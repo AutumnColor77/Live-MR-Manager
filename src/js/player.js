@@ -188,7 +188,20 @@ export async function handlePlaybackToggle() {
 }
 
 async function ensurePlayableSongPath(song) {
-  const playable = resolvePlayableAudioPath(song);
+  let playable = resolvePlayableAudioPath(song);
+  if ((!playable || isPlaceholderAudioPath(playable)) && isPlaceholderAudioPath(song?.path)) {
+    try {
+      const { lookupSongbookPlayableUrl } = await import('./songbook-sync.js');
+      const remoteUrl = await lookupSongbookPlayableUrl(song);
+      if (remoteUrl) {
+        song.originalUrl = remoteUrl;
+        song.original_url = remoteUrl;
+        playable = remoteUrl;
+      }
+    } catch (err) {
+      console.warn('[Player] songbook URL lookup failed:', err);
+    }
+  }
   if (!playable) return null;
   const prev = String(song.path || "").trim();
   if (playable === prev) return playable;

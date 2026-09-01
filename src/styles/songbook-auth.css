@@ -81,19 +81,39 @@
   height: 16px;
 }
 
-/* 고정 슬롯 — img 원본 비율이 레이아웃을 밀지 못함 */
+.songbook-login-btn.is-logged-in .songbook-login-icon {
+  display: none !important;
+}
+
+.songbook-login-btn.is-logged-in {
+  padding-left: 6px;
+  gap: 8px;
+  max-width: min(220px, 42vw);
+}
+
+.songbook-login-btn.is-logged-in .songbook-login-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 프로필 슬롯 — 버튼(36px) 안에 원형 28px */
 .songbook-login-avatar-wrap {
   box-sizing: border-box;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  max-width: 36px;
-  max-height: 36px;
-  flex: 0 0 36px;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  max-width: 28px;
+  max-height: 28px;
+  flex: 0 0 28px;
   overflow: hidden;
   align-self: center;
   line-height: 0;
+  border-radius: 50%;
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
 }
 
 .songbook-login-avatar-wrap[hidden] {
@@ -101,19 +121,43 @@
 }
 
 .songbook-login-avatar {
-  width: 36px !important;
-  height: 36px !important;
-  max-width: 36px !important;
-  max-height: 36px !important;
+  width: 28px !important;
+  height: 28px !important;
+  max-width: 28px !important;
+  max-height: 28px !important;
   object-fit: cover !important;
   display: block !important;
   flex-shrink: 0;
   border: 0;
+  border-radius: 50%;
+}
+
+.songbook-login-avatar[hidden] {
+  display: none !important;
+}
+
+.songbook-login-initials {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgb(var(--accent-rgb, 59 130 246) / 0.85);
+  color: var(--text-inverse, #fff);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  user-select: none;
+}
+
+.songbook-login-initials[hidden] {
+  display: none !important;
 }
 
 .songbook-login-btn.has-avatar {
-  padding-left: 0;
-  gap: 10px;
+  padding-left: 6px;
+  gap: 8px;
 }
 
 .songbook-login-btn.has-avatar .songbook-login-icon {
