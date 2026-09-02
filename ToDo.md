@@ -105,13 +105,15 @@
 - [X] **GitHub 업데이트 확인 (v0.4.10)**: 설정에서 수동 확인·백그라운드 주기 검사 (`updater.rs`)
 - [X] **OBS 오버레이 릴리즈 연결 및 상시보기 수정 (v0.7.6)**: CSP `frame-ancestors 'self'`, `ws:` 프로토콜 허용, `tauri.localhost` 호스트 보정, 상시보기 해제 시 미리보기/OBS 완벽 은닉
 - [X] **AI 가사 정렬 대기열 UX 개선 (v0.7.6)**: 불필요한 배지 박스 제거, 취소 버튼 하단 정렬, 완료 시 100% 도달 후 자동 삭제
-- [X] **데스크톱 보안 강화 (2026-09)**: HTML 이스케이프, IPC 오디오/YouTube 검증, OAuth state·로그 마스킹, yt-dlp/UVR SHA-256 핀, 커스텀 모델 사설망 차단, assetProtocol `$HOME/**` 축소
+- [X] **데스크톱 보안 강화 (v0.7.7)**: HTML 이스케이프, IPC 오디오/YouTube 검증, OAuth state·로그 마스킹, yt-dlp/UVR SHA-256 핀, 커스텀 모델 사설망 차단, assetProtocol `$HOME/**` 축소
+- [X] **사이드바·오버레이·Songbook UX (v0.7.7)**: 접힘 시 그리드 열 수 유지, 오버레이 미리보기 중앙/애니 통일, Songbook 프로필 표시·보내기 병렬화·플레이스홀더 재생 URL 해석
 - [ ] **에러 핸들링 강화**: 오디오 디코딩 및 AI 추론 시 발생할 수 있는 예외 상황에 대한 상세 리포팅 시스템
 - [ ] **자동 업데이트**: 앱 자동 다운로드·설치 (현재: GitHub Releases 수동 확인만. §7 Phase 4 companion manifest 연동 예정)
 
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
+- [X] **앱 버전 v0.7.7**: 데스크톱 보안 강화, Songbook/오버레이/라이브러리 UX, 릴리즈 노트·Discord 공지 반영
 - [X] **앱 버전 v0.5.1 핫픽스**: 배포본 Meloming OAuth — Client ID 임베드, Secret 없으면 Companion exchange/refresh
 - [X] **앱 버전 v0.5.0**: 멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타·별점 UI, Companion OAuth refresh
 - [X] **앱 버전 v0.4.16 핫픽스**: MP3 MR ffmpeg PATH(`ffmpeg_tools`), 멜로밍 동기화 UI·백엔드 잠금 문구 정리
