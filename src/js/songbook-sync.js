@@ -12,7 +12,7 @@ import {
   SONGBOOK_SLUG_RE,
 } from './companion-links.js';
 import { prepareSongbookThumbnail } from './songbook-thumbnail.js';
-import { songbookFetch } from './songbook-api.js';
+import { songbookFetch, songbookErrorMessage } from './songbook-api.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
 import { resolveMediaUrlFromRecord, pickSongbookPushOriginalUrl } from './youtube-utils.js';
@@ -856,7 +856,7 @@ async function runPushFromUi(trigger) {
     if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
-      showNotification(err?.message || 'Songbook 동기화에 실패했습니다.', 'error');
+      showNotification(songbookErrorMessage(err, 'Songbook 동기화에 실패했습니다.'), 'error');
     }
   } finally {
     setSyncBusy(false);
@@ -891,7 +891,7 @@ async function runPullFromUi(trigger) {
     if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
-      showNotification(err?.message || 'Songbook 가져오기에 실패했습니다.', 'error');
+      showNotification(songbookErrorMessage(err, 'Songbook 가져오기에 실패했습니다.'), 'error');
     }
   } finally {
     setSyncBusy(false);
@@ -920,7 +920,7 @@ async function runCreateChannelFromUi(trigger) {
     if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
-      showNotification(err?.message || '채널 생성에 실패했습니다.', 'error');
+      showNotification(songbookErrorMessage(err, '채널 생성에 실패했습니다.'), 'error');
     }
   } finally {
     setSyncBusy(false);

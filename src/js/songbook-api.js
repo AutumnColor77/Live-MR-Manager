@@ -36,6 +36,14 @@ function toResponse(result) {
   };
 }
 
+/** Tauri invoke / fetch 오류를 사용자 메시지로 변환 */
+export function songbookErrorMessage(err, fallback = 'Songbook 요청에 실패했습니다.') {
+  if (typeof err === 'string' && err.trim()) return err.trim();
+  const message = err?.message;
+  if (typeof message === 'string' && message.trim()) return message.trim();
+  return fallback;
+}
+
 /**
  * fetch 호환 Songbook API 클라이언트.
  * @param {string} url

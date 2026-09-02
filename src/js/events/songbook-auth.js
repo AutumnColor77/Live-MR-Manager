@@ -11,6 +11,7 @@ import {
   songbookDesktopConnectUrl,
 } from '../companion-links.js';
 import { setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
+import { invoke, listen } from '../tauri-bridge.js';
 import { songbookFetch } from '../songbook-api.js';
 import { showNotification } from '../utils.js';
 

@@ -1,17 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 const HTTP_TIMEOUT_SECS: u64 = 30;
 const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PATCH", "PUT", "DELETE"];
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SongbookHttpRequest {
-    pub method: String,
-    pub url: String,
-    pub token: Option<String>,
-    pub body: Option<String>,
-    pub content_type: Option<String>,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,18 +21,23 @@ fn validate_method(method: &str) -> Result<&str, String> {
 }
 
 #[tauri::command]
-pub async fn songbook_http(req: SongbookHttpRequest) -> Result<SongbookHttpResponse, String> {
-    let method = validate_method(&req.method)?;
-    let url = crate::ipc_validate::validate_songbook_api_url(&req.url)?;
-    if let Some(body) = req.body.as_deref() {
+pub async fn songbook_http(
+    method: String,
+    url: String,
+    token: Option<String>,
+    body: Option<String>,
+    content_type: Option<String>,
+) -> Result<SongbookHttpResponse, String> {
+    let method = validate_method(&method)?;
+    let url = crate::ipc_validate::validate_songbook_api_url(&url)?;
+    if let Some(body) = body.as_deref() {
         crate::ipc_validate::require_max_len(
             body,
             crate::ipc_validate::MAX_SONGBOOK_API_BODY_LEN,
             "body",
         )?;
     }
-    let token = req
-        .token
+    let token = token
         .as_deref()
         .map(crate::ipc_validate::validate_session_token)
         .transpose()?;
@@ -60,9 +55,8 @@ pub async fn songbook_http(req: SongbookHttpRequest) -> Result<SongbookHttpRespo
     if let Some(token) = token {
         builder = builder.bearer_auth(token);
     }
-    if let Some(body) = req.body {
-        let content_type = req
-            .content_type
+    if let Some(body) = body {
+        let content_type = content_type
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| "application/json".to_string());
         builder = builder.header(reqwest::header::CONTENT_TYPE, content_type);

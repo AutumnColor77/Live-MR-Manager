@@ -2,11 +2,13 @@
 
 ## v0.7.8 (2026-09-02)
 
-릴리즈 빌드에서 Songbook 동기화가 `Failed to fetch`로 실패하던 핫픽스입니다. 기준: v0.7.7.
+릴리즈 빌드 Songbook 연동 핫픽스입니다. 기준: v0.7.7.
 
 ### Songbook
 
-- **릴리즈 CORS 우회**: 개발 WebView origin(`http://localhost:1420`)만 Songbook 서버 CORS에 허용되어, 릴리즈 origin(`https://tauri.localhost`)에서 **보내기·가져오기·신청목록** API가 `Failed to fetch`로 실패하던 문제를 Rust `songbook_http` 프록시(reqwest)로 수정했습니다. OAuth 로그인은 기존처럼 Rust 경로를 사용합니다.
+- **릴리즈 CORS 우회**: WebView origin(`https://tauri.localhost`)이 Songbook CORS에 없어 **보내기·가져오기·신청목록**이 `Failed to fetch`로 실패하던 문제를 Rust `songbook_http` 프록시(reqwest)로 수정.
+- **로그인 버튼**: `songbook-auth.js`에서 `invoke`/`listen` import 누락으로 로그인·메뉴가 동작하지 않던 회귀 수정.
+- **동기화 IPC**: `songbook_http` Tauri 인자를 flat 파라미터로 맞춰 URL이 비어 요청되던 문제 수정. Rust 오류 문자열도 토스트에 표시.
 
 ---
 
