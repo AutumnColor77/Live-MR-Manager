@@ -113,6 +113,8 @@
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
+- [X] **Songbook 릴리즈 CORS 핫픽스 (v0.7.8)**: `songbook_http` Rust 프록시로 tauri.localhost에서 보내기·가져오기·신청목록 Failed to fetch 수정
+- [X] **앱 버전 v0.7.8**: Songbook 릴리즈 동기화 핫픽스, 릴리즈 노트·Discord 공지 반영
 - [X] **앱 버전 v0.7.7**: 데스크톱 보안 강화, Songbook/오버레이/라이브러리 UX, 릴리즈 노트·Discord 공지 반영
 - [X] **앱 버전 v0.5.1 핫픽스**: 배포본 Meloming OAuth — Client ID 임베드, Secret 없으면 Companion exchange/refresh
 - [X] **앱 버전 v0.5.0**: 멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타·별점 UI, Companion OAuth refresh

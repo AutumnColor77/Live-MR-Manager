@@ -6,6 +6,21 @@
 
 ---
 
+## v0.7.8 (2026-09-02)
+
+**Live MR Manager v0.7.8** 핫픽스가 준비되었습니다.
+
+**이번에 달라진 점**
+- **Songbook 동기화 (릴리즈)**: 설치판에서 「보내기」「가져오기」·신청목록이 `Failed to fetch`로 실패하던 문제 수정
+
+**업데이트 방법**
+1. 아래 **다운로드**에서 Windows 설치 파일 받기
+2. 설치 후 기존처럼 사용 (라이브러리·설정은 그대로 유지)
+
+**다운로드**: [GitHub Releases — v0.7.8](https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.7.8)
+
+---
+
 ## v0.7.7 (2026-09-02)
 
 **Live MR Manager v0.7.7** 업데이트가 준비되었습니다.

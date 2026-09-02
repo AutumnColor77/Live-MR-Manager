@@ -94,6 +94,12 @@
   - **텍스트 흐름(Marquee) 애니메이션**: 제목이나 가수명이 길 경우 자동으로 좌우로 흐르는 가독성 강화 애니메이션 적용.
   - **디자인 설정 영속성**: 사용자 지정 디자인 테마를 `localStorage`에 저장하여 앱 재시작 시 자동 복구.
 
+### 🆕 v0.7.8 핫픽스 (2026-09-02)
+
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.8 절.
+
+- **Songbook (릴리즈)**: 설치판에서 보내기·가져오기·신청목록 `Failed to fetch` 수정 — Rust HTTP 프록시로 CORS 우회.
+
 ### 🆕 v0.7.7 업데이트 (2026-09-02)
 
 상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.7 절.

@@ -1,8 +1,8 @@
-# 🎙️ Live MR Manager(Beta) v0.7.7 — 사용자 매뉴얼
+# 🎙️ Live MR Manager(Beta) v0.7.8 — 사용자 매뉴얼
 
 **Live MR Manager(Beta)**는 AI 기술을 활용해 어떤 노래든 고품질 MR로 분리하고, 라이브 환경에서 실시간으로 키(Pitch)와 템포(Tempo)를 조절할 수 있는 전문적인 하이브리드 오디오 도구입니다.
 
-> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.7**. Songbook([livemrsongbook.com](https://www.livemrsongbook.com))·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
+> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.8**. Songbook([livemrsongbook.com](https://www.livemrsongbook.com))·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
 ---
 
 ## 🚀 1. 프로젝트 시작하기

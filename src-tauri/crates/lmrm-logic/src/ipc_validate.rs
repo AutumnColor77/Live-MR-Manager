@@ -63,6 +63,29 @@ pub fn is_discord_webhook_url(url: &str) -> bool {
         || u.starts_with("https://discordapp.com/api/webhooks/")
 }
 
+pub const MAX_SONGBOOK_API_BODY_LEN: usize = 512 * 1024;
+
+pub fn validate_songbook_api_url(url: &str) -> Result<String, String> {
+    let trimmed = require_nonempty(url, "url")?;
+    require_max_len(trimmed, MAX_URL_LEN, "url")?;
+    let parsed = url::Url::parse(trimmed).map_err(|_| "Songbook URL 형식이 올바르지 않습니다.")?;
+    let origin = match (parsed.scheme(), parsed.host_str()) {
+        ("https", Some(host)) => format!("https://{host}"),
+        ("http", Some(host @ ("localhost" | "127.0.0.1"))) => {
+            if let Some(port) = parsed.port() {
+                format!("http://{host}:{port}")
+            } else {
+                format!("http://{host}")
+            }
+        }
+        _ => return Err("허용되지 않은 Songbook URL입니다.".into()),
+    };
+    if !is_allowed_songbook_base(&origin) {
+        return Err("허용되지 않은 Songbook URL입니다.".into());
+    }
+    Ok(trimmed.to_string())
+}
+
 pub fn is_allowed_songbook_base(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url.trim()) else {
         return false;
@@ -359,6 +382,16 @@ mod tests {
         ));
         assert!(!is_allowed_songbook_base("https://evil.example"));
         assert!(!is_allowed_songbook_base("ftp://localhost"));
+    }
+
+    #[test]
+    fn songbook_api_url_allowlist() {
+        assert!(validate_songbook_api_url(
+            "https://www.livemrsongbook.com/api/c/demo/admin/songs"
+        )
+        .is_ok());
+        assert!(validate_songbook_api_url("http://localhost:5173/api/auth/me").is_ok());
+        assert!(validate_songbook_api_url("https://evil.example/api/auth/me").is_err());
     }
 
     #[test]

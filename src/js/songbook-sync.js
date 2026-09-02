@@ -12,6 +12,7 @@ import {
   SONGBOOK_SLUG_RE,
 } from './companion-links.js';
 import { prepareSongbookThumbnail } from './songbook-thumbnail.js';
+import { songbookFetch } from './songbook-api.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
 import { resolveMediaUrlFromRecord, pickSongbookPushOriginalUrl } from './youtube-utils.js';
@@ -136,7 +137,7 @@ export async function lookupSongbookPlayableUrl(song) {
     const channel = await resolveOwnChannel(token, user, { offerCreate: false });
     const base = songbookBase();
     const listUrl = `${base}/api/c/${encodeURIComponent(channel.slug)}/admin/songs`;
-    const res = await fetch(listUrl, { headers: authHeaders(token) });
+    const res = await songbookFetch(listUrl, { headers: authHeaders(token) });
     if (!res.ok) {
       songbookPlayableUrlCache.set(path, null);
       return null;
@@ -303,7 +304,7 @@ async function getAuthOrThrow() {
 }
 
 async function fetchMeChannels(token) {
-  const res = await fetch(`${songbookBase()}/api/auth/me`, {
+  const res = await songbookFetch(`${songbookBase()}/api/auth/me`, {
     headers: authHeaders(token),
   });
   if (res.status === 401) {
@@ -360,7 +361,7 @@ function confirmAsync(title, message) {
 
 export async function createOwnChannel(token, nameHint) {
   const name = String(nameHint || 'My Songbook').trim().slice(0, 80) || 'My Songbook';
-  const res = await fetch(`${songbookBase()}/api/me/channels`, {
+  const res = await songbookFetch(`${songbookBase()}/api/me/channels`, {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify({ name }),
@@ -416,7 +417,7 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   const headers = authHeaders(token);
   const listUrl = `${base}/api/c/${encodeURIComponent(slug)}/admin/songs`;
 
-  const remoteRes = await fetch(listUrl, { headers });
+  const remoteRes = await songbookFetch(listUrl, { headers });
   if (remoteRes.status === 401) throw new Error('AUTH_EXPIRED');
   if (remoteRes.status === 404) {
     throw new Error(`채널 '${slug}'을(를) 찾을 수 없습니다.`);
@@ -488,7 +489,7 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
         if (!payload) {
           delta.skipped = 1;
         } else {
-          const res = await fetch(`${listUrl}/${encodeURIComponent(existing.id)}`, {
+          const res = await songbookFetch(`${listUrl}/${encodeURIComponent(existing.id)}`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify(payload),
@@ -504,7 +505,7 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
         }
       } else {
         const payload = await buildPostPayload(song);
-        const res = await fetch(listUrl, {
+        const res = await songbookFetch(listUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
@@ -541,7 +542,7 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     let removedDelta = 0;
     let failedDelta = 0;
     try {
-      const res = await fetch(`${listUrl}/${encodeURIComponent(remote.id)}`, {
+      const res = await songbookFetch(`${listUrl}/${encodeURIComponent(remote.id)}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ enabled: false }),
@@ -673,7 +674,7 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
   const headers = authHeaders(token);
   const listUrl = `${base}/api/c/${encodeURIComponent(slug)}/admin/songs`;
 
-  const remoteRes = await fetch(listUrl, { headers });
+  const remoteRes = await songbookFetch(listUrl, { headers });
   if (remoteRes.status === 401) throw new Error('AUTH_EXPIRED');
   if (remoteRes.status === 404) {
     throw new Error(`채널 '${slug}'을(를) 찾을 수 없습니다.`);

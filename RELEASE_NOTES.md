@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.7.8 (2026-09-02)
+
+릴리즈 빌드에서 Songbook 동기화가 `Failed to fetch`로 실패하던 핫픽스입니다. 기준: v0.7.7.
+
+### Songbook
+
+- **릴리즈 CORS 우회**: 개발 WebView origin(`http://localhost:1420`)만 Songbook 서버 CORS에 허용되어, 릴리즈 origin(`https://tauri.localhost`)에서 **보내기·가져오기·신청목록** API가 `Failed to fetch`로 실패하던 문제를 Rust `songbook_http` 프록시(reqwest)로 수정했습니다. OAuth 로그인은 기존처럼 Rust 경로를 사용합니다.
+
+---
+
 ## v0.7.7 (2026-09-02)
 
 사이드바·오버레이·Songbook·재생 UX 개선과 **데스크톱 보안 강화** 묶음입니다. 기준: v0.7.6.

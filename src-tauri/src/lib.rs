@@ -28,6 +28,7 @@ mod overlay_server;
 mod cache_settings;
 mod updater;
 mod songbook_auth;
+mod songbook_api;
 mod env_config;
 pub use lmrm_logic::ipc_validate;
 
@@ -179,7 +180,8 @@ pub fn run() {
             songbook_auth::get_songbook_auth,
             songbook_auth::begin_songbook_oauth,
             songbook_auth::set_songbook_user,
-            songbook_auth::clear_songbook_auth
+            songbook_auth::clear_songbook_auth,
+            songbook_api::songbook_http
         ])
 
         .run(tauri::generate_context!())

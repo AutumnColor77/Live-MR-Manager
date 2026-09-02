@@ -11,7 +11,7 @@ import {
   songbookDesktopConnectUrl,
 } from '../companion-links.js';
 import { setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
-import { invoke, listen } from '../tauri-bridge.js';
+import { songbookFetch } from '../songbook-api.js';
 import { showNotification } from '../utils.js';
 
 async function openExternalUrl(url) {
@@ -204,7 +204,7 @@ function renderAuthButton(state) {
 async function refreshProfile(token) {
   if (!token) return null;
   const base = songbookBase();
-  const res = await fetch(`${base}/api/auth/me`, {
+  const res = await songbookFetch(`${base}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
@@ -375,7 +375,7 @@ async function logoutSongbook() {
   const token = current?.token;
   if (token) {
     try {
-      await fetch(`${songbookBase()}/api/auth/logout`, {
+      await songbookFetch(`${songbookBase()}/api/auth/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

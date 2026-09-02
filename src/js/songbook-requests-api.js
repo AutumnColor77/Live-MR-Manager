@@ -3,6 +3,7 @@
  */
 import { songbookBase, songbookChannelSlug } from './companion-links.js';
 import { invoke } from './tauri-bridge.js';
+import { songbookFetch } from './songbook-api.js';
 
 export class SongbookAuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -39,7 +40,7 @@ async function adminFetch(slug, path, init = {}) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(`${adminBase(slug)}${path}`, { ...init, headers });
+  const res = await songbookFetch(`${adminBase(slug)}${path}`, { ...init, headers });
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 401) {
@@ -65,7 +66,7 @@ export async function fetchAdminRequests(slug) {
 }
 
 export async function fetchPublicStatus(slug) {
-  const res = await fetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/status`);
+  const res = await songbookFetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/status`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -74,7 +75,7 @@ export async function fetchPublicStatus(slug) {
 }
 
 export async function fetchPublicQueue(slug) {
-  const res = await fetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/queue`);
+  const res = await songbookFetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/queue`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -83,7 +84,7 @@ export async function fetchPublicQueue(slug) {
 }
 
 export async function fetchPublicSongs(slug) {
-  const res = await fetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/songs`);
+  const res = await songbookFetch(`${songbookBase()}/api/c/${encodeURIComponent(slug)}/songs`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -110,7 +111,7 @@ export async function createRequest(slug, payload) {
     if (!(err instanceof SongbookAuthError)) throw err;
   }
 
-  const res = await fetch(
+  const res = await songbookFetch(
     `${songbookBase()}/api/c/${encodeURIComponent(slug)}/requests`,
     {
       method: 'POST',
