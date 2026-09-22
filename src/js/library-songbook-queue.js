@@ -78,7 +78,7 @@ export async function addLibrarySongsToRequests(songs) {
 
   const slug = getActiveChannelSlug();
   if (!slug) {
-    showNotification('채널이 없습니다. 설정에서 보내기로 채널을 만들어 주세요.', 'warning');
+    showNotification('채널이 없습니다. Songbook에서 채널을 만든 뒤 다시 시도해 주세요.', 'warning');
     return { added: 0, skipped: 0, missing: 0 };
   }
 

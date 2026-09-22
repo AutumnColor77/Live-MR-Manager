@@ -213,32 +213,30 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 로그인 서버가 세션을 주지 않았습니다. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | 로그인에 실패했습니다. 다시 시도해 주세요. | `src-tauri/src/songbook_auth.rs` |
 | 오류 | 허용되지 않은 Songbook 주소입니다. | `src-tauri/src/songbook_auth.rs` |
-| 오류 | 연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요. | `src/js/events/songbook-auth.js` |
 | 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
 | 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
 | 안내 | Songbook으로 목록을 보내는 중… | `src/js/songbook-sync.js` |
 | 성공 / 경고 | Songbook 동기화 완료 ({slug}): 추가 {n} · 갱신 {n} · 제거 {n} · 그대로 {n}[ · 실패 {n}] | `src/js/songbook-sync.js` |
 | 오류 | Songbook 동기화에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
+| 안내 | Songbook에서 목록을 가져오는 중… | `src/js/songbook-sync.js` |
 | 안내 | 이미 채널이 있습니다: /c/{slug} | `src/js/songbook-sync.js` |
-| 성공 | 채널 생성 완료: /c/{slug} | `src/js/songbook-sync.js` |
-| 오류 | 채널 생성에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
-| 오류 | Songbook 로그인이 필요합니다. | `src/js/songbook-sync.js` (throw → 토스트) |
-| 오류 | 동기화하려면 내 Songbook 채널이 필요합니다. | `src/js/songbook-sync.js` |
-| 오류 | 채널 생성을 취소했습니다. | `src/js/songbook-sync.js` |
-| confirm | Songbook 채널 만들기 / 동기화하려면 채널이 필요합니다. 지금 만들까요? | `src/js/songbook-sync.js` |
-| confirm | Songbook 채널 만들기 / 닉네임으로 채널을 만들까요? | `src/js/songbook-sync.js` |
+| confirm | Songbook 채널이 필요합니다 / 동기화하려면 Songbook 채널이 필요합니다. 웹사이트에서 채널을 만든 뒤 다시 동기화해 주세요. (확인: Songbook 열기) | `src/js/songbook-sync.js` |
+| 안내 | 브라우저에서 채널을 만든 뒤 다시 동기화해 주세요. | `src/js/songbook-sync.js` |
+| 오류 | Songbook 페이지를 열지 못했습니다. | `src/js/songbook-sync.js`, `src/js/songbook-requests.js` |
+| 오류 | Songbook 로그인이 필요합니다. | `src/js/songbook-sync.js` (throw → 토스트), `src/js/library-songbook-queue.js` |
 | 성공 | 신청목록에 추가했습니다: {title} / 신청목록에 {n}곡을 추가했습니다. | `src/js/library-songbook-queue.js` |
 | 경고 | 노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요. | `src/js/library-songbook-queue.js` |
-| 오류 | Songbook 로그인이 필요합니다. / 채널이 없습니다… / 신청목록에 추가하지 못했습니다. | `src/js/library-songbook-queue.js` |
+| 경고 | 채널이 없습니다. Songbook에서 채널을 만든 뒤 다시 시도해 주세요. | `src/js/library-songbook-queue.js` |
+| 오류 | 신청목록에 추가하지 못했습니다. | `src/js/library-songbook-queue.js` |
 | 안내 | 새 신청: {title} - {artist} | `src/js/songbook-request-poller.js` |
 | 성공 | 신청을 열었습니다. / 신청을 마감했습니다. | `src/js/songbook-requests.js` |
 | 성공 | 대기열 중복만 차단합니다. / 이번 방송에서 부른 곡도 차단합니다… / 중복 신청을 허용합니다. | `src/js/songbook-requests.js` |
-| 성공 | 대기열 {n}곡을 비우고 중복 기록을 초기화했습니다. / 부른 곡 중복 기록을 초기화했습니다. | `src/js/songbook-requests.js` |
-| 성공 | 재생 중으로 표시 / 완료 처리 / 거절 처리 | `src/js/songbook-requests.js` |
-| 경고 | 라이브러리에 없는 곡입니다. | `src/js/songbook-requests.js` |
+| 성공 | 대기열 {n}곡을 비웠고, 부른 곡 기록을 초기화했습니다. / 부른 곡 중복 기록을 초기화했습니다. | `src/js/songbook-requests.js` |
+| 성공 | 완료 처리 / 거절 처리 | `src/js/songbook-requests.js` |
+| 경고 | 라이브러리에 재생 가능한 음원이 없습니다. | `src/js/songbook-requests.js` |
 | 경고 | 채널이 없습니다. | `src/js/songbook-requests.js` |
-| 성공 | 채널이 생성되었습니다. | `src/js/songbook-requests.js` |
+| 안내 | 홍보 데모 채널입니다. | `src/js/songbook-requests.js` |
 | 오류 | 순서 변경에 실패했습니다. / {err} | `src/js/songbook-requests.js` |
 | 오류 | 설정 변경 실패 / 초기화 실패 / 처리 실패 / {err} | `src/js/songbook-requests.js` |
 | 안내 | 홍보 데모 모드입니다. 재생·AI·편집이 가상으로 동작합니다. 다시 #promo 로 해제하세요. | `src/js/events/controls/library.js` |

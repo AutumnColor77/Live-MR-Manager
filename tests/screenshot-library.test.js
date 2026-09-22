@@ -15,6 +15,10 @@ import {
   upsertSessionSong,
   removeSessionSong,
   findSessionSong,
+  getPromoYoutubeQuery,
+  getPromoRequestSnapshot,
+  patchPromoRequestStatus,
+  resetPromoRequestSession,
 } from '../src/js/screenshot-library.js';
 import { filterSongLibrary } from '../src/js/library-filters.js';
 import {
@@ -99,6 +103,45 @@ describe('promo session lifecycle', () => {
     expect(state.songLibrary).toEqual(original);
     expect(state.activeTasks).toEqual({});
     expect(state.alignmentQueue).toEqual([]);
+  });
+});
+
+describe('promo youtube and request examples', () => {
+  afterEach(() => {
+    resetPromoRequestSession();
+  });
+
+  it('picks one promo song as the live YouTube search query', () => {
+    const query = getPromoYoutubeQuery();
+    const song = PROMO_SONGS.find((entry) => query === `${entry.title} ${entry.artist}`.trim());
+    expect(song).toBeTruthy();
+    expect(song.source).toBe('youtube');
+    expect(query).toBe('Dynamite BTS');
+  });
+
+  it('builds a request queue with one playing song and demo channel settings', () => {
+    const { status, requests } = getPromoRequestSnapshot();
+    expect(status.channel.name).toBe('데모 채널');
+    expect(status.acceptingRequests).toBe(true);
+    expect(status.duplicatePolicy).toBe('queue');
+    expect(requests.filter((item) => item.status === 'playing')).toHaveLength(1);
+    expect(requests.filter((item) => item.status === 'pending').length).toBeGreaterThan(0);
+    for (const item of requests) {
+      expect(item.title).toBeTruthy();
+      expect(item.artist).toBeTruthy();
+      expect(item.nickname).toBeTruthy();
+      const song = PROMO_SONGS.find((entry) => entry.title === item.title && entry.artist === item.artist);
+      expect(song?.thumbnail).toBeTruthy();
+    }
+  });
+
+  it('updates request status only inside the promo session', () => {
+    const before = getPromoRequestSnapshot();
+    const pending = before.requests.find((item) => item.status === 'pending');
+    expect(patchPromoRequestStatus(pending.id, 'done')).toBe(true);
+    expect(getPromoRequestSnapshot().requests.find((item) => item.id === pending.id)?.status).toBe('done');
+    resetPromoRequestSession();
+    expect(getPromoRequestSnapshot().requests.find((item) => item.id === pending.id)?.status).toBe('pending');
   });
 });
 

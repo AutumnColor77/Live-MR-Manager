@@ -137,7 +137,7 @@ export function closeEditModal() {
   state.editingSongIndex = null;
 }
 
-export function openConfirmModal(title, message, onConfirm) {
+export function openConfirmModal(title, message, onConfirm, options = {}) {
   if (!elements.confirmModal) return;
   
   const titleEl = elements.confirmModal.querySelector("h3");
@@ -153,6 +153,7 @@ export function openConfirmModal(title, message, onConfirm) {
   
   if (titleEl) titleEl.textContent = title;
   if (msgEl) msgEl.textContent = message;
+  applyConfirmLabel(confirmBtn, options.confirmLabel);
   
   confirmBtn.onclick = () => {
     onConfirm();
@@ -171,6 +172,27 @@ export function openConfirmModal(title, message, onConfirm) {
   elements.confirmModal.classList.add("active");
 }
 
+function applyConfirmLabel(confirmBtn, confirmLabel) {
+  const label = String(confirmLabel || "").trim();
+  if (!label) return;
+  if (!confirmBtn.dataset.defaultLabel) {
+    confirmBtn.dataset.defaultLabel = confirmBtn.textContent || "확인";
+    confirmBtn.dataset.defaultDanger = confirmBtn.classList.contains("danger-btn") ? "1" : "0";
+  }
+  confirmBtn.textContent = label;
+  confirmBtn.classList.remove("danger-btn");
+}
+
+function restoreConfirmLabel() {
+  const confirmBtn = document.getElementById("confirm-ok") || document.getElementById("confirm-yes");
+  if (!confirmBtn?.dataset.defaultLabel) return;
+  confirmBtn.textContent = confirmBtn.dataset.defaultLabel;
+  if (confirmBtn.dataset.defaultDanger === "1") confirmBtn.classList.add("danger-btn");
+  delete confirmBtn.dataset.defaultLabel;
+  delete confirmBtn.dataset.defaultDanger;
+}
+
 export function closeConfirmModal() {
+  restoreConfirmLabel();
   if (elements.confirmModal) elements.confirmModal.classList.remove("active");
 }

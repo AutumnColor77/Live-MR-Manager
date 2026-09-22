@@ -1,7 +1,7 @@
 /**
  * Songbook 채널로 앱 라이브러리 Push
  * - 본인 채널만 (demo 차단)
- * - 없으면 POST /api/me/channels 로 생성 유도
+ * - 없으면 Songbook 내 계정(/me)에서 채널을 만들도록 안내
  * - 신규 POST / 기존 PATCH (메타 갱신)
  * - 로컬에 없는 원격 곡은 enabled=false (공개 목록에서 제거, 신청 이력 FK 보존)
  */
@@ -19,6 +19,10 @@ import { resolveMediaUrlFromRecord, pickSongbookPushOriginalUrl } from './youtub
 
 const SYNC_CONCURRENCY = 5;
 const songbookPlayableUrlCache = new Map();
+export const CHANNEL_SETUP_REQUIRED = 'CHANNEL_SETUP_REQUIRED';
+const CHANNEL_SETUP_TITLE = 'Songbook 채널이 필요합니다';
+const CHANNEL_SETUP_MESSAGE = '동기화하려면 Songbook 채널이 필요합니다. 웹사이트에서 채널을 만든 뒤 다시 동기화해 주세요.';
+const CHANNEL_SETUP_TOAST = '브라우저에서 채널을 만든 뒤 다시 동기화해 주세요.';
 
 /** Run async work over items with a concurrency cap. */
 async function mapPool(items, concurrency, fn) {
@@ -133,8 +137,8 @@ export async function lookupSongbookPlayableUrl(song) {
   }
 
   try {
-    const { token, user } = await getAuthOrThrow();
-    const channel = await resolveOwnChannel(token, user, { offerCreate: false });
+    const { token } = await getAuthOrThrow();
+    const channel = await resolveOwnChannel(token);
     const base = songbookBase();
     const listUrl = `${base}/api/c/${encodeURIComponent(channel.slug)}/admin/songs`;
     const res = await songbookFetch(listUrl, { headers: authHeaders(token) });
@@ -320,7 +324,7 @@ async function fetchMeChannels(token) {
   return { user: data.user, channels, own: pickOwnChannel(channels) };
 }
 
-function confirmAsync(title, message) {
+function confirmAsync(title, message, options = {}) {
   return new Promise(async (resolve) => {
     const { openConfirmModal } = await import('./ui/modals.js');
     let settled = false;
@@ -329,7 +333,7 @@ function confirmAsync(title, message) {
       settled = true;
       resolve(value);
     };
-    openConfirmModal(title, message, () => finish(true));
+    openConfirmModal(title, message, () => finish(true), options);
     const cancelBtn =
       document.getElementById('confirm-cancel') || document.getElementById('confirm-no');
     const closeIcon = document.getElementById('confirm-close-icon');
@@ -359,58 +363,69 @@ function confirmAsync(title, message) {
   });
 }
 
-export async function createOwnChannel(token, nameHint) {
-  const name = String(nameHint || 'My Songbook').trim().slice(0, 80) || 'My Songbook';
-  const res = await songbookFetch(`${songbookBase()}/api/me/channels`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ name }),
-  });
-  if (res.status === 401) throw new Error('AUTH_EXPIRED');
-  if (res.status === 409) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error?.includes?.('1개') ? '이미 채널이 있습니다.' : (body.error || '채널을 만들 수 없습니다.'));
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `채널 생성 실패 (${res.status})`);
-  }
-  const data = await res.json();
-  const channel = data.channel;
-  if (!channel?.slug) throw new Error('채널 생성 응답이 올바르지 않습니다.');
-  const refreshed = await fetchMeChannels(token);
-  return refreshed.own || channel;
+function channelSetupRequired() {
+  const err = new Error(CHANNEL_SETUP_REQUIRED);
+  err.code = CHANNEL_SETUP_REQUIRED;
+  return err;
 }
 
-async function resolveOwnChannel(token, user, { offerCreate = true } = {}) {
-  const { own, channels } = await fetchMeChannels(token);
+function isChannelSetupRequired(err) {
+  return err?.code === CHANNEL_SETUP_REQUIRED || err?.message === CHANNEL_SETUP_REQUIRED;
+}
+
+async function openExternalUrl(url) {
+  if (window.__TAURI__?.core?.invoke) {
+    try {
+      await window.__TAURI__.core.invoke('plugin:opener|open_url', { url });
+      return;
+    } catch (err) {
+      console.warn('[SongbookSync] opener failed, fallback', err);
+    }
+    try {
+      await invoke('open_app_update_page', { url });
+      return;
+    } catch (err) {
+      console.warn('[SongbookSync] open_app_update_page failed', err);
+    }
+  }
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) throw new Error('팝업이 차단되었습니다.');
+}
+
+/** 채널이 없을 때 Songbook 내 계정 페이지를 열어 채널 생성을 안내한다. */
+export async function promptOpenSongbookChannelSetup() {
+  const ok = await confirmAsync(CHANNEL_SETUP_TITLE, CHANNEL_SETUP_MESSAGE, {
+    confirmLabel: 'Songbook 열기',
+  });
+  if (!ok) return false;
+  try {
+    await openExternalUrl(`${songbookBase()}/me`);
+  } catch (err) {
+    console.error('[SongbookSync] open account failed', err);
+    showNotification('Songbook 페이지를 열지 못했습니다.', 'error');
+    return false;
+  }
+  showNotification(CHANNEL_SETUP_TOAST, 'info');
+  return true;
+}
+
+async function resolveOwnChannel(token) {
+  const { own } = await fetchMeChannels(token);
   if (own?.slug && own.slug !== 'demo') {
     if (!SONGBOOK_SLUG_RE.test(own.slug)) {
       throw new Error('채널 slug 형식이 올바르지 않습니다.');
     }
     return own;
   }
-
-  if (!offerCreate) {
-    throw new Error('동기화하려면 내 Songbook 채널이 필요합니다.');
-  }
-
-  const ok = await confirmAsync(
-    'Songbook 채널 만들기',
-    '동기화하려면 채널이 필요합니다. 지금 만들까요?',
-  );
-  if (!ok) {
-    throw new Error('채널 생성을 취소했습니다.');
-  }
-  return createOwnChannel(token, user?.name || user?.email);
+  throw channelSetupRequired();
 }
 
 /**
  * @returns {Promise<{ added: number, updated: number, removed: number, skipped: number, failed: number, total: number, slug: string }>}
  */
 export async function pushLibraryToSongbook({ onProgress } = {}) {
-  const { token, user } = await getAuthOrThrow();
-  const channel = await resolveOwnChannel(token, user, { offerCreate: true });
+  const { token } = await getAuthOrThrow();
+  const channel = await resolveOwnChannel(token);
   const slug = channel.slug;
 
   const base = songbookBase();
@@ -666,8 +681,8 @@ function buildImportedSong(remote) {
  * @returns {Promise<{ added: number, updated: number, placeholders: number, skipped: number, total: number, slug: string }>}
  */
 export async function pullLibraryFromSongbook({ onProgress } = {}) {
-  const { token, user } = await getAuthOrThrow();
-  const channel = await resolveOwnChannel(token, user, { offerCreate: false });
+  const { token } = await getAuthOrThrow();
+  const channel = await resolveOwnChannel(token);
   const slug = channel.slug;
 
   const base = songbookBase();
@@ -852,10 +867,12 @@ async function runPushFromUi(trigger) {
       result.failed ? 'warning' : 'success',
     );
   } catch (err) {
-    console.error('[SongbookSync]', err);
-    if (err?.message === 'AUTH_EXPIRED') {
+    if (isChannelSetupRequired(err)) {
+      await promptOpenSongbookChannelSetup();
+    } else if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
+      console.error('[SongbookSync]', err);
       showNotification(songbookErrorMessage(err, 'Songbook 동기화에 실패했습니다.'), 'error');
     }
   } finally {
@@ -887,10 +904,12 @@ async function runPullFromUi(trigger) {
       'success',
     );
   } catch (err) {
-    console.error('[SongbookSync] pull', err);
-    if (err?.message === 'AUTH_EXPIRED') {
+    if (isChannelSetupRequired(err)) {
+      await promptOpenSongbookChannelSetup();
+    } else if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
+      console.error('[SongbookSync] pull', err);
       showNotification(songbookErrorMessage(err, 'Songbook 가져오기에 실패했습니다.'), 'error');
     }
   } finally {
@@ -902,25 +921,19 @@ async function runCreateChannelFromUi(trigger) {
   if (trigger?.disabled) return;
   setSyncBusy(true);
   try {
-    const { token, user } = await getAuthOrThrow();
+    const { token } = await getAuthOrThrow();
     const existing = await fetchMeChannels(token);
     if (existing.own?.slug) {
       showNotification(`이미 채널이 있습니다: /c/${existing.own.slug}`, 'info');
       return;
     }
-    const ok = await confirmAsync(
-      'Songbook 채널 만들기',
-      '닉네임으로 채널을 만들까요?',
-    );
-    if (!ok) return;
-    const channel = await createOwnChannel(token, user?.name || user?.email);
-    showNotification(`채널 생성 완료: /c/${channel.slug}`, 'success');
+    await promptOpenSongbookChannelSetup();
   } catch (err) {
     console.error('[SongbookSync] create channel', err);
     if (err?.message === 'AUTH_EXPIRED') {
       await handleAuthExpired();
     } else {
-      showNotification(songbookErrorMessage(err, '채널 생성에 실패했습니다.'), 'error');
+      showNotification(songbookErrorMessage(err, 'Songbook 페이지를 열지 못했습니다.'), 'error');
     }
   } finally {
     setSyncBusy(false);

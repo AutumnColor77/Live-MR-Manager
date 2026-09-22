@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "tauri-app"
-version = "0.7.8"
+version = "0.7.9"
 description = "Live MR Manager"
 authors = ["AutumnColor77"]
 license = "MIT"
@@ -73,6 +73,11 @@ semver = "1"
 # Enable optimizations in dev mode for AI/DSP performance
 [profile.dev]
 incremental = false
+
+# Full debuginfo on this crate crashes rustc 1.94 (LLVM 21) on Windows
+# (STATUS_ILLEGAL_INSTRUCTION / STATUS_ACCESS_VIOLATION).
+[profile.dev.package.tauri-app]
+debug = 1
 
 # Do not optimize EVERYTHING, only math/audio core libraries
 [profile.dev.package.ort]

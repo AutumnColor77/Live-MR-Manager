@@ -10,7 +10,7 @@ import {
   songbookChannelSlug,
   songbookDesktopConnectUrl,
 } from '../companion-links.js';
-import { setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
+import { promptOpenSongbookChannelSetup, setSongbookSyncVisible, updateSongbookChannelLabel } from '../songbook-sync.js';
 import { invoke, listen } from '../tauri-bridge.js';
 import { songbookFetch } from '../songbook-api.js';
 import { showNotification } from '../utils.js';
@@ -341,7 +341,7 @@ async function startProviderLogin(provider) {
 async function requireChannelSlug() {
   const slug = songbookChannelSlug();
   if (!slug) {
-    showNotification('연결된 채널이 없습니다. 먼저 동기화로 채널을 만드세요.', 'error');
+    await promptOpenSongbookChannelSetup();
     return null;
   }
   return slug;

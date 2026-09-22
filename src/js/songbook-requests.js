@@ -2,7 +2,17 @@
  * Songbook 신청목록 운영 UI
  */
 import { songbookBase } from './companion-links.js';
-import { createOwnChannel } from './songbook-sync.js';
+import {
+  clearPromoRequestQueue,
+  getPromoRequestSnapshot,
+  isPromoModeActive,
+  patchPromoRequestStatus,
+  promoPendingRequestCount,
+  reorderPromoRequests,
+  setPromoAcceptingRequests,
+  setPromoDuplicatePolicy,
+} from './screenshot-library.js';
+import { promptOpenSongbookChannelSetup } from './songbook-sync.js';
 import { invoke } from './tauri-bridge.js';
 import { showNotification } from './utils.js';
 import {
@@ -36,6 +46,25 @@ let lastRequests = [];
 let queueSortable = null;
 let queueDragActive = false;
 let lastQueueSignature = '';
+let viewEpoch = 0;
+
+function headerLoggedIn() {
+  return document.getElementById('songbook-login-btn')?.dataset?.loggedIn === '1';
+}
+
+function requestsRoot() {
+  return document.getElementById('requests-page-root');
+}
+
+/** 늦게 끝난 조회가 이미 그려진 대시보드를 로그인 화면으로 덮지 않게 한다. */
+function beginView() {
+  viewEpoch += 1;
+  return viewEpoch;
+}
+
+function viewIsCurrent(epoch) {
+  return epoch === viewEpoch;
+}
 
 function providerLoginButtonHtml(provider) {
   if (provider === 'google') {
@@ -121,7 +150,9 @@ async function handleAuthExpired() {
   }
   window.dispatchEvent(new CustomEvent('songbook-requests-auth-expired'));
   showNotification('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
-  renderGateState();
+  beginView();
+  const root = requestsRoot();
+  if (root) paintLoginGate(root);
 }
 
 function queueActionsHtml(item) {
@@ -154,7 +185,7 @@ function renderDashboard(status, requests) {
   const root = document.getElementById('requests-page-root');
   if (!root) return;
 
-  const slug = getActiveChannelSlug();
+  const slug = status?.channel?.slug || getActiveChannelSlug();
   const channelName = status?.channel?.name || slug;
   const accepting = Boolean(status?.acceptingRequests);
 
@@ -166,11 +197,6 @@ function renderDashboard(status, requests) {
       if (ao !== bo) return ao - bo;
       return (a.createdAt || 0) - (b.createdAt || 0);
     });
-
-  const label = document.getElementById('requests-channel-label');
-  if (label) {
-    label.textContent = channelName ? `${channelName} · /c/${slug}` : '채널';
-  }
 
   if (!document.getElementById('requests-dashboard') || !document.getElementById('requests-dup-past-toggle')) {
     root.innerHTML = `
@@ -236,6 +262,10 @@ function renderDashboard(status, requests) {
     });
     document.getElementById('requests-queue-clear')?.addEventListener('click', () => void clearAllQueue());
     document.getElementById('btn-open-songbook-viewer')?.addEventListener('click', () => {
+      if (isPromoModeActive()) {
+        showNotification('홍보 데모 채널입니다.', 'info');
+        return;
+      }
       const currentSlug = getActiveChannelSlug();
       if (!currentSlug) {
         showNotification('채널이 없습니다.', 'warning');
@@ -250,6 +280,11 @@ function renderDashboard(status, requests) {
       const act = btn.dataset.act;
       if (id && act) void handleRequestAction(id, act);
     });
+  }
+
+  const label = document.getElementById('requests-channel-label');
+  if (label) {
+    label.textContent = channelName ? `${channelName} · /c/${slug}` : '채널';
   }
 
   const acceptingLabel = document.getElementById('requests-accepting-label');
@@ -412,6 +447,16 @@ async function commitQueueOrder(list) {
     })
     .join('|');
 
+  if (isPromoModeActive()) {
+    reorderPromoRequests(ids);
+    const snap = getPromoRequestSnapshot();
+    lastStatus = snap.status;
+    lastRequests = snap.requests;
+    syncPlaybackQueueFromRequests(lastRequests);
+    syncPromoRequestsBadge();
+    return;
+  }
+
   const slug = getActiveChannelSlug();
   if (!slug || busy) return;
 
@@ -437,42 +482,129 @@ async function commitQueueOrder(list) {
   }
 }
 
+function paintLoginGate(root) {
+  root.innerHTML = `
+    <div class="requests-gate-state" id="requests-empty-state">
+      <p>Songbook에 로그인하면 시청자 신청을 관리할 수 있습니다.</p>
+      <div class="requests-gate-actions">
+        ${providerLoginButtonHtml('google')}
+        ${providerLoginButtonHtml('naver')}
+      </div>
+    </div>`;
+  bindRequestsGateLogin(root);
+}
+
+function paintChannelGate(root) {
+  root.innerHTML = `
+    <div class="requests-gate-state" id="requests-empty-state">
+      <p>신청을 받으려면 Songbook 채널이 필요합니다.</p>
+      <div class="requests-gate-actions">
+        <button type="button" class="btn-ai-action requests-gate-btn" id="btn-requests-create-channel">채널 만들기</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-requests-create-channel')?.addEventListener('click', () => void createChannelFromRequests());
+}
+
+function paintLoadError(root) {
+  root.innerHTML = `
+    <div class="requests-gate-state" id="requests-empty-state">
+      <p>신청목록을 불러오지 못했습니다.</p>
+      <div class="requests-gate-actions">
+        <button type="button" class="btn-ai-action requests-gate-btn" id="btn-requests-retry">다시 시도</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-requests-retry')?.addEventListener('click', () => void refreshPage());
+}
+
+async function resolveRequestsSession() {
+  let token = await getSongbookToken();
+  if (!token && headerLoggedIn()) {
+    token = await getSongbookToken();
+  }
+  return { token, slug: getActiveChannelSlug() };
+}
+
+function syncPromoRequestsBadge() {
+  if (typeof document === 'undefined') return;
+  const badge = document.getElementById('requests-badge');
+  if (!badge) return;
+  const page = document.getElementById('requests-page');
+  const tabVisible = Boolean(page) && page.style.display !== 'none';
+  const count = promoPendingRequestCount();
+  if (tabVisible || count <= 0) {
+    badge.style.display = 'none';
+    badge.textContent = '0';
+    return;
+  }
+  badge.style.display = 'inline-flex';
+  badge.textContent = String(Math.min(99, count));
+}
+
+function applyPromoSnapshot() {
+  const snap = getPromoRequestSnapshot();
+  lastStatus = snap.status;
+  lastRequests = snap.requests;
+  syncPlaybackQueueFromRequests(lastRequests);
+  renderDashboard(lastStatus, lastRequests);
+  syncPromoRequestsBadge();
+}
+
+export function refreshPromoRequests() {
+  if (!isPromoModeActive()) return;
+  applyPromoSnapshot();
+}
+
+export function resetPromoRequestsPage() {
+  lastStatus = null;
+  lastRequests = [];
+  lastQueueSignature = '';
+  destroyQueueSortable();
+  if (typeof document !== 'undefined') {
+    const root = requestsRoot();
+    if (root) {
+      root.innerHTML = `
+        <div class="requests-gate-state" id="requests-empty-state">
+          <p>신청목록을 불러오는 중…</p>
+        </div>`;
+    }
+    const badge = document.getElementById('requests-badge');
+    if (badge) {
+      badge.style.display = 'none';
+      badge.textContent = '0';
+    }
+  }
+  try {
+    // Demo queue must not linger in the dock after #promo exits.
+    void import('./playback-queue.js').then(({ clearPlaybackQueue }) => clearPlaybackQueue());
+  } catch {
+    /* ignore */
+  }
+}
+
 function renderGateState() {
-  const root = document.getElementById('requests-page-root');
+  if (isPromoModeActive()) {
+    applyPromoSnapshot();
+    return;
+  }
+  const epoch = beginView();
+  const root = requestsRoot();
   if (!root) return;
 
-  void getSongbookToken().then(async (token) => {
-    const slug = getActiveChannelSlug();
+  void resolveRequestsSession().then(({ token, slug }) => {
+    if (!viewIsCurrent(epoch) || !requestsRoot()) return;
     if (!token) {
-      root.innerHTML = `
-        <div class="requests-gate-state" id="requests-empty-state">
-          <p>Songbook에 로그인하면 시청자 신청을 관리할 수 있습니다.</p>
-          <div class="requests-gate-actions">
-            ${providerLoginButtonHtml('google')}
-            ${providerLoginButtonHtml('naver')}
-          </div>
-        </div>`;
-      bindRequestsGateLogin(root);
+      if (!headerLoggedIn()) paintLoginGate(root);
       return;
     }
-
     if (!slug) {
-      root.innerHTML = `
-        <div class="requests-gate-state" id="requests-empty-state">
-          <p>신청을 받으려면 Songbook 채널이 필요합니다.</p>
-          <div class="requests-gate-actions">
-            <button type="button" class="btn-ai-action requests-gate-btn" id="btn-requests-create-channel">채널 만들기</button>
-          </div>
-        </div>`;
-      document.getElementById('btn-requests-create-channel')?.addEventListener('click', () => void createChannelFromRequests());
+      paintChannelGate(root);
       return;
     }
-
     if (lastStatus) {
       renderDashboard(lastStatus, lastRequests);
-    } else {
-      void refreshPage();
+      return;
     }
+    void refreshPage();
   });
 }
 
@@ -509,22 +641,35 @@ async function createChannelFromRequests() {
   try {
     const token = await getSongbookToken();
     if (!token) throw new Error('로그인이 필요합니다.');
-    const auth = await invoke('get_songbook_auth');
-    const user = auth?.user;
-    await createOwnChannel(token, user?.name || user?.email);
-    showNotification('채널이 생성되었습니다.', 'success');
-    await refreshPage();
+    await promptOpenSongbookChannelSetup();
   } catch (err) {
-    showNotification(err?.message || '채널 생성에 실패했습니다.', 'error');
+    showNotification(err?.message || 'Songbook 페이지를 열지 못했습니다.', 'error');
   }
 }
 
 async function refreshPage() {
   if (queueDragActive) return;
-  const slug = getActiveChannelSlug();
-  const token = await getSongbookToken();
-  if (!token || !slug) {
-    renderGateState();
+  if (isPromoModeActive()) {
+    applyPromoSnapshot();
+    return;
+  }
+  const epoch = beginView();
+  const root = requestsRoot();
+  if (root && headerLoggedIn() && root.querySelector('.requests-provider-btn')) {
+    root.innerHTML = `
+      <div class="requests-gate-state" id="requests-empty-state">
+        <p>신청목록을 불러오는 중…</p>
+      </div>`;
+  }
+
+  const { token, slug } = await resolveRequestsSession();
+  if (!viewIsCurrent(epoch)) return;
+  if (!token) {
+    if (root && !headerLoggedIn()) paintLoginGate(root);
+    return;
+  }
+  if (!slug) {
+    if (root) paintChannelGate(root);
     return;
   }
 
@@ -533,21 +678,33 @@ async function refreshPage() {
       fetchPublicStatus(slug),
       fetchAdminRequests(slug),
     ]);
+    if (!viewIsCurrent(epoch)) return;
     lastStatus = status;
     lastRequests = requests;
     syncPlaybackQueueFromRequests(requests);
     renderDashboard(status, requests);
   } catch (err) {
+    if (!viewIsCurrent(epoch)) return;
     if (err instanceof SongbookAuthError) {
       await handleAuthExpired();
       return;
     }
     console.error('[SongbookRequests]', err);
+    if (!document.getElementById('requests-dashboard') && root) {
+      paintLoadError(root);
+    }
   }
 }
 
 async function toggleAccepting() {
   if (busy || !lastStatus) return;
+  if (isPromoModeActive()) {
+    const next = !lastStatus.acceptingRequests;
+    setPromoAcceptingRequests(next);
+    showNotification(next ? '신청을 열었습니다.' : '신청을 마감했습니다.', 'success');
+    applyPromoSnapshot();
+    return;
+  }
   const slug = getActiveChannelSlug();
   if (!slug) return;
   busy = true;
@@ -570,6 +727,12 @@ async function toggleAccepting() {
 
 async function applyDuplicatePolicy(next) {
   if (busy || !lastStatus) return;
+  if (isPromoModeActive()) {
+    setPromoDuplicatePolicy(next);
+    showNotification(dupPolicyToast(next), 'success');
+    applyPromoSnapshot();
+    return;
+  }
   const slug = getActiveChannelSlug();
   if (!slug) return;
   busy = true;
@@ -618,6 +781,24 @@ async function setDuplicatePastBlock(enabled) {
 
 async function clearAllQueue() {
   if (busy) return;
+  if (isPromoModeActive()) {
+    const count = (lastRequests || []).filter((r) => r.status === 'pending' || r.status === 'playing').length;
+    const title = count > 0 ? '대기열 비우기' : '부른 곡 기록 초기화';
+    const message = count > 0
+      ? `대기열 ${count}곡을 모두 비웁니다.\n부른 곡 중복 기록도 초기화됩니다. 계속할까요?`
+      : '부른 곡 중복 기록을 초기화합니다. 계속할까요?';
+    const ok = await confirmAsync(title, message);
+    if (!ok) return;
+    const cleared = clearPromoRequestQueue();
+    showNotification(
+      cleared > 0
+        ? `대기열 ${cleared}곡을 비웠고, 부른 곡 기록을 초기화했습니다.`
+        : '부른 곡 중복 기록을 초기화했습니다.',
+      'success',
+    );
+    applyPromoSnapshot();
+    return;
+  }
   const slug = getActiveChannelSlug();
   if (!slug) return;
   const count = (lastRequests || []).filter((r) => r.status === 'pending' || r.status === 'playing').length;
@@ -653,6 +834,41 @@ async function clearAllQueue() {
 
 async function handleRequestAction(id, act) {
   if (busy) return;
+  if (isPromoModeActive()) {
+    const item = (lastRequests || []).find((r) => r.id === id);
+    if (!item) return;
+    busy = true;
+    try {
+      if (act === 'playing') {
+        const song = findLibrarySong(item.title, item.artist);
+        const playable = resolvePlayableAudioPath(song);
+        if (!playable || isPlaceholderAudioPath(playable)) {
+          showNotification('라이브러리에 재생 가능한 음원이 없습니다.', 'warning');
+          return;
+        }
+        patchPromoRequestStatus(id, 'playing');
+        applyPromoSnapshot();
+        const { markAutoPlayedRequest } = await import('./songbook-request-poller.js');
+        markAutoPlayedRequest(id);
+        await playQueueItem({
+          requestId: id,
+          path: playable,
+          title: item.title,
+          artist: item.artist,
+        }, { patchPlaying: false });
+      } else {
+        patchPromoRequestStatus(id, act);
+        const labels = { done: '완료 처리', rejected: '거절 처리' };
+        showNotification(labels[act] || '처리 완료', 'success');
+        applyPromoSnapshot();
+      }
+    } catch (err) {
+      showNotification(err?.message || '처리 실패', 'error');
+    } finally {
+      busy = false;
+    }
+    return;
+  }
   const slug = getActiveChannelSlug();
   if (!slug) return;
   const item = (lastRequests || []).find((r) => r.id === id);
@@ -707,6 +923,7 @@ function stopPagePolling() {
 }
 
 function onRequestsUpdated(event) {
+  if (isPromoModeActive()) return;
   const detail = event?.detail;
   if (!detail || queueDragActive) return;
   lastStatus = detail.status;
@@ -741,4 +958,5 @@ export function onRequestsTabShown() {
 export function onRequestsTabHidden() {
   markRequestsUnseen();
   stopPagePolling();
+  if (isPromoModeActive()) syncPromoRequestsBadge();
 }

@@ -466,6 +466,140 @@ export function seedPromoAiQueues(state, songs = PROMO_SONGS) {
   }));
 }
 
+/** YouTube-sourced promo tracks shown on the search page and request queue. */
+const PROMO_EXAMPLE_PATHS = Object.freeze([
+  "promo://song/01-dynamite",
+  "promo://song/02-spring-day",
+  "promo://song/04-celebrity",
+  "promo://song/05-love-dive",
+  "promo://song/06-after-like",
+  "promo://song/07-next-level",
+]);
+
+const PROMO_REQUEST_COPY = Object.freeze([
+  { nickname: "민지", comment: "이 곡 틀어주세요!" },
+  { nickname: "하늘", comment: "봄날 듣고 싶어요" },
+  { nickname: "준호", comment: "" },
+  { nickname: "수아", comment: "신나는 곡으로요" },
+  { nickname: "도윤", comment: "" },
+  { nickname: "예린", comment: "후렴만 길게 부탁해요" },
+]);
+
+/** @type {object[]|null} */
+let promoRequests = null;
+/** @type {{ acceptingRequests: boolean, duplicatePolicy: string, channel: { name: string, slug: string } }|null} */
+let promoRequestStatus = null;
+
+function promoExampleSongs() {
+  return PROMO_EXAMPLE_PATHS.map((path) => PROMO_SONGS.find((song) => song.path === path)).filter(Boolean);
+}
+
+/** One library song, searched for real on the YouTube page. */
+export function getPromoYoutubeQuery() {
+  const song = promoExampleSongs()[0];
+  if (!song) return "";
+  return `${song.title} ${song.artist}`.trim();
+}
+
+function seedPromoRequests() {
+  promoRequests = promoExampleSongs().map((song, index) => ({
+    id: `promo-req-${index + 1}`,
+    title: song.title,
+    artist: song.artist,
+    status: index === 0 ? "playing" : "pending",
+    nickname: PROMO_REQUEST_COPY[index]?.nickname || "시청자",
+    comment: PROMO_REQUEST_COPY[index]?.comment || "",
+    sortOrder: index,
+    createdAt: 1_700_000_000_000 + index,
+  }));
+  promoRequestStatus = {
+    acceptingRequests: true,
+    duplicatePolicy: "queue",
+    channel: { name: "데모 채널", slug: "promo" },
+  };
+}
+
+function ensurePromoRequests() {
+  if (!promoRequests || !promoRequestStatus) seedPromoRequests();
+}
+
+export function resetPromoRequestSession() {
+  promoRequests = null;
+  promoRequestStatus = null;
+}
+
+/** Mutable demo queue. Copies so callers cannot alias the session. */
+export function getPromoRequestSnapshot() {
+  ensurePromoRequests();
+  return {
+    status: {
+      acceptingRequests: promoRequestStatus.acceptingRequests,
+      duplicatePolicy: promoRequestStatus.duplicatePolicy,
+      channel: { ...promoRequestStatus.channel },
+    },
+    requests: promoRequests.map((item) => ({ ...item })),
+  };
+}
+
+export function promoPendingRequestCount() {
+  if (!promoRequests) return 0;
+  return promoRequests.filter((item) => item.status === "pending").length;
+}
+
+export function patchPromoRequestStatus(id, status) {
+  ensurePromoRequests();
+  const item = promoRequests.find((entry) => entry.id === id);
+  if (!item) return false;
+  if (status === "playing") {
+    for (const entry of promoRequests) {
+      if (entry.id !== id && entry.status === "playing") entry.status = "pending";
+    }
+  }
+  item.status = status;
+  return true;
+}
+
+export function reorderPromoRequests(ids) {
+  ensurePromoRequests();
+  const byId = new Map(promoRequests.map((item) => [item.id, item]));
+  const ordered = [];
+  for (const id of ids) {
+    const item = byId.get(id);
+    if (!item) continue;
+    ordered.push(item);
+    byId.delete(id);
+  }
+  for (const item of promoRequests) {
+    if (byId.has(item.id)) ordered.push(item);
+  }
+  ordered.forEach((item, index) => {
+    item.sortOrder = index;
+  });
+  promoRequests = ordered;
+}
+
+export function setPromoAcceptingRequests(accepting) {
+  ensurePromoRequests();
+  promoRequestStatus.acceptingRequests = Boolean(accepting);
+}
+
+export function setPromoDuplicatePolicy(policy) {
+  ensurePromoRequests();
+  promoRequestStatus.duplicatePolicy = policy;
+}
+
+export function clearPromoRequestQueue() {
+  ensurePromoRequests();
+  let cleared = 0;
+  for (const item of promoRequests) {
+    if (item.status === "pending" || item.status === "playing") {
+      item.status = "done";
+      cleared += 1;
+    }
+  }
+  return cleared;
+}
+
 /** Exact match after trim; case-insensitive for the keyword portion. */
 export function isPromoSecretKey(query) {
   const normalized = String(query || "").trim().toLowerCase();
@@ -573,7 +707,41 @@ export async function activatePromoSession() {
   state.currentLyricIndex = -1;
   state.filteredTracks = [];
   promoModeActive = true;
+  resetPromoRequestSession();
+  await refreshPromoSurfaces();
   return true;
+}
+
+async function refreshPromoSurfaces() {
+  if (typeof document === "undefined") return;
+  try {
+    const { showPromoYoutubeExamples } = await import("./youtube-search.js");
+    showPromoYoutubeExamples();
+  } catch (err) {
+    console.warn("[Promo] youtube examples failed:", err);
+  }
+  try {
+    const { refreshPromoRequests } = await import("./songbook-requests.js");
+    refreshPromoRequests();
+  } catch (err) {
+    console.warn("[Promo] request examples failed:", err);
+  }
+}
+
+async function resetPromoSurfaces() {
+  if (typeof document === "undefined") return;
+  try {
+    const { resetYoutubeSearchForPromoExit } = await import("./youtube-search.js");
+    resetYoutubeSearchForPromoExit();
+  } catch (err) {
+    console.warn("[Promo] youtube reset failed:", err);
+  }
+  try {
+    const { resetPromoRequestsPage } = await import("./songbook-requests.js");
+    resetPromoRequestsPage();
+  } catch (err) {
+    console.warn("[Promo] request reset failed:", err);
+  }
 }
 
 /** Leave promo mode and restore the real library. */
@@ -599,6 +767,8 @@ export async function deactivatePromoSession() {
   state.selectedTrackIndex = -1;
   state.filteredTracks = [];
   promoModeActive = false;
+  resetPromoRequestSession();
+  await resetPromoSurfaces();
   return false;
 }
 

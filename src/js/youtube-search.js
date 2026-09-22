@@ -6,6 +6,7 @@ import { getAudioMetadata, saveLibrary, searchYoutube, youtubePreviewAudio, togg
 import { escapeHtml, showNotification } from './utils.js';
 import { isDuplicateYoutubeTrack, normalizeYoutubeUrl } from './youtube-utils.js';
 import { listen } from './tauri-bridge.js';
+import { getPromoYoutubeQuery, isPromoModeActive } from './screenshot-library.js';
 
 let initialized = false;
 /** @type {Array<object>} */
@@ -386,6 +387,46 @@ export function initYoutubeSearch() {
   window.addEventListener('master-volume-changed', () => applyYoutubePreviewVolume());
 }
 
+const YOUTUBE_SEARCH_HINT = '곡 제목이나 아티스트를 검색해 미리듣고 라이브러리에 추가하세요.';
+
+let promoYoutubeLoaded = false;
+/** @type {Promise<void>|null} */
+let promoYoutubeSearch = null;
+
+export function showPromoYoutubeExamples() {
+  if (!isPromoModeActive() || typeof document === 'undefined') return Promise.resolve();
+  if (promoYoutubeLoaded) return promoYoutubeSearch || Promise.resolve();
+  if (promoYoutubeSearch) return promoYoutubeSearch;
+
+  const query = getPromoYoutubeQuery();
+  const input = document.getElementById('yt-search-input');
+  if (input) input.value = query;
+  if (!query) return Promise.resolve();
+
+  promoYoutubeSearch = runSearch()
+    .then(() => {
+      if (lastResults.length > 0) promoYoutubeLoaded = true;
+    })
+    .finally(() => {
+      promoYoutubeSearch = null;
+    });
+  return promoYoutubeSearch;
+}
+
+export function resetYoutubeSearchForPromoExit() {
+  promoYoutubeLoaded = false;
+  promoYoutubeSearch = null;
+  if (typeof document === 'undefined') return;
+  stopYoutubePreviewAudio();
+  lastResults = [];
+  const container = document.getElementById('yt-search-results');
+  if (container) container.innerHTML = '';
+  const input = document.getElementById('yt-search-input');
+  if (input) input.value = '';
+  setStatus(YOUTUBE_SEARCH_HINT);
+}
+
 export function focusYoutubeSearch() {
+  if (isPromoModeActive()) void showPromoYoutubeExamples();
   document.getElementById('yt-search-input')?.focus();
 }

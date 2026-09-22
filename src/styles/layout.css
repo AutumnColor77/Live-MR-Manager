@@ -205,16 +205,23 @@
 }
 
 .task-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   background: var(--accent-gradient);
   color: var(--text-inverse);
   font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: 20px;
   font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 20px;
   margin-left: auto;
   box-shadow: 0 0 10px var(--accent-glow);
-  min-width: 22px;
-  text-align: center;
+  white-space: nowrap;
 }
 
 /* Sidebar collapsed: logo icon + section labels + icon-only nav */
@@ -293,8 +300,9 @@
   top: 2px;
   right: 2px;
   margin-left: 0;
+  height: 16px;
   min-width: 16px;
-  padding: 1px 5px;
+  padding: 0 3px;
   font-size: 0.6rem;
 }
 
@@ -634,8 +642,9 @@ h1 {
     top: 2px;
     right: 2px;
     margin-left: 0;
+    height: 16px;
     min-width: 16px;
-    padding: 1px 5px;
+    padding: 0 3px;
     font-size: 0.6rem;
   }
 }

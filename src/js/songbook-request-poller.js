@@ -2,6 +2,7 @@
  * Songbook 신청 백그라운드 폴링 — 토스트 알림·사이드바 배지·웹 재생→앱 연동
  */
 import { songbookChannelSlug } from './companion-links.js';
+import { isPromoModeActive } from './screenshot-library.js';
 import { elements } from './ui/elements.js';
 import { showNotification } from './utils.js';
 import { state } from './state.js';
@@ -120,6 +121,7 @@ async function maybeAutoPlayFromRemote(status, requests, slug) {
 }
 
 async function pollOnce() {
+  if (isPromoModeActive()) return;
   const slug = getSlug();
   const token = await getSongbookToken();
   if (!token || !slug) {
