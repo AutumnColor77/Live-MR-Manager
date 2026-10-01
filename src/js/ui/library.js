@@ -243,6 +243,8 @@ export async function performDeleteSong(index) {
     const path = song.path;
     state.songLibrary.splice(index, 1);
     await deleteSongFromDb(path);
+    const { rememberSongbookDeletion } = await import('../songbook-sync.js');
+    rememberSongbookDeletion(song);
     return true;
   } catch (err) {
     console.error("Deletion failed:", err);

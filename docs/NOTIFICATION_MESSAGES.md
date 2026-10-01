@@ -216,17 +216,16 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
 | 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
-| 안내 | Songbook으로 목록을 보내는 중… | `src/js/songbook-sync.js` |
-| 성공 / 경고 | Songbook 동기화 완료 ({slug}): 추가 {n} · 갱신 {n} · 제거 {n} · 그대로 {n}[ · 실패 {n}] | `src/js/songbook-sync.js` |
-| 오류 | Songbook 동기화에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
-| 안내 | Songbook에서 목록을 가져오는 중… | `src/js/songbook-sync.js` |
+| 안내 | Songbook과 동기화하는 중… | `src/js/songbook-sync.js` |
+| 성공 / 경고 | Songbook 동기화 완료 ({slug}): 보냄 추가 {n} · 갱신 {n} · 제거 {n} · 가져옴 추가 {n} · 갱신 {n}[ · 플레이스홀더 {n}][ · 실패 {n}] | `src/js/songbook-sync.js` |
+| 오류 | Songbook 동기화에 실패했습니다. / Songbook 가져오기에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
 | 안내 | 이미 채널이 있습니다: /c/{slug} | `src/js/songbook-sync.js` |
 | confirm | Songbook 채널이 필요합니다 / 동기화하려면 Songbook 채널이 필요합니다. 웹사이트에서 채널을 만든 뒤 다시 동기화해 주세요. (확인: Songbook 열기) | `src/js/songbook-sync.js` |
 | 안내 | 브라우저에서 채널을 만든 뒤 다시 동기화해 주세요. | `src/js/songbook-sync.js` |
 | 오류 | Songbook 페이지를 열지 못했습니다. | `src/js/songbook-sync.js`, `src/js/songbook-requests.js` |
 | 오류 | Songbook 로그인이 필요합니다. | `src/js/songbook-sync.js` (throw → 토스트), `src/js/library-songbook-queue.js` |
 | 성공 | 신청목록에 추가했습니다: {title} / 신청목록에 {n}곡을 추가했습니다. | `src/js/library-songbook-queue.js` |
-| 경고 | 노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요. | `src/js/library-songbook-queue.js` |
+| 경고 | 노래책에 없는 곡입니다. 설정에서 동기화해 주세요. | `src/js/library-songbook-queue.js` |
 | 경고 | 채널이 없습니다. Songbook에서 채널을 만든 뒤 다시 시도해 주세요. | `src/js/library-songbook-queue.js` |
 | 오류 | 신청목록에 추가하지 못했습니다. | `src/js/library-songbook-queue.js` |
 | 안내 | 새 신청: {title} - {artist} | `src/js/songbook-request-poller.js` |

@@ -49,7 +49,7 @@ function resolveRemoteSongId(song, catalog) {
 function friendlyRequestError(err) {
   const msg = String(err?.message || '').trim();
   if (!msg || /^not found$/i.test(msg) || /song not found/i.test(msg)) {
-    return '노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요.';
+    return '노래책에 없는 곡입니다. 설정에서 동기화해 주세요.';
   }
   return msg;
 }
@@ -124,7 +124,7 @@ export async function addLibrarySongsToRequests(songs) {
       const title = String(list[0].title || '곡').trim() || '곡';
       showNotification(`신청목록에 추가했습니다: ${title}`, 'success');
     } else if (missing === 1) {
-      showNotification('노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요.', 'warning');
+      showNotification('노래책에 없는 곡입니다. 설정에서 동기화해 주세요.', 'warning');
     }
     return { added, skipped, missing };
   }
@@ -141,7 +141,7 @@ export async function addLibrarySongsToRequests(songs) {
       missing || skipped ? 'warning' : 'success',
     );
   } else if (missing === list.length) {
-    showNotification('노래책에 없는 곡입니다. 설정에서 보내기를 먼저 하세요.', 'warning');
+    showNotification('노래책에 없는 곡입니다. 설정에서 동기화해 주세요.', 'warning');
   } else if (skipped > 0) {
     showNotification('신청목록에 추가하지 못했습니다.', 'error');
   }

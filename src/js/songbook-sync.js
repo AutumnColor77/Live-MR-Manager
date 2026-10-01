@@ -4,6 +4,10 @@
  * - 없으면 Songbook 내 계정(/me)에서 채널을 만들도록 안내
  * - 신규 POST / 기존 PATCH (메타 갱신)
  * - 로컬에 없는 원격 곡은 enabled=false (공개 목록에서 제거, 신청 이력 FK 보존)
+ * - 웹에서 추가한 곡(origin=web)은 앱에서 지운 적이 없으면 숨기지 않는다. origin이 없으면 push로 본다.
+ * - 앱에서 삭제한 곡은 origin과 관계없이 웹에서 숨기고, 가져오기로 되돌리지 않는다.
+ * - 로컬에 보낼 YouTube URL이 없으면 PATCH에서 originalUrl을 빼 원격 링크를 유지한다.
+ * - isMr인 곡은 tags에 "MR"을 한 번만 붙인다. Pull은 MR 태그가 있을 때만 isMr를 켠다.
  */
 import {
   applySongbookChannels,
@@ -18,6 +22,7 @@ import { showNotification } from './utils.js';
 import { resolveMediaUrlFromRecord, pickSongbookPushOriginalUrl } from './youtube-utils.js';
 
 const SYNC_CONCURRENCY = 5;
+const DELETED_SONG_KEYS = 'songbook_deleted_keys';
 const songbookPlayableUrlCache = new Map();
 export const CHANNEL_SETUP_REQUIRED = 'CHANNEL_SETUP_REQUIRED';
 const CHANNEL_SETUP_TITLE = 'Songbook 채널이 필요합니다';
@@ -57,6 +62,76 @@ function normalizeKey(title, artist) {
 function normalizeTags(tags) {
   if (!Array.isArray(tags)) return [];
   return tags.map(String).map((t) => t.trim()).filter(Boolean);
+}
+
+/** Songbook marks instrumentals with an "MR" tag; the app uses `isMr`. */
+function hasMrTag(tags) {
+  return normalizeTags(tags).some((t) => t.toUpperCase() === 'MR');
+}
+
+export function pushTags(song) {
+  const tags = normalizeTags(song?.tags);
+  const isMr = Boolean(song?.isMr || song?.is_mr);
+  return isMr && !hasMrTag(tags) ? ['MR', ...tags] : tags;
+}
+
+/** Missing or unknown origin is treated as an app push. */
+function songOrigin(remote) {
+  return String(remote?.origin || '').trim().toLowerCase() === 'web' ? 'web' : 'push';
+}
+
+function readDeletedSongKeys() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DELETED_SONG_KEYS) || '[]');
+    if (!Array.isArray(raw)) return new Set();
+    return new Set(raw.filter((key) => typeof key === 'string' && key));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDeletedSongKeys(keys) {
+  localStorage.setItem(DELETED_SONG_KEYS, JSON.stringify([...keys]));
+}
+
+/** Remember a library delete so the next sync does not import that song again. */
+export function rememberSongbookDeletion(song) {
+  const title = String(song?.title || '').trim();
+  if (!title) return;
+  const keys = readDeletedSongKeys();
+  keys.add(normalizeKey(title, song?.artist));
+  writeDeletedSongKeys(keys);
+}
+
+/** Drop deletion marks for songs that are in the library again. */
+export function forgetSongbookDeletions(songs) {
+  const keys = readDeletedSongKeys();
+  if (!keys.size) return keys;
+  let changed = false;
+  for (const song of songs || []) {
+    const title = String(song?.title || '').trim();
+    if (!title) continue;
+    if (keys.delete(normalizeKey(title, song.artist))) changed = true;
+  }
+  if (changed) writeDeletedSongKeys(keys);
+  return keys;
+}
+
+/**
+ * Remote songs Push may hide. Web-created songs stay unless the user deleted them in the app.
+ * @param {object[]} remoteSongs
+ * @param {Set<string>} localKeys normalizeKey(title, artist)
+ * @param {Set<string>} [deletedKeys]
+ */
+export function remoteSongsToDisable(remoteSongs, localKeys, deletedKeys) {
+  const deleted = deletedKeys instanceof Set ? deletedKeys : new Set();
+  return remoteSongs.filter((s) => {
+    if (!s?.id || s.enabled === false) return false;
+    const key = normalizeKey(s.title, s.artist);
+    if (localKeys.has(key)) return false;
+    if (songOrigin(s) === 'web' && !deleted.has(key)) return false;
+    return true;
+  });
 }
 
 function tagsEqual(a, b) {
@@ -169,6 +244,15 @@ function resolveRemoteThumbnail(remoteThumb) {
   return value;
 }
 
+function withoutEmptyOriginalUrl(payload) {
+  if (!String(payload?.originalUrl || '').trim()) {
+    const next = { ...payload };
+    delete next.originalUrl;
+    return next;
+  }
+  return payload;
+}
+
 function buildMetaPayload(song) {
   const title = String(song?.title || '').trim();
   const artist = String(song?.artist || '').trim() || 'Unknown';
@@ -184,7 +268,7 @@ function buildMetaPayload(song) {
     artist,
     category: mapSongbookCategory(song),
     genre: mapSongbookGenre(song),
-    tags: normalizeTags(song?.tags),
+    tags: pushTags(song),
     songKey: song?.songKey ?? song?.song_key ?? null,
     bpm,
     difficulty: mapSongbookDifficulty(song),
@@ -220,9 +304,20 @@ async function buildPostPayload(song) {
   };
 }
 
+/**
+ * Meta fields for PATCH. Omits originalUrl when this app has no YouTube URL to send,
+ * so a web-entered non-YouTube link is left alone.
+ * @returns {object|null}
+ */
+export function buildSongbookMetaPatch(song, existing) {
+  const meta = withoutEmptyOriginalUrl(buildMetaPayload(song));
+  if (!needsMetaPatch(existing, meta) && existing?.enabled !== false) return null;
+  return { ...meta, enabled: true };
+}
+
 /** PATCH payload; null if nothing to send. */
 async function buildPatchPayload(song, existing) {
-  const meta = buildMetaPayload(song);
+  const meta = withoutEmptyOriginalUrl(buildMetaPayload(song));
   const httpThumb = localHttpThumbnail(song);
   const metaPatch = needsMetaPatch(existing, meta);
   const thumbPatch = thumbnailNeedsUpload(song, existing.thumbnail);
@@ -284,9 +379,12 @@ function needsMetaPatch(remote, localPayload) {
   const remoteDonation = remote.donationAmount ?? null;
   const localDonation = localPayload.donationAmount ?? null;
   if (remoteDonation !== localDonation) return true;
-  const remoteUrl = String(remote.originalUrl || remote.original_url || '').trim();
   const localUrl = String(localPayload.originalUrl || '').trim();
-  if (remoteUrl !== localUrl) return true;
+  // No local YouTube URL means "leave the remote link", including non-YouTube http(s).
+  if (localUrl) {
+    const remoteUrl = String(remote.originalUrl || remote.original_url || '').trim();
+    if (remoteUrl !== localUrl) return true;
+  }
   if (remote.enabled === false) return true;
   return false;
 }
@@ -543,11 +641,11 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     await bumpProgress(list.length, delta);
   });
 
-  // 앱 라이브러리에 없는 원격 곡 → 공개 목록에서 숨김 (재동기화 시 enabled 복구)
-  const toDisable = remoteSongs.filter((s) => {
-    if (!s?.id || s.enabled === false) return false;
-    return !localKeys.has(normalizeKey(s.title, s.artist));
-  });
+  // 앱 라이브러리에 없는 원격 곡 → 공개 목록에서 숨김 (재동기화 시 enabled 복구).
+  // origin=web 은 앱에서 삭제한 곡만 숨긴다. 한 번도 지우지 않은 웹 곡은 이어서 가져온다.
+  // TODO: PUT /songs/sync 의 disableMissing 으로 옮기면 서버가 origin=web 을 지켜 준다. 이번엔 곡별 PATCH를 유지한다.
+  const deletedKeys = forgetSongbookDeletions(list);
+  const toDisable = remoteSongsToDisable(remoteSongs, localKeys, deletedKeys);
 
   const disableTotal = list.length + toDisable.length;
   let disableProgressLock = Promise.resolve();
@@ -605,7 +703,7 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   };
 }
 
-function applyRemoteMetaToLocal(local, remote) {
+export function applyRemoteMetaToLocal(local, remote) {
   const next = { ...local };
   next.title = String(remote.title || local.title || '').trim() || local.title;
   next.artist = String(remote.artist || local.artist || '').trim() || local.artist;
@@ -613,6 +711,11 @@ function applyRemoteMetaToLocal(local, remote) {
   next.bpm = remote.bpm ?? local.bpm ?? null;
   next.difficulty = remote.difficulty ?? local.difficulty ?? null;
   next.tags = normalizeTags(remote.tags?.length ? remote.tags : local.tags);
+  // Only promote: older pushes never sent the MR tag, so its absence must not clear a local flag.
+  if (hasMrTag(remote.tags)) {
+    next.isMr = true;
+    next.is_mr = true;
+  }
   const category = String(remote.category || '').trim();
   if (category) {
     next.categories = [category];
@@ -667,7 +770,8 @@ function buildImportedSong(remote) {
     curationCategory: category || null,
     playCount: 0,
     dateAdded: now,
-    isMr: false,
+    isMr: hasMrTag(remote.tags),
+    is_mr: hasMrTag(remote.tags),
     songKey: remote.songKey ?? remote.song_key ?? null,
     bpm: remote.bpm ?? null,
     difficulty: remote.difficulty ?? null,
@@ -699,8 +803,9 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
   }
 
   const remoteJson = await remoteRes.json();
+  const deletedKeys = readDeletedSongKeys();
   const remoteSongs = (Array.isArray(remoteJson?.songs) ? remoteJson.songs : []).filter(
-    (s) => s && s.enabled !== false,
+    (s) => s && s.enabled !== false && !deletedKeys.has(normalizeKey(s.title, s.artist)),
   );
 
   const localSongs = await invoke('get_songs');
@@ -766,7 +871,7 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
 }
 
 function setSyncBusy(busy) {
-  document.querySelectorAll('[data-songbook-sync], [data-songbook-sync-pull], [data-songbook-create-channel]').forEach((el) => {
+  document.querySelectorAll('[data-songbook-sync], [data-songbook-create-channel]').forEach((el) => {
     el.disabled = busy;
   });
   document.querySelectorAll('.songbook-sync-btn').forEach((el) => {
@@ -831,11 +936,6 @@ function refreshChannelActionVisibility(ownOverride) {
       el.hidden = !loggedIn;
     }
   });
-  document.querySelectorAll('[data-songbook-sync-pull]').forEach((el) => {
-    if (el.hasAttribute('data-songbook-sync-visible')) {
-      el.hidden = !loggedIn;
-    }
-  });
 }
 
 async function handleAuthExpired() {
@@ -849,69 +949,56 @@ async function handleAuthExpired() {
   showNotification('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
 }
 
-async function runPushFromUi(trigger) {
-  if (trigger?.disabled) return;
-  setSyncBusy(true);
-  showNotification('Songbook으로 목록을 보내는 중…', 'info');
-  try {
-    const result = await pushLibraryToSongbook();
-    const parts = [
-      `추가 ${result.added}`,
-      `갱신 ${result.updated}`,
-      `제거 ${result.removed}`,
-      `그대로 ${result.skipped}`,
-    ];
-    if (result.failed) parts.push(`실패 ${result.failed}`);
-    showNotification(
-      `Songbook 동기화 완료 (${result.slug}): ${parts.join(' · ')}`,
-      result.failed ? 'warning' : 'success',
-    );
-  } catch (err) {
-    if (isChannelSetupRequired(err)) {
-      await promptOpenSongbookChannelSetup();
-    } else if (err?.message === 'AUTH_EXPIRED') {
-      await handleAuthExpired();
-    } else {
-      console.error('[SongbookSync]', err);
-      showNotification(songbookErrorMessage(err, 'Songbook 동기화에 실패했습니다.'), 'error');
-    }
-  } finally {
-    setSyncBusy(false);
-  }
+async function reloadLibraryAfterPull() {
+  const { loadLibrary } = await import('./audio.js');
+  const { state } = await import('./state.js');
+  const { renderLibrary } = await import('./ui/library.js');
+  const { refreshFilterDropdowns } = await import('./ui/core.js');
+  state.songLibrary = (await loadLibrary()) || [];
+  await refreshFilterDropdowns();
+  renderLibrary();
 }
 
-async function runPullFromUi(trigger) {
+async function handleSyncError(err, stage) {
+  if (isChannelSetupRequired(err)) {
+    await promptOpenSongbookChannelSetup();
+    return;
+  }
+  if (err?.message === 'AUTH_EXPIRED') {
+    await handleAuthExpired();
+    return;
+  }
+  console.error('[SongbookSync]', stage, err);
+  const fallback = stage === 'pull'
+    ? 'Songbook 가져오기에 실패했습니다.'
+    : 'Songbook 동기화에 실패했습니다.';
+  showNotification(songbookErrorMessage(err, fallback), 'error');
+}
+
+async function runSyncFromUi(trigger) {
   if (trigger?.disabled) return;
   setSyncBusy(true);
-  showNotification('Songbook에서 목록을 가져오는 중…', 'info');
+  showNotification('Songbook과 동기화하는 중…', 'info');
+  let pushed = null;
   try {
-    const result = await pullLibraryFromSongbook();
-    const { loadLibrary } = await import('./audio.js');
-    const { state } = await import('./state.js');
-    const { renderLibrary } = await import('./ui/library.js');
-    const { refreshFilterDropdowns } = await import('./ui/core.js');
-    state.songLibrary = (await loadLibrary()) || [];
-    await refreshFilterDropdowns();
-    renderLibrary();
+    pushed = await pushLibraryToSongbook();
+    const pulled = await pullLibraryFromSongbook();
+    await reloadLibraryAfterPull();
     const parts = [
-      `추가 ${result.added}`,
-      `갱신 ${result.updated}`,
+      `보냄 추가 ${pushed.added}`,
+      `갱신 ${pushed.updated}`,
+      `제거 ${pushed.removed}`,
+      `가져옴 추가 ${pulled.added}`,
+      `갱신 ${pulled.updated}`,
     ];
-    if (result.placeholders) parts.push(`플레이스홀더 ${result.placeholders}`);
-    if (result.skipped) parts.push(`건너뜀 ${result.skipped}`);
+    if (pulled.placeholders) parts.push(`플레이스홀더 ${pulled.placeholders}`);
+    if (pushed.failed) parts.push(`실패 ${pushed.failed}`);
     showNotification(
-      `Songbook 가져오기 완료 (${result.slug}): ${parts.join(' · ')}`,
-      'success',
+      `Songbook 동기화 완료 (${pushed.slug || pulled.slug}): ${parts.join(' · ')}`,
+      pushed.failed ? 'warning' : 'success',
     );
   } catch (err) {
-    if (isChannelSetupRequired(err)) {
-      await promptOpenSongbookChannelSetup();
-    } else if (err?.message === 'AUTH_EXPIRED') {
-      await handleAuthExpired();
-    } else {
-      console.error('[SongbookSync] pull', err);
-      showNotification(songbookErrorMessage(err, 'Songbook 가져오기에 실패했습니다.'), 'error');
-    }
+    await handleSyncError(err, pushed ? 'pull' : 'push');
   } finally {
     setSyncBusy(false);
   }
@@ -948,16 +1035,7 @@ export function initSongbookSync() {
     btn.dataset.bound = '1';
     btn.addEventListener('click', (e) => {
       e.preventDefault();
-      void runPushFromUi(btn);
-    });
-  });
-
-  document.querySelectorAll('[data-songbook-sync-pull]').forEach((btn) => {
-    if (btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      void runPullFromUi(btn);
+      void runSyncFromUi(btn);
     });
   });
 

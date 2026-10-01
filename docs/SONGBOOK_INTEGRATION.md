@@ -21,29 +21,34 @@
 
 구현: [`src-tauri/src/songbook_auth.rs`](../src-tauri/src/songbook_auth.rs), [`src-tauri/crates/lmrm-logic/src/oauth.rs`](../src-tauri/crates/lmrm-logic/src/oauth.rs).
 
-라이브러리에서 **신청목록에 추가**는 시청자 신청 API(`POST /api/c/:slug/requests`)를 씁니다. 곡은 보내기로 노래책에 있어야 합니다.
+라이브러리에서 **신청목록에 추가**는 시청자 신청 API(`POST /api/c/:slug/requests`)를 씁니다. 곡은 동기화로 노래책에 있어야 합니다.
 
 ## 채널이 없을 때 (v0.7.9)
 
 앱은 `POST /api/me/channels`로 채널을 만들지 않습니다.
 
-- 동기화·가져오기, 설정·신청목록의 **채널 만들기**, 계정 메뉴에서 채널이 없으면 확인 모달(버튼 **Songbook 열기**)을 띄웁니다.
+- 동기화, 설정·신청목록의 **채널 만들기**, 계정 메뉴에서 채널이 없으면 확인 모달(버튼 **Songbook 열기**)을 띄웁니다.
 - 확인하면 `https://www.livemrsongbook.com/me`를 열고, 「브라우저에서 채널을 만든 뒤 다시 동기화해 주세요.」만 안내합니다.
 - 취소하면 토스트 없이 닫습니다. 재생 URL 조회(`lookupSongbookPlayableUrl`)는 브라우저를 열지 않습니다.
 
+## 동기화
+
+헤더 **동기화** 또는 설정 → Songbook 동기화 → **동기화**. 먼저 앱 라이브러리를 웹에 반영하고, 이어서 웹에만 있는 곡을 앱으로 가져옵니다. 같은 곡은 앱 내용이 웹을 덮습니다. 보내기가 예외로 끝나면 가져오기는 하지 않습니다.
+
 ## Push (앱 → 웹)
 
-설정 → Songbook 동기화 → **보내기**
+동기화의 앞 단계입니다.
 
 - 제목·아티스트 키로 매칭 후 POST/PATCH
-- 로컬에 없는 원격 곡은 `enabled=false` (공개 숨김)
-- 유튜브 `path`/`originalUrl`/`original_url`만 `originalUrl`로 전송 (`pickSongbookPushOriginalUrl` — **YouTube ID 있는 http(s)만**, 로컬 경로·비-유튜브 URL 금지)
-- 유튜브 없으면 `originalUrl: null` (서버 DB null 정상)
+- 로컬에 없는 원격 곡은 `enabled=false` (공개 숨김). 웹에서 추가한 곡(`origin=web`)은 앱에서 지운 적이 없으면 숨기지 않고 가져온다. 앱에서 삭제한 곡은 origin과 관계없이 웹에서 숨기고 다시 가져오지 않는다. `origin`이 없으면 `push`로 본다.
+- 유튜브 `path`/`originalUrl`/`original_url`만 `originalUrl`로 전송 (`pickSongbookPushOriginalUrl` — **YouTube ID 있는 http(s)만**, 로컬 경로·비-유튜브 URL은 올리지 않음)
+- 신규 POST에 보낼 유튜브 URL이 없으면 `originalUrl: null`. 기존 곡 PATCH는 로컬에 보낼 URL이 없으면 `originalUrl`을 빼서 원격 링크(비유튜브 http(s) 포함)를 유지한다.
+- MR: 앱 `isMr`가 켜져 있으면 Push `tags`에 `"MR"`을 한 번만 붙인다. Pull은 원격 tags에 MR이 있을 때만 `isMr`를 켠다. 태그가 없다고 끄지는 않는다.
 - **성능 (2026-09)**: 곡당 순차 + throttle 제거, 최대 5건 병렬. 썸네일 JPEG 변환은 업로드 직전 1회(세션 캐시).
 
 ## Pull (웹 → 앱)
 
-설정 → **가져오기**
+동기화의 뒷 단계입니다. 보내기가 끝난 뒤에 실행됩니다.
 
 1. `GET /api/c/:slug/admin/songs` (enabled만)
 2. 제목·아티스트로 로컬 매칭
