@@ -3,7 +3,7 @@
  * https://github.com/AutumnColor77/App-Companion/blob/master/lib/site.ts 와 동기화 유지
  */
 export const GITHUB_REPO = 'AutumnColor77/Live-MR-Manager';
-export const COMPANION_BASE = 'https://lmrm.vercel.app';
+export const COMPANION_BASE = 'https://autumntools.vercel.app';
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`;
 
 export const FAQ_URL = `${COMPANION_BASE}/faq`;

@@ -395,7 +395,7 @@ cd src-tauri && cargo fetch && cd ..
 npm run tauri dev
 ```
 
-Companion 안내 사이트는 이 폴더에 없습니다. [AutumnColor77/App-Companion](https://github.com/AutumnColor77/App-Companion)에서 실행하고, 프로덕션은 계속 [lmrm.vercel.app](https://lmrm.vercel.app) 입니다.
+Companion 안내 사이트는 이 폴더에 없습니다. [AutumnColor77/App-Companion](https://github.com/AutumnColor77/App-Companion)에서 실행하고, 프로덕션은 [autumntools.vercel.app](https://autumntools.vercel.app) 입니다. 예전 주소 lmrm.vercel.app 은 새 주소로 넘어갑니다.
 
 **Windows PowerShell 참고**
 
@@ -434,7 +434,7 @@ Redirect URI: `https://lmrm.vercel.app/oauth/callback`
 | 기본 MR 모델 (Kim Vocal 2, Inst HQ 3) | UVR 생태계 · **잠정 MIT + 필수 크레딧** ([상세](docs/MODEL_LICENSING.md)) |
 
 Companion 이용약관·개인정보 처리방침은 서비스 운영 문서이며, MIT가 부여한 소프트웨어 사용·재배포 권리를 축소하지 않습니다.
-→ [이용약관](https://lmrm.vercel.app/terms) · [개인정보 처리방침](https://lmrm.vercel.app/privacy)
+→ [이용약관](https://autumntools.vercel.app/terms) · [개인정보 처리방침](https://autumntools.vercel.app/privacy)
 
 ### UVR 크레딧
 

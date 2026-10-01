@@ -108,7 +108,7 @@ fn host_path_allowed(host: &str, path: &str) -> bool {
         "live-mr-songbook.boohun2771.workers.dev" => true,
         "accounts.google.com" => true,
         "nid.naver.com" => true,
-        "lmrm.vercel.app" => true,
+        "autumntools.vercel.app" | "lmrm.vercel.app" => true,
         "discord.gg" => true,
         "discord.com" => path.starts_with("/invite/"),
         "github.com" => {
@@ -328,6 +328,7 @@ mod tests {
             "https://github.com/AutumnColor77/Live-MR-Manager/releases"
         )
         .is_ok());
+        assert!(validate_external_open_url("https://autumntools.vercel.app/faq").is_ok());
         assert!(validate_external_open_url("https://lmrm.vercel.app/faq").is_ok());
         assert!(validate_external_open_url("https://discord.gg/qfJnk3VJyf").is_ok());
         assert!(validate_external_open_url(

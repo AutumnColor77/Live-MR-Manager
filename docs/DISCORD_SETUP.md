@@ -23,8 +23,8 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 ## `#공지` 핀 메시지 예시
 
 - Discord: https://discord.gg/qfJnk3VJyf
-- FAQ: https://lmrm.vercel.app/faq
-- 문의 허브: https://lmrm.vercel.app/qa
+- FAQ: https://autumntools.vercel.app/faq
+- 문의 허브: https://autumntools.vercel.app/qa
 - 버그 신고: https://github.com/AutumnColor77/Live-MR-Manager/issues/new?template=bug_report.yml
 - 앱에서: 설정 → 도움말 · 문의
 

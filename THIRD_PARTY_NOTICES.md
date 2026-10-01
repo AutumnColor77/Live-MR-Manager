@@ -118,5 +118,5 @@ Ultimate Vocal Remover (UVR) — [Anjok07](https://github.com/anjok07), [aufr33]
 ## 5. 소프트웨어 라이선스 vs Companion 약관
 
 - **MIT**: 소스·빌드 산출물의 사용·수정·재배포·판매을 허용(고지 조건).
-- **Companion 이용약관**: `lmrm.vercel.app` 운영·OAuth·공식 브랜드에 관한 서비스 조건이며, MIT가 부여한 소프트웨어 권리를 축소하지 않는다.
+- **Companion 이용약관**: `autumntools.vercel.app` 운영·OAuth·공식 브랜드에 관한 서비스 조건이며, MIT가 부여한 소프트웨어 권리를 축소하지 않는다.
 - 상세: [App-Companion 이용약관](https://github.com/AutumnColor77/App-Companion/blob/master/lib/legal/terms-of-service.ts)
