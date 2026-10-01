@@ -395,6 +395,8 @@ cd src-tauri && cargo fetch && cd ..
 npm run tauri dev
 ```
 
+Companion 안내 사이트는 이 폴더에 없습니다. [AutumnColor77/App-Companion](https://github.com/AutumnColor77/App-Companion)에서 실행하고, 프로덕션은 계속 [lmrm.vercel.app](https://lmrm.vercel.app) 입니다.
+
 **Windows PowerShell 참고**
 
 - `npm`이 인식되지 않으면: 터미널을 새로 열거나 `npm.cmd` 사용

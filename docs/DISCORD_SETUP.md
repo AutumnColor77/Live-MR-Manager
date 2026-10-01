@@ -1,13 +1,13 @@
 # Discord 서버 운영 가이드
 
-Live MR Manager 사용자(스트리머·퍼포머) 문의용 Discord 서버 설정 안내입니다.
+Autumn Tools 제품군(Live MR Manager, Live MR Songbook, Cheese Stick Dock) 사용자 커뮤니티 Discord 서버 설정 안내입니다. 예전 [LMRM] Live MR Manager 서버를 개편해 전 제품 공용으로 운영합니다.
 
 ## 서버 정보
 
 - 초대 링크: https://discord.gg/qfJnk3VJyf
-- 서버 이름: [LMRM] Live MR Manager
+- 서버 이름: Autumn Tools
 
-코드 반영 위치: [`web/companion/lib/site.ts`](../web/companion/lib/site.ts), [`src/js/companion-links.js`](../src/js/companion-links.js)
+코드 반영 위치: [App-Companion `lib/site.ts`](https://github.com/AutumnColor77/App-Companion/blob/master/lib/site.ts), [`src/js/companion-links.js`](../src/js/companion-links.js)
 
 Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJnk3VJyf` 환경 변수를 설정하세요.
 

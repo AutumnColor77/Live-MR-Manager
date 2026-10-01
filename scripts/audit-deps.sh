@@ -75,7 +75,6 @@ npm_audit_tree() {
 }
 
 npm_audit_tree "$ROOT" "app-root"
-npm_audit_tree "$ROOT/web/companion" "companion"
 
 echo
 if [[ "$status" -ne 0 ]]; then

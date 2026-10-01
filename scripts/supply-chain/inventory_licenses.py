@@ -264,7 +264,6 @@ def main() -> int:
 
     npm_locks = [
         (ROOT / "package-lock.json", "app-root"),
-        (ROOT / "web" / "companion" / "package-lock.json", "companion"),
     ]
     for lock, label in npm_locks:
         print(f"→ Scanning {rel(lock)}…")

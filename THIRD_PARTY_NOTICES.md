@@ -25,7 +25,7 @@
 | signalsmith-stretch | Pitch/Tempo | MIT | [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | Copyright notice 유지 |
 | Rodio / Symphonia / cpal | 오디오 I/O·디코드 | MIT / Apache-2.0 등 | crates.io | Cargo 의존성 고지 |
 | rusqlite (bundled SQLite) | 로컬 DB | MIT / Apache-2.0 (crate), SQLite Public Domain | crates.io | — |
-| Next.js / React (Companion) | Companion 웹 | MIT | npm | `web/companion` 의존성 |
+| Next.js / React (Companion) | Companion 웹 | MIT | npm | [App-Companion](https://github.com/AutumnColor77/App-Companion) 의존성 |
 
 Rust·npm 전체 SBOM은 빌드 시점 `Cargo.lock` / `package-lock.json`을 기준으로 합니다. 릴리스 전에 주요 copyleft(GPL/LGPL/AGPL) 직접 링크 여부를 재확인하세요.
 
@@ -119,4 +119,4 @@ Ultimate Vocal Remover (UVR) — [Anjok07](https://github.com/anjok07), [aufr33]
 
 - **MIT**: 소스·빌드 산출물의 사용·수정·재배포·판매을 허용(고지 조건).
 - **Companion 이용약관**: `lmrm.vercel.app` 운영·OAuth·공식 브랜드에 관한 서비스 조건이며, MIT가 부여한 소프트웨어 권리를 축소하지 않는다.
-- 상세: [`web/companion/lib/legal/terms-of-service.ts`](web/companion/lib/legal/terms-of-service.ts)
+- 상세: [App-Companion 이용약관](https://github.com/AutumnColor77/App-Companion/blob/master/lib/legal/terms-of-service.ts)

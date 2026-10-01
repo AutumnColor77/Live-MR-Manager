@@ -1,6 +1,6 @@
 /**
  * Companion 웹·GitHub Issues·Discord URL (앱 설정 링크용)
- * web/companion/lib/site.ts 와 동기화 유지
+ * https://github.com/AutumnColor77/App-Companion/blob/master/lib/site.ts 와 동기화 유지
  */
 export const GITHUB_REPO = 'AutumnColor77/Live-MR-Manager';
 export const COMPANION_BASE = 'https://lmrm.vercel.app';
@@ -16,7 +16,7 @@ export const MODEL_LICENSING_URL = `${GITHUB_REPO_URL}/blob/main/docs/MODEL_LICE
 export const FFMPEG_SOURCE_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-06-30-13-34';
 export const YTDLP_SOURCE_URL = 'https://github.com/yt-dlp/yt-dlp';
 
-/** Discord 초대 링크 — [LMRM] Live MR Manager */
+/** Discord 초대 링크 — Autumn Tools 커뮤니티(전 제품 공용) */
 export const DISCORD_INVITE_URL = 'https://discord.gg/qfJnk3VJyf';
 
 /** Live MR Songbook (Google/Naver 로그인 · 채널 운영) */

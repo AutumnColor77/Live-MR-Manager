@@ -64,7 +64,7 @@ finally {
     Pop-Location
 }
 
-# --- npm (root + companion) ---
+# --- npm (root) ---
 function Invoke-NpmAudit([string]$Prefix, [string]$Label) {
     $lock = Join-Path $Prefix "package-lock.json"
     if (-not (Test-Path $lock)) {
@@ -89,7 +89,6 @@ function Invoke-NpmAudit([string]$Prefix, [string]$Label) {
 }
 
 Invoke-NpmAudit -Prefix $Root -Label "app-root"
-Invoke-NpmAudit -Prefix (Join-Path $Root "web\companion") -Label "companion"
 
 Write-Host ""
 if ($failures.Count -gt 0) {

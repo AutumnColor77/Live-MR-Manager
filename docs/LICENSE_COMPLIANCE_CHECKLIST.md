@@ -5,7 +5,7 @@
 ## A. 저장소·메타데이터
 
 - [ ] 루트 `LICENSE`가 MIT이고 저작권 연도가 유효하다
-- [ ] `package.json`, `src-tauri/Cargo.toml`, `web/companion/package.json`에 `"license": "MIT"` / `license = "MIT"`
+- [ ] `package.json`, `src-tauri/Cargo.toml`에 `"license": "MIT"` / `license = "MIT"`. Companion 웹은 [App-Companion](https://github.com/AutumnColor77/App-Companion) `package.json`
 - [ ] GitHub 저장소 페이지에 MIT가 표시된다 (`licenseInfo`)
 - [ ] `THIRD_PARTY_NOTICES.md`, `docs/MODEL_LICENSING.md`, `CONTRIBUTING.md`가 main에 있다
 
