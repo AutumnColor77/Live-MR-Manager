@@ -3,6 +3,7 @@ import {
   applyRemoteMetaToLocal,
   buildSongbookMetaPatch,
   forgetSongbookDeletions,
+  formatSongbookSyncProgress,
   pushTags,
   rememberSongbookDeletion,
   remoteSongsToDisable,
@@ -156,5 +157,33 @@ describe('MR tag mapping', () => {
       { title: '밤편지', artist: '아이유', tags: [] },
     );
     expect(stillOff.isMr).toBe(false);
+  });
+});
+
+describe('formatSongbookSyncProgress', () => {
+  it('keeps the overall percent moving forward across push, pull, and save', () => {
+    const preparing = formatSongbookSyncProgress({ phase: 'prepare', index: 0, total: 0 });
+    expect(preparing.indeterminate).toBe(true);
+    expect(preparing.buttonLabel).toBe('확인 중');
+    expect(preparing.detail).toBe('목록 확인 중');
+
+    const pushStart = formatSongbookSyncProgress({ phase: 'push', index: 0, total: 10 });
+    const pushMid = formatSongbookSyncProgress({ phase: 'push', index: 5, total: 10 });
+    const pushDone = formatSongbookSyncProgress({ phase: 'push', index: 10, total: 10 });
+    expect(pushStart).toMatchObject({ pct: 0, detail: '보내는 중 0/10', buttonLabel: '0%' });
+    expect(pushMid.pct).toBe(43);
+    expect(pushDone.pct).toBe(85);
+
+    const pullStart = formatSongbookSyncProgress({ phase: 'pull', index: 0, total: 4 });
+    const pullMid = formatSongbookSyncProgress({ phase: 'pull', index: 2, total: 4 });
+    const pullDone = formatSongbookSyncProgress({ phase: 'pull', index: 4, total: 4 });
+    expect(pullStart).toMatchObject({ pct: 85, detail: '가져오는 중 0/4' });
+    expect(pullMid.pct).toBe(93);
+    expect(pullDone.pct).toBe(100);
+    expect(pullStart.pct).toBeGreaterThanOrEqual(pushDone.pct);
+    expect(pullMid.pct).toBeGreaterThanOrEqual(pullStart.pct);
+
+    const saving = formatSongbookSyncProgress({ phase: 'save', index: 0, total: 1 });
+    expect(saving).toMatchObject({ pct: 100, detail: '저장 중', buttonLabel: '100%' });
   });
 });

@@ -120,6 +120,8 @@
 - [X] **AI 프로세싱 배지 (v0.7.9)**: 10 이상일 때 숫자 가운데 정렬
 - [X] **홍보 데모 화면 (v0.7.9)**: `#promo` 신청목록 예시, 유튜브는 Dynamite 실제 검색
 - [X] **앱 버전 v0.7.9**: 위 변경과 릴리즈 노트·매뉴얼·Discord 공지 반영
+- [X] **Companion·Discord (v0.7.10)**: 안내 사이트를 App-Companion / autumntools.vercel.app 으로 분리. Discord 서버 안내를 Autumn Tools로
+- [X] **앱 버전 v0.7.10**: Songbook 동기화 통합·진행률과 릴리즈 노트·매뉴얼·Discord 공지 반영
 - [X] **앱 버전 v0.7.7**: 데스크톱 보안 강화, Songbook/오버레이/라이브러리 UX, 릴리즈 노트·Discord 공지 반영
 - [X] **앱 버전 v0.5.1 핫픽스**: 배포본 Meloming OAuth — Client ID 임베드, Secret 없으면 Companion exchange/refresh
 - [X] **앱 버전 v0.5.0**: 멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타·별점 UI, Companion OAuth refresh
@@ -144,6 +146,8 @@ v0.6.0에서 앱·Companion 멜로밍 OAuth·노래책 동기화를 **제거**�
 
 - [X] **Google/네이버 로그인**: desktop-connect·deep-link 세션, 웹 세션 재사용, 프로필 아바타. **(2026-09)** `begin_songbook_oauth` nonce·콜백 `state` 검증·`?code=` + `desktop-exchange`·로그 마스킹
 - [X] **라이브러리 보내기**: 본인 채널 Push(POST/PATCH), demo 제외. 채널이 없으면 앱이 만들지 않고 Songbook `/me`로 안내 (v0.7.9)
+- [X] **동기화 한 번에 (v0.7.10)**: 보내기 다음 가져오기. 앱에서 삭제한 곡은 웹에서 만든 곡이어도 숨기고 다시 가져오지 않음. 보낼 유튜브 URL이 없으면 원격 링크 유지. MR 태그는 켜질 때만 반영
+- [X] **동기화 진행률 (v0.7.10)**: 헤더 퍼센트·막대, 설정 카드는 단계와 개수
 - [X] **Push 삭제 정합 (v0.7.0)**: 로컬에 없는 원격 곡 `enabled=false`(웹 숨김), 토스트「제거 N」
 - [X] **썸네일 축소 업로드**: 동기화 전 JPEG data URL 압축
 - [X] **서버 로그아웃·401 처리**: `/api/auth/logout`, 만료 시 재로그인 유도

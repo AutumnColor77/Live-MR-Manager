@@ -548,6 +548,13 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   const localSongs = await invoke('get_songs');
   const list = Array.isArray(localSongs) ? localSongs : [];
   const localKeys = new Set();
+  for (const song of list) {
+    const meta = buildMetaPayload(song);
+    if (!meta.title) continue;
+    localKeys.add(normalizeKey(meta.title, meta.artist));
+  }
+  const deletedKeys = forgetSongbookDeletions(list);
+  const toDisable = remoteSongsToDisable(remoteSongs, localKeys, deletedKeys);
 
   const stats = {
     added: 0,
@@ -557,11 +564,13 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     failed: 0,
     completed: 0,
   };
+  const workTotal = list.length + toDisable.length;
 
-  const reportProgress = (total) => {
+  const reportProgress = () => {
     onProgress?.({
+      phase: 'push',
       index: stats.completed,
-      total,
+      total: workTotal,
       added: stats.added,
       updated: stats.updated,
       removed: stats.removed,
@@ -571,24 +580,26 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
   };
 
   let progressLock = Promise.resolve();
-  const bumpProgress = (total, delta) => {
+  const bumpProgress = (delta) => {
     progressLock = progressLock.then(() => {
       stats.added += delta.added || 0;
       stats.updated += delta.updated || 0;
       stats.skipped += delta.skipped || 0;
       stats.failed += delta.failed || 0;
       stats.completed += 1;
-      reportProgress(total);
+      reportProgress();
     });
     return progressLock;
   };
+
+  reportProgress();
 
   await mapPool(list, SYNC_CONCURRENCY, async (song) => {
     const delta = { added: 0, updated: 0, skipped: 0, failed: 0 };
     const meta = buildMetaPayload(song);
     if (!meta.title) {
       delta.skipped = 1;
-      await bumpProgress(list.length, delta);
+      await bumpProgress(delta);
       return;
     }
 
@@ -638,18 +649,13 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
       console.warn('[SongbookSync] request error', err);
     }
 
-    await bumpProgress(list.length, delta);
+    await bumpProgress(delta);
   });
 
   // 앱 라이브러리에 없는 원격 곡 → 공개 목록에서 숨김 (재동기화 시 enabled 복구).
   // origin=web 은 앱에서 삭제한 곡만 숨긴다. 한 번도 지우지 않은 웹 곡은 이어서 가져온다.
   // TODO: PUT /songs/sync 의 disableMissing 으로 옮기면 서버가 origin=web 을 지켜 준다. 이번엔 곡별 PATCH를 유지한다.
-  const deletedKeys = forgetSongbookDeletions(list);
-  const toDisable = remoteSongsToDisable(remoteSongs, localKeys, deletedKeys);
-
-  const disableTotal = list.length + toDisable.length;
   let disableProgressLock = Promise.resolve();
-  let disableCompleted = list.length;
 
   await mapPool(toDisable, SYNC_CONCURRENCY, async (remote) => {
     let removedDelta = 0;
@@ -678,16 +684,8 @@ export async function pushLibraryToSongbook({ onProgress } = {}) {
     disableProgressLock = disableProgressLock.then(() => {
       stats.removed += removedDelta;
       stats.failed += failedDelta;
-      disableCompleted += 1;
-      onProgress?.({
-        index: disableCompleted,
-        total: disableTotal,
-        added: stats.added,
-        updated: stats.updated,
-        removed: stats.removed,
-        skipped: stats.skipped,
-        failed: stats.failed,
-      });
+      stats.completed += 1;
+      reportProgress();
     });
     await disableProgressLock;
   });
@@ -818,11 +816,26 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
   let skipped = 0;
   const merged = [...library];
 
+  const reportPull = (index) => {
+    onProgress?.({
+      phase: 'pull',
+      index,
+      total: remoteSongs.length,
+      added,
+      updated,
+      placeholders,
+      skipped,
+    });
+  };
+
+  reportPull(0);
+
   for (let i = 0; i < remoteSongs.length; i++) {
     const remote = remoteSongs[i];
     const title = String(remote.title || '').trim();
     if (!title) {
       skipped += 1;
+      reportPull(i + 1);
       continue;
     }
     const key = normalizeKey(title, remote.artist);
@@ -844,17 +857,19 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
       added += 1;
       if (created.source === 'songbook') placeholders += 1;
     }
+    reportPull(i + 1);
+  }
+
+  if (added > 0 || updated > 0) {
     onProgress?.({
-      index: i + 1,
-      total: remoteSongs.length,
+      phase: 'save',
+      index: 0,
+      total: 1,
       added,
       updated,
       placeholders,
       skipped,
     });
-  }
-
-  if (added > 0 || updated > 0) {
     await invoke('save_library', { songs: merged });
   }
 
@@ -870,11 +885,124 @@ export async function pullLibraryFromSongbook({ onProgress } = {}) {
   };
 }
 
+/** Push is the slow network half; pull and save share the rest so the bar only moves forward. */
+const PUSH_PROGRESS_WEIGHT = 85;
+
+/**
+ * @param {{ phase?: string, index?: number, total?: number }} progress
+ */
+export function formatSongbookSyncProgress(progress) {
+  const rawPhase = progress?.phase;
+  const phase = rawPhase === 'pull' || rawPhase === 'save' || rawPhase === 'prepare'
+    ? rawPhase
+    : 'push';
+  const total = Math.max(0, Number(progress?.total) || 0);
+  const index = Math.min(total, Math.max(0, Number(progress?.index) || 0));
+  const stageRatio = total > 0 ? index / total : (phase === 'prepare' ? 0 : 1);
+
+  let overall = 0;
+  if (phase === 'push') overall = stageRatio * PUSH_PROGRESS_WEIGHT;
+  else if (phase === 'pull') overall = PUSH_PROGRESS_WEIGHT + stageRatio * (100 - PUSH_PROGRESS_WEIGHT);
+  else if (phase === 'save') overall = 100;
+
+  const pct = Math.round(overall);
+  const indeterminate = phase === 'prepare';
+  const phaseLabel = {
+    prepare: '목록 확인 중',
+    push: '보내는 중',
+    pull: '가져오는 중',
+    save: '저장 중',
+  }[phase];
+  const detail = phase === 'prepare' || phase === 'save' || total === 0
+    ? phaseLabel
+    : `${phaseLabel} ${index}/${total}`;
+
+  return {
+    phase,
+    index,
+    total,
+    pct,
+    indeterminate,
+    phaseLabel,
+    detail,
+    buttonLabel: indeterminate ? '확인 중' : `${pct}%`,
+  };
+}
+
+const SYNC_BUTTON_LABEL = '동기화';
+let syncProgressFrame = 0;
+let pendingSyncProgress = undefined;
+
+export function paintSyncProgress(progress) {
+  if (typeof document === 'undefined') return;
+  const view = progress ? formatSongbookSyncProgress(progress) : null;
+  document.querySelectorAll('[data-songbook-sync]').forEach((btn) => {
+    const label = btn.querySelector('.songbook-sync-label');
+    if (label) label.textContent = view ? view.buttonLabel : SYNC_BUTTON_LABEL;
+    if (!btn.dataset.syncTitle) btn.dataset.syncTitle = btn.getAttribute('title') || '';
+    if (view) {
+      btn.title = view.detail;
+      btn.setAttribute('aria-valuemin', '0');
+      btn.setAttribute('aria-valuemax', '100');
+      btn.setAttribute('aria-valuenow', String(view.pct));
+      btn.setAttribute('aria-valuetext', view.detail);
+    } else {
+      btn.title = btn.dataset.syncTitle;
+      btn.removeAttribute('aria-valuemin');
+      btn.removeAttribute('aria-valuemax');
+      btn.removeAttribute('aria-valuenow');
+      btn.removeAttribute('aria-valuetext');
+    }
+    const meter = btn.querySelector('.songbook-sync-meter');
+    const bar = btn.querySelector('.songbook-sync-meter-bar');
+    if (meter) meter.hidden = !view;
+    if (bar) {
+      bar.style.width = view && !view.indeterminate ? `${view.pct}%` : '';
+      bar.classList.toggle('is-indeterminate', Boolean(view?.indeterminate));
+    }
+  });
+
+  const panel = document.getElementById('songbook-sync-progress');
+  if (!panel) return;
+  panel.hidden = !view;
+  if (!view) return;
+  const labelEl = document.getElementById('songbook-sync-progress-label');
+  const pctEl = document.getElementById('songbook-sync-progress-pct');
+  const barEl = document.getElementById('songbook-sync-progress-bar');
+  const track = panel.querySelector('.songbook-sync-progress-track');
+  if (labelEl) labelEl.textContent = view.detail;
+  if (pctEl) pctEl.textContent = view.indeterminate ? '' : `${view.pct}%`;
+  if (barEl) {
+    barEl.style.width = view.indeterminate ? '' : `${view.pct}%`;
+    barEl.classList.toggle('is-indeterminate', view.indeterminate);
+  }
+  if (track) {
+    track.setAttribute('aria-valuenow', String(view.pct));
+    track.setAttribute('aria-valuetext', view.detail);
+  }
+}
+
+function setSyncProgress(progress) {
+  if (!progress) {
+    if (syncProgressFrame) cancelAnimationFrame(syncProgressFrame);
+    syncProgressFrame = 0;
+    pendingSyncProgress = undefined;
+    paintSyncProgress(null);
+    return;
+  }
+  pendingSyncProgress = progress;
+  if (syncProgressFrame) return;
+  syncProgressFrame = requestAnimationFrame(() => {
+    syncProgressFrame = 0;
+    if (pendingSyncProgress) paintSyncProgress(pendingSyncProgress);
+  });
+}
+
 function setSyncBusy(busy) {
   document.querySelectorAll('[data-songbook-sync], [data-songbook-create-channel]').forEach((el) => {
     el.disabled = busy;
   });
-  document.querySelectorAll('.songbook-sync-btn').forEach((el) => {
+  document.querySelectorAll('[data-songbook-sync]').forEach((el) => {
     el.classList.toggle('is-syncing', busy);
     el.setAttribute('aria-busy', busy ? 'true' : 'false');
   });
@@ -978,11 +1106,12 @@ async function handleSyncError(err, stage) {
 async function runSyncFromUi(trigger) {
   if (trigger?.disabled) return;
   setSyncBusy(true);
-  showNotification('Songbook과 동기화하는 중…', 'info');
+  setSyncProgress({ phase: 'prepare', index: 0, total: 0 });
   let pushed = null;
   try {
-    pushed = await pushLibraryToSongbook();
-    const pulled = await pullLibraryFromSongbook();
+    const onProgress = (progress) => setSyncProgress(progress);
+    pushed = await pushLibraryToSongbook({ onProgress });
+    const pulled = await pullLibraryFromSongbook({ onProgress });
     await reloadLibraryAfterPull();
     const parts = [
       `보냄 추가 ${pushed.added}`,
@@ -1000,6 +1129,7 @@ async function runSyncFromUi(trigger) {
   } catch (err) {
     await handleSyncError(err, pushed ? 'pull' : 'push');
   } finally {
+    setSyncProgress(null);
     setSyncBusy(false);
   }
 }

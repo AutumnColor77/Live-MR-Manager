@@ -94,6 +94,15 @@
   - **텍스트 흐름(Marquee) 애니메이션**: 제목이나 가수명이 길 경우 자동으로 좌우로 흐르는 가독성 강화 애니메이션 적용.
   - **디자인 설정 영속성**: 사용자 지정 디자인 테마를 `localStorage`에 저장하여 앱 재시작 시 자동 복구.
 
+### 🆕 v0.7.10 업데이트 (2026-10-04)
+
+상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.10 절.
+
+- **Songbook**: 보내기와 가져오기를 **동기화** 한 번으로 이어서 실행합니다. 앱에서 지운 곡은 웹 곡이어도 다시 가져오지 않습니다.
+- **진행률**: 동기화 중 헤더에 퍼센트와 막대, 설정에 단계와 개수가 보입니다.
+- **안내 사이트**: Companion은 [App-Companion](https://github.com/AutumnColor77/App-Companion)이고, 공개 주소는 [autumntools.vercel.app](https://autumntools.vercel.app)입니다.
+- **Discord**: 커뮤니티 안내를 Autumn Tools로 바꿨습니다.
+
 ### 🆕 v0.7.9 업데이트 (2026-09-23)
 
 상세: [RELEASE_NOTES.md](RELEASE_NOTES.md) v0.7.9 절.

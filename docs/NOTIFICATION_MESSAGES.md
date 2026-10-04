@@ -216,7 +216,6 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 운영 페이지를 열지 못했습니다. / 노래책을 열지 못했습니다. | `src/js/events/songbook-auth.js` |
 | 안내 | Songbook 로그아웃되었습니다. | `src/js/events/songbook-auth.js` |
 | 오류 | 세션이 만료되었습니다. 다시 로그인해 주세요. | `src/js/events/songbook-auth.js`, `src/js/songbook-sync.js` |
-| 안내 | Songbook과 동기화하는 중… | `src/js/songbook-sync.js` |
 | 성공 / 경고 | Songbook 동기화 완료 ({slug}): 보냄 추가 {n} · 갱신 {n} · 제거 {n} · 가져옴 추가 {n} · 갱신 {n}[ · 플레이스홀더 {n}][ · 실패 {n}] | `src/js/songbook-sync.js` |
 | 오류 | Songbook 동기화에 실패했습니다. / Songbook 가져오기에 실패했습니다. / {err} | `src/js/songbook-sync.js` |
 | 안내 | 이미 채널이 있습니다: /c/{slug} | `src/js/songbook-sync.js` |

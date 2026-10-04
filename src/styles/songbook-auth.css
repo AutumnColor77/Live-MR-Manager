@@ -30,6 +30,7 @@
   z-index: 1400;
   pointer-events: auto;
   box-sizing: border-box;
+  overflow: hidden;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -54,6 +55,95 @@
   display: none !important;
 }
 
+.songbook-sync-btn {
+  overflow: hidden;
+}
+
+.songbook-sync-label {
+  font-variant-numeric: tabular-nums;
+}
+
+.songbook-sync-btn.is-syncing:disabled,
+#btn-songbook-sync.is-syncing:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
+.songbook-sync-btn.is-syncing .songbook-sync-label {
+  min-width: 3.25rem;
+  text-align: center;
+}
+
+.songbook-sync-meter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--text-main, #fff) 22%, transparent);
+}
+
+.songbook-sync-meter[hidden] {
+  display: none !important;
+}
+
+.songbook-sync-meter-bar,
+.songbook-sync-progress-bar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--accent-gradient, var(--accent-primary, #3b82f6));
+  transition: width 0.2s ease;
+}
+
+.songbook-sync-meter-bar.is-indeterminate,
+.songbook-sync-progress-bar.is-indeterminate {
+  width: 40%;
+  animation: songbook-sync-indet 1.1s ease-in-out infinite;
+}
+
+.songbook-sync-progress {
+  margin-top: 4px;
+  max-width: 420px;
+}
+
+.songbook-sync-progress[hidden] {
+  display: none !important;
+}
+
+.songbook-sync-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--text-dim, #94a3b8);
+}
+
+.songbook-sync-progress-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main, #f8fafc);
+}
+
+.songbook-sync-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-3, rgba(255, 255, 255, 0.08)) 78%, var(--text-main, #fff) 22%);
+}
+
+.settings-container .ai-model-card:has(#songbook-sync-progress:not([hidden])) {
+  align-items: start;
+}
+
+.settings-container .ai-model-card:has(#songbook-sync-progress:not([hidden])) .ai-actions-right {
+  align-self: start;
+}
+
 .songbook-sync-icon {
   flex-shrink: 0;
   transform-origin: 50% 50%;
@@ -69,8 +159,15 @@
   }
 }
 
+@keyframes songbook-sync-indet {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .songbook-sync-btn.is-syncing .songbook-sync-icon {
+  .songbook-sync-btn.is-syncing .songbook-sync-icon,
+  .songbook-sync-meter-bar.is-indeterminate,
+  .songbook-sync-progress-bar.is-indeterminate {
     animation: none;
   }
 }
