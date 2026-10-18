@@ -30,7 +30,6 @@ logs
 !tauri.conf.json
 !package.json
 !package-lock.json
-!web/companion/tsconfig.json
 !src-tauri/src/seed_tags.json
 !scripts/supply-chain/license-policy.json
 !src-tauri/capabilities/*.json
