@@ -79,6 +79,22 @@ pub fn youtube_cache_bytes_ready(len: u64) -> bool {
     len >= YOUTUBE_STREAM_MIN_BYTES
 }
 
+/// itag 18 is a 360p mp4 (H.264 `avc1` plus 22 kHz audio) saved with an `.m4a` name.
+/// Audio-only m4a has no video sample entry.
+pub fn youtube_cache_is_muxed_video(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+    let mut buf = [0u8; 65536];
+    let n = match file.read(&mut buf) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    buf[..n].windows(4).any(|window| window == b"avc1")
+}
+
 /// True when the file looks like a real audio container, not an empty/partial stub.
 pub fn youtube_cache_container_ok(path: &std::path::Path) -> bool {
     use std::io::Read;
@@ -198,5 +214,18 @@ mod tests {
         assert!(!youtube_cache_bytes_ready(0));
         assert!(!youtube_cache_bytes_ready(8191));
         assert!(youtube_cache_bytes_ready(8192));
+    }
+
+    #[test]
+    fn muxed_video_cache_has_avc1() {
+        let dir = std::env::temp_dir();
+        let video = dir.join("lmrm-yt-avc1-test.m4a");
+        let audio = dir.join("lmrm-yt-audio-test.m4a");
+        std::fs::write(&video, b"....ftypisom....avc1....").unwrap();
+        std::fs::write(&audio, b"....ftypisom....mp4a....").unwrap();
+        assert!(youtube_cache_is_muxed_video(&video));
+        assert!(!youtube_cache_is_muxed_video(&audio));
+        let _ = std::fs::remove_file(video);
+        let _ = std::fs::remove_file(audio);
     }
 }

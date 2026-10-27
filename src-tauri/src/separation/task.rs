@@ -9,7 +9,10 @@ use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use crate::model_manager::{ModelManager, ModelSpec};
 use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
-use crate::youtube_url::{normalize_cache_key, youtube_audio_cache_filename, youtube_cache_bytes_ready};
+use crate::youtube_url::{
+    normalize_cache_key, youtube_audio_cache_filename, youtube_cache_bytes_ready,
+    youtube_cache_is_muxed_video,
+};
 use super::{SeparationProgress, ROFORMER_ENGINE, ENGINE_MODEL_ID, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
 static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -364,10 +367,18 @@ impl SeparationTask {
         let paths = window.state::<crate::state::AppPaths>();
         let final_path = paths.temp.join(youtube_audio_cache_filename(path));
         let cache_idle = !crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(&final_path);
+        if cache_idle && youtube_cache_is_muxed_video(&final_path) {
+            sys_log(&format!(
+                "[AI-ENGINE] Discarding muxed YouTube cache (itag 18): {:?}",
+                final_path
+            ));
+            let _ = std::fs::remove_file(&final_path);
+        }
         let cache_ok = cache_idle
             && std::fs::metadata(&final_path)
                 .map(|m| youtube_cache_bytes_ready(m.len()))
                 .unwrap_or(false)
+            && !youtube_cache_is_muxed_video(&final_path)
             && !crate::audio_player::DOWNLOAD_ERRORS.lock().contains_key(&final_path);
 
         if cache_ok {

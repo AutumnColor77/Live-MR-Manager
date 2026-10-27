@@ -1,8 +1,8 @@
-# 🎙️ Live MR Manager(Beta) v0.7.10 — 사용자 매뉴얼
+# 🎙️ Live MR Manager(Beta) v0.7.11 — 사용자 매뉴얼
 
 **Live MR Manager(Beta)**는 AI 기술을 활용해 어떤 노래든 고품질 MR로 분리하고, 라이브 환경에서 실시간으로 키(Pitch)와 템포(Tempo)를 조절할 수 있는 전문적인 하이브리드 오디오 도구입니다.
 
-> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.10**. Songbook([livemrsongbook.com](https://www.livemrsongbook.com))·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
+> 상세 변경 이력: [RELEASE_NOTES.md](RELEASE_NOTES.md) **v0.7.11**. Songbook([livemrsongbook.com](https://www.livemrsongbook.com))·신청목록·대기열 오버레이는 아래 §5·§6을 참고하세요.
 ---
 
 ## 🚀 1. 프로젝트 시작하기
@@ -50,7 +50,7 @@
 4. 동일한 YouTube 영상(동일 video ID)은 중복 등록이 자동으로 차단됩니다.
 5. URL을 이미 알고 있으면 아래 **노래 추가** 모달의 유튜브 URL 탭을 사용하세요.
 
-라이브러리의 유튜브 곡은 재생 시 오디오를 받아 재생합니다. **YouTube 주소만** 재생·다운로드합니다. 실패하면 알림이 한 번 뜨며, 시간 초과·접근 차단 등을 짧게 안내합니다. 같은 곡을 다시 누르면 깨진 임시 파일은 쓰지 않고 다시 받습니다.
+라이브러리의 유튜브 곡은 재생 시 음성만 받아 재생합니다. 미리듣기와 같은 음성(AAC, 약 130 kb/s)을 쓰며, 예전에 낮은 음질로 받아 둔 파일은 다음 재생 때 다시 받습니다. **YouTube 주소만** 재생·다운로드합니다. 실패하면 알림이 한 번 뜨며, 시간 초과·접근 차단 등을 짧게 안내합니다. 같은 곡을 다시 누르면 깨진 임시 파일은 쓰지 않고 다시 받습니다.
 
 ### 📋 신청목록 (Songbook 운영)
 

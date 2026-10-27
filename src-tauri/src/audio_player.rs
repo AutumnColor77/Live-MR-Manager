@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::path::PathBuf;
 
+use rodio::source::{SeekError, UniformSourceIterator};
 use rodio::{Source, Player, MixerDeviceSink, DeviceSinkBuilder};
+use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 use crate::types::AppState;
 use parking_lot::Mutex;
 use once_cell::sync::Lazy;
@@ -308,6 +310,288 @@ impl<S> Source for StretchedSource<S> where S: Source<Item = f32> {
     }
 }
 
+const PLAYBACK_RESAMPLE_CHUNK: usize = 1024;
+
+/// Plays at the device rate. Matching rates skip conversion. A mismatch uses
+/// rubato's septic polynomial instead of rodio's linear interpolator, which
+/// dulls 44.1 kHz YouTube audio on a 48 kHz device and drops samples the other way.
+pub fn to_device_format<S>(
+    source: S,
+    target_channels: NonZeroU16,
+    target_rate: NonZeroU32,
+) -> UniformSourceIterator<DeviceRateSource<S>>
+where
+    S: Source<Item = f32>,
+{
+    let source_rate = source.sample_rate();
+    let source_channels = source.channels();
+    let inner = if source_rate == target_rate {
+        sys_log(&format!(
+            "[AUDIO] Playback rate {source_rate} Hz matches device, skip resample ({source_channels} ch -> {target_channels} ch)"
+        ));
+        DeviceRateSource::Passthrough(source)
+    } else {
+        sys_log(&format!(
+            "[AUDIO] Resample {source_rate} Hz -> {target_rate} Hz via rubato ({source_channels} ch -> {target_channels} ch)"
+        ));
+        DeviceRateSource::Resampled(RubatoResample::new(source, target_rate))
+    };
+    UniformSourceIterator::new(inner, target_channels, target_rate)
+}
+
+pub enum DeviceRateSource<S> {
+    Passthrough(S),
+    Resampled(RubatoResample<S>),
+}
+
+pub struct RubatoResample<S> {
+    input: S,
+    resampler: FastFixedIn<f32>,
+    channels: usize,
+    target_rate: NonZeroU32,
+    chunk_size: usize,
+    in_planar: Vec<Vec<f32>>,
+    in_fill: usize,
+    out_planar: Vec<Vec<f32>>,
+    pending: VecDeque<f32>,
+    input_ended: bool,
+    flushed: bool,
+    produced: bool,
+}
+
+impl<S> RubatoResample<S>
+where
+    S: Source<Item = f32>,
+{
+    fn new(input: S, target_rate: NonZeroU32) -> Self {
+        let channels = input.channels().get() as usize;
+        let source_rate = input.sample_rate().get();
+        let ratio = f64::from(target_rate.get()) / f64::from(source_rate);
+        let resampler = FastFixedIn::<f32>::new(
+            ratio,
+            1.0,
+            PolynomialDegree::Septic,
+            PLAYBACK_RESAMPLE_CHUNK,
+            channels,
+        )
+        .expect("playback resample ratio is derived from non-zero rates");
+        let out_len = resampler.output_frames_max().max(1);
+        Self {
+            input,
+            resampler,
+            channels,
+            target_rate,
+            chunk_size: PLAYBACK_RESAMPLE_CHUNK,
+            in_planar: vec![vec![0.0; PLAYBACK_RESAMPLE_CHUNK]; channels],
+            in_fill: 0,
+            out_planar: vec![vec![0.0; out_len]; channels],
+            pending: VecDeque::new(),
+            input_ended: false,
+            flushed: false,
+            produced: false,
+        }
+    }
+
+    fn reset_state(&mut self) {
+        self.resampler.reset();
+        self.in_fill = 0;
+        self.pending.clear();
+        self.input_ended = false;
+        self.flushed = false;
+        self.produced = false;
+    }
+
+    fn read_frame(&mut self) -> bool {
+        for channel in 0..self.channels {
+            match self.input.next() {
+                Some(sample) => self.in_planar[channel][self.in_fill] = sample,
+                None => {
+                    self.input_ended = true;
+                    return false;
+                }
+            }
+        }
+        self.in_fill += 1;
+        true
+    }
+
+    fn enqueue_planar(&mut self, wave: &[Vec<f32>], frames: usize) {
+        let frames = frames.min(wave.first().map(|channel| channel.len()).unwrap_or(0));
+        for frame in 0..frames {
+            for channel in 0..self.channels {
+                self.pending.push_back(wave[channel][frame]);
+            }
+        }
+    }
+
+    fn process_full(&mut self) {
+        let result =
+            self.resampler
+                .process_into_buffer(&self.in_planar, &mut self.out_planar, None);
+        self.in_fill = 0;
+        match result {
+            Ok((_, frames)) => {
+                self.produced = true;
+                let frames = frames.min(
+                    self.out_planar
+                        .first()
+                        .map(|channel| channel.len())
+                        .unwrap_or(0),
+                );
+                for frame in 0..frames {
+                    for channel in 0..self.channels {
+                        let sample = self.out_planar[channel][frame];
+                        self.pending.push_back(sample);
+                    }
+                }
+            }
+            Err(err) => {
+                sys_log(&format!("[AUDIO] Resample failed: {err}"));
+                self.flushed = true;
+            }
+        }
+    }
+
+    fn flush_tail(&mut self, frames: usize) {
+        self.flushed = true;
+        if frames == 0 && !self.produced {
+            return;
+        }
+        let produced = if frames == 0 {
+            self.resampler.process_partial::<Vec<f32>>(None, None)
+        } else {
+            let partial: Vec<Vec<f32>> = self
+                .in_planar
+                .iter()
+                .map(|channel| channel[..frames].to_vec())
+                .collect();
+            self.in_fill = 0;
+            self.resampler
+                .process_partial(Some(partial.as_slice()), None)
+        };
+        self.in_fill = 0;
+        match produced {
+            Ok(wave) => {
+                let count = wave.first().map(|channel| channel.len()).unwrap_or(0);
+                self.enqueue_planar(&wave, count);
+            }
+            Err(err) => sys_log(&format!("[AUDIO] Resample tail failed: {err}")),
+        }
+    }
+
+    fn pull_chunk(&mut self) {
+        if self.flushed {
+            return;
+        }
+        if self.input_ended {
+            self.flush_tail(self.in_fill);
+            return;
+        }
+        while self.in_fill < self.chunk_size {
+            if !self.read_frame() {
+                self.flush_tail(self.in_fill);
+                return;
+            }
+        }
+        self.process_full();
+    }
+}
+
+impl<S> Iterator for RubatoResample<S>
+where
+    S: Source<Item = f32>,
+{
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pending.is_empty() {
+            self.pull_chunk();
+        }
+        self.pending.pop_front()
+    }
+}
+
+impl<S> Source for RubatoResample<S>
+where
+    S: Source<Item = f32>,
+{
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn channels(&self) -> NonZeroU16 {
+        NonZeroU16::new(self.channels as u16).unwrap_or(NonZeroU16::MIN)
+    }
+
+    fn sample_rate(&self) -> NonZeroU32 {
+        self.target_rate
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        self.input.total_duration()
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        self.input.try_seek(pos)?;
+        self.reset_state();
+        Ok(())
+    }
+}
+
+impl<S> Iterator for DeviceRateSource<S>
+where
+    S: Source<Item = f32>,
+{
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Passthrough(source) => source.next(),
+            Self::Resampled(source) => source.next(),
+        }
+    }
+}
+
+impl<S> Source for DeviceRateSource<S>
+where
+    S: Source<Item = f32>,
+{
+    fn current_span_len(&self) -> Option<usize> {
+        match self {
+            Self::Passthrough(source) => source.current_span_len(),
+            Self::Resampled(source) => source.current_span_len(),
+        }
+    }
+
+    fn channels(&self) -> NonZeroU16 {
+        match self {
+            Self::Passthrough(source) => source.channels(),
+            Self::Resampled(source) => source.channels(),
+        }
+    }
+
+    fn sample_rate(&self) -> NonZeroU32 {
+        match self {
+            Self::Passthrough(source) => source.sample_rate(),
+            Self::Resampled(source) => source.sample_rate(),
+        }
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        match self {
+            Self::Passthrough(source) => source.total_duration(),
+            Self::Resampled(source) => source.total_duration(),
+        }
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        match self {
+            Self::Passthrough(source) => source.try_seek(pos),
+            Self::Resampled(source) => source.try_seek(pos),
+        }
+    }
+}
+
 // --- PlaybackProgress and SeekToArgs are in types.rs or defined locally ---
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SeekToArgs {
@@ -378,3 +662,121 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         playback_cv: parking_lot::Condvar::new(),
     }))
 });
+
+#[cfg(test)]
+mod playback_resample_tests {
+    use super::to_device_format;
+    use rodio::Source;
+    use std::num::{NonZeroU16, NonZeroU32};
+    use std::time::Duration;
+
+    struct Tone {
+        samples: Vec<f32>,
+        pos: usize,
+        channels: u16,
+        rate: u32,
+    }
+
+    impl Iterator for Tone {
+        type Item = f32;
+        fn next(&mut self) -> Option<Self::Item> {
+            let sample = *self.samples.get(self.pos)?;
+            self.pos += 1;
+            Some(sample)
+        }
+    }
+
+    impl Source for Tone {
+        fn current_span_len(&self) -> Option<usize> {
+            None
+        }
+        fn channels(&self) -> NonZeroU16 {
+            NonZeroU16::new(self.channels).unwrap()
+        }
+        fn sample_rate(&self) -> NonZeroU32 {
+            NonZeroU32::new(self.rate).unwrap()
+        }
+        fn total_duration(&self) -> Option<Duration> {
+            None
+        }
+    }
+
+    fn collect_resampled(samples: Vec<f32>, channels: u16, from: u32, to: u32) -> Vec<f32> {
+        let tone = Tone {
+            samples,
+            pos: 0,
+            channels,
+            rate: from,
+        };
+        to_device_format(
+            tone,
+            NonZeroU16::new(channels).unwrap(),
+            NonZeroU32::new(to).unwrap(),
+        )
+        .collect()
+    }
+
+    fn assert_no_clicks(samples: &[f32], steady_end: usize) {
+        let end = steady_end.min(samples.len());
+        assert!(end > 512, "resampled output too short: {}", samples.len());
+        let steady = &samples[64..end];
+        let mut peak = 0.0f32;
+        for pair in steady.windows(2) {
+            peak = peak.max((pair[1] - pair[0]).abs());
+        }
+        assert!(
+            peak < 0.2,
+            "sample step {peak} looks like a chunk-boundary click"
+        );
+        let energy = steady.iter().map(|s| s * s).sum::<f32>() / steady.len() as f32;
+        assert!(
+            energy > 0.05,
+            "resampler collapsed the signal: rms2={energy}"
+        );
+    }
+
+    #[test]
+    fn upsample_44100_to_48000_keeps_a_smooth_sine() {
+        let frames = 4096;
+        let samples: Vec<f32> = (0..frames)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44100.0).sin() * 0.5)
+            .collect();
+        let out = collect_resampled(samples, 1, 44100, 48000);
+        let steady_end = (frames as f64 * 48000.0 / 44100.0) as usize - 64;
+        assert_no_clicks(&out, steady_end);
+    }
+
+    #[test]
+    fn downsample_48000_to_44100_keeps_a_smooth_sine() {
+        let frames = 4096;
+        let samples: Vec<f32> = (0..frames)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48000.0).sin() * 0.5)
+            .collect();
+        let out = collect_resampled(samples, 1, 48000, 44100);
+        let steady_end = (frames as f64 * 44100.0 / 48000.0) as usize - 64;
+        assert_no_clicks(&out, steady_end);
+    }
+
+    #[test]
+    fn matching_rate_copies_samples() {
+        let samples: Vec<f32> = (0..128).map(|i| i as f32 / 128.0).collect();
+        let out = collect_resampled(samples.clone(), 1, 44100, 44100);
+        assert_eq!(out, samples);
+    }
+
+    #[test]
+    fn stereo_channels_stay_independent() {
+        let frames = 2048;
+        let mut samples = Vec::with_capacity(frames * 2);
+        for _ in 0..frames {
+            samples.push(0.25);
+            samples.push(-0.5);
+        }
+        let out = collect_resampled(samples, 2, 44100, 48000);
+        let mid = out.len() / 2;
+        let left = out[mid - (mid % 2)];
+        let right = out[mid - (mid % 2) + 1];
+        assert!((left - 0.25).abs() < 0.01, "left {left}");
+        assert!((right + 0.5).abs() < 0.01, "right {right}");
+    }
+}

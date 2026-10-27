@@ -5,17 +5,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use rodio::Source;
-use rodio::source::UniformSourceIterator;
 use std::num::{NonZeroU16, NonZeroU32};
 use crate::audio_player::{
     AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource,
-    sys_log
+    sys_log, to_device_format
 };
 use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
 use crate::state::DB;
 use crate::youtube::YoutubeManager;
 use crate::youtube_url::{
     cache_key_variants, extract_youtube_video_id, youtube_audio_cache_filename, youtube_cache_bytes_ready,
+    youtube_cache_is_muxed_video,
 };
 use urlencoding;
 
@@ -32,9 +32,24 @@ fn youtube_cache_playable(path: &std::path::Path) -> bool {
     if crate::audio_player::DOWNLOAD_ERRORS.lock().contains_key(&path_buf) {
         return false;
     }
-    std::fs::metadata(path)
+    let ready = std::fs::metadata(path)
         .map(|m| youtube_cache_bytes_ready(m.len()))
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if !ready {
+        return false;
+    }
+    if youtube_cache_is_muxed_video(path) {
+        let downloading = crate::audio_player::ACTIVE_DOWNLOADS.lock().contains(&path_buf);
+        if !downloading {
+            sys_log(&format!(
+                "[AUDIO] Discarding muxed YouTube cache (itag 18): {:?}",
+                path
+            ));
+            let _ = std::fs::remove_file(path);
+        }
+        return false;
+    }
+    true
 }
 
 async fn ensure_youtube_audio_file(
@@ -265,8 +280,8 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
         let stretched_i = StretchedSource::new(i_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
         
-        let resampled_v = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_v, handler.vocal_volume.clone()), target_channels_nz, target_rate_nz);
-        let resampled_i = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_i, handler.instrumental_volume.clone()), target_channels_nz, target_rate_nz);
+        let resampled_v = to_device_format(DynamicVolumeSource::new(stretched_v, handler.vocal_volume.clone()), target_channels_nz, target_rate_nz);
+        let resampled_i = to_device_format(DynamicVolumeSource::new(stretched_i, handler.instrumental_volume.clone()), target_channels_nz, target_rate_nz);
 
         let mixed = resampled_i.mix(resampled_v);
         
@@ -458,7 +473,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
 
     let stretched = StretchedSource::new(decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), handler.current_pos_samples.clone());
     let dyn_vol = DynamicVolumeSource::new(stretched, handler.instrumental_volume.clone());
-    let resampled = UniformSourceIterator::new(dyn_vol, target_channels_nz, target_rate_nz);
+    let resampled = to_device_format(dyn_vol, target_channels_nz, target_rate_nz);
     
     let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
     if final_v != target_version { return Ok(0); }

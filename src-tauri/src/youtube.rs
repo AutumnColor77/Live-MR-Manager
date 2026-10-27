@@ -310,14 +310,16 @@ impl YoutubeManager {
         "유튜브 재생에 실패했습니다.".into()
     }
 
-    fn youtube_player_client_arg(fallback: bool) -> &'static str {
-        // Default `web` formats often 403 (SABR / nsig). Prefer clients that still
-        // expose progressive HTTPS audio. android_sdkless avoids PO-token blocks.
-        if fallback {
-            "youtube:player_client=ios,mweb,web_embedded,tv_embedded"
-        } else {
-            "youtube:player_client=android_sdkless,tv,android,web_safari"
-        }
+    fn youtube_fallback_player_client_arg() -> &'static str {
+        // Used only after the default clients fail. Those clients currently
+        // expose itag 140 (AAC-LC ~130 kbps, 44.1 kHz). Forcing
+        // android_sdkless/tv/android left only itag 18 (360p + 22 kHz audio).
+        "youtube:player_client=ios,mweb,web_embedded,tv_embedded"
+    }
+
+    /// Audio-only. `best` selects muxed itag 18 (22 kHz) when it is the only HTTPS URL.
+    fn audio_only_format_selector() -> &'static str {
+        "140/251/ba[ext=m4a][abr>=96]/bestaudio[abr>=96]/bestaudio"
     }
 
     fn find_node_runtime() -> Option<String> {
@@ -344,9 +346,13 @@ impl YoutubeManager {
     }
 
     fn push_youtube_compat_args_ex(args: &mut Vec<String>, fallback_clients: bool, cookies_from_browser: bool) {
+        if fallback_clients {
+            args.extend_from_slice(&[
+                "--extractor-args".into(),
+                Self::youtube_fallback_player_client_arg().into(),
+            ]);
+        }
         args.extend_from_slice(&[
-            "--extractor-args".into(),
-            Self::youtube_player_client_arg(fallback_clients).into(),
             "--retries".into(),
             "5".into(),
             "--fragment-retries".into(),
@@ -362,21 +368,8 @@ impl YoutubeManager {
         }
     }
 
-    /// Full-file (separation) downloads must not use `-x` remux: that often
-    /// selects SABR-only `ba` formats that 403. Prefer progressive HTTPS m4a.
-    fn download_format_args(wait_for_full: bool, fallback_clients: bool) -> Vec<String> {
-        let selector = if wait_for_full {
-            if fallback_clients {
-                "ba[ext=m4a][protocol^=http]/ba[acodec^=mp4a]/140/bestaudio[protocol^=http]/bestaudio/best"
-            } else {
-                "ba[ext=m4a][protocol^=http]/ba[acodec^=mp4a]/ba[ext=m4a]/140/bestaudio[protocol^=http]/bestaudio/best"
-            }
-        } else if fallback_clients {
-            "ba[ext=m4a]/ba[acodec^=mp4a]/140/bestaudio/best"
-        } else {
-            "ba[ext=m4a]/ba[acodec^=mp4a]/140/ba/best"
-        };
-        vec!["-f".into(), selector.into()]
+    fn download_format_args() -> Vec<String> {
+        vec!["-f".into(), Self::audio_only_format_selector().into()]
     }
 
     fn release_download_slot(destination: &Path, error: Option<String>) {
@@ -760,7 +753,7 @@ impl YoutubeManager {
         let mut args: Vec<String> = vec![
             "-g".into(),
             "-f".into(),
-            "ba[ext=m4a]/bestaudio/best".into(),
+            Self::audio_only_format_selector().into(),
             "--no-playlist".into(),
             "--no-warnings".into(),
             "--socket-timeout".into(),
@@ -935,7 +928,7 @@ impl YoutubeManager {
                 "16K".into(),
             ];
             Self::push_youtube_compat_args_ex(&mut args, fallback_clients, cookies_from_browser);
-            args.extend(Self::download_format_args(wait_for_full, fallback_clients));
+            args.extend(Self::download_format_args());
 
             args.extend_from_slice(&[
                 "-o".into(),
