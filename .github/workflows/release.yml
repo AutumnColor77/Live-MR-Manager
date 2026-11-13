@@ -37,6 +37,12 @@ jobs:
         shell: pwsh
         run: ./scripts/ensure-vcredist.ps1
 
+      # ort-sys 2.0.0-rc.12 copy-dylibs breaks on newer Cargo OUT_DIR nesting
+      # (`build/ort-sys/<hash>/out` → wrong ancestors().nth(3)). Pre-create dirs.
+      - name: ensure ort-sys copy-dylibs directories
+        shell: pwsh
+        run: ./scripts/ensure-ort-copy-dirs.ps1
+
       - name: build and upload release
         uses: tauri-apps/tauri-action@v0
         env:
