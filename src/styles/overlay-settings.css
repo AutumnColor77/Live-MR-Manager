@@ -96,6 +96,39 @@
   position: relative;
 }
 
+.overlay-hide-bg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0 2px;
+}
+
+.overlay-hide-bg-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.overlay-hide-bg-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.overlay-hide-bg-desc {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
+#overlay-bg-opacity-row.is-disabled,
+#overlay-bg-color-row.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .overlay-force-visible-chip {
   display: flex;
   align-items: center;

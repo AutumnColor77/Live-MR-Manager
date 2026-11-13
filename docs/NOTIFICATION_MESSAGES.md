@@ -2,7 +2,7 @@
 
 프론트엔드 토스트(`showNotification`), 확인 모달(`openConfirmModal` / `confirm`), 백엔드 한국어 `Err` 메시지를 수집한 목록입니다.
 
-- 수집일: 2026-09-01 (Songbook OAuth state·IPC 검증·모델 무결성 문구 포함)
+- 수집일: 2026-09-01 (Songbook OAuth state·IPC 검증·모델 무결성 문구 포함). **2026-11-14** BGM 토스트 보강.
 - 고유 문구 수: **약 200+** (자동 수집 + 동적 문구 보강, 중복 제거)
 - `{…}` 는 런타임에 채워지는 자리입니다. (`{err}` = 예외/상세 메시지, `{}` = Rust format 자리)
 - 백엔드 `Err`는 프론트에서 `… 실패: {err}` 형태로 이어 붙는 경우가 많습니다.
@@ -239,6 +239,14 @@ _없음_ (앱 내 네이티브 `confirm()` 사용처 없음)
 | 오류 | 설정 변경 실패 / 초기화 실패 / 처리 실패 / {err} | `src/js/songbook-requests.js` |
 | 안내 | 홍보 데모 모드입니다. 재생·AI·편집이 가상으로 동작합니다. 다시 #promo 로 해제하세요. | `src/js/events/controls/library.js` |
 | 안내 | 원래 노래 목록으로 돌아왔습니다. | `src/js/events/controls/library.js` |
+| 안내 | BGM을 준비하는 중… | `src/js/bgm.js` |
+| 성공 | BGM 재생 | `src/js/bgm.js` |
+| 오류 | BGM 재생 실패: {err} | `src/js/bgm.js` |
+| 오류 | 유튜브 URL을 입력하세요. | `src/js/bgm.js` |
+| 안내 | 이미 목록에 있는 URL입니다. | `src/js/bgm.js` |
+| 성공 | BGM 목록에 추가했습니다. | `src/js/bgm.js` |
+| 오류 | 추가 실패: {err} | `src/js/bgm.js` |
+| 오류 | BGM 정지 실패: {err} | `src/js/bgm.js` |
 
 ## 유형 범
 

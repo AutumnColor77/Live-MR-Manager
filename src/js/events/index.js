@@ -21,6 +21,7 @@ export async function initAllEvents() {
   initSongbookAuth();
   initSongbookSync();
   initSongbookRequestsPage();
+  import('../bgm.js').then(({ initBgmPage }) => initBgmPage()).catch(() => {});
   await initSongbookRequestPoller();
   await setupBackendListeners();
 }

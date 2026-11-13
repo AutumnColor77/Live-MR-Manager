@@ -104,6 +104,7 @@ export function switchTab(tabId, options = {}) {
   const isMusicTab = tabId === "library";
   const isYoutubeTab = tabId === "youtube";
   const isRequestsTab = tabId === "requests";
+  const isBgmTab = tabId === "bgm";
   const showLyricDrawer = isMusicTab || isRequestsTab;
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.youtubeControls) elements.youtubeControls.style.display = isYoutubeTab ? "flex" : "none";
@@ -115,6 +116,11 @@ export function switchTab(tabId, options = {}) {
   if (elements.overlayPage) elements.overlayPage.style.display = tabId === "overlay" ? "block" : "none";
   if (elements.youtubePage) elements.youtubePage.style.display = isYoutubeTab ? "block" : "none";
   if (elements.requestsPage) elements.requestsPage.style.display = isRequestsTab ? "block" : "none";
+  if (elements.bgmPage) elements.bgmPage.style.display = isBgmTab ? "block" : "none";
+
+  if (isBgmTab) {
+    import('../bgm.js').then(({ onBgmTabShown }) => onBgmTabShown());
+  }
 
   if (isRequestsTab) {
     import('../songbook-requests.js').then(({ onRequestsTabShown, initSongbookRequestsPage }) => {
@@ -244,6 +250,7 @@ function getTabTitle(tabId) {
     library: "라이브러리",
     youtube: "유튜브 검색",
     requests: "신청목록",
+    bgm: "BGM",
     settings: "설정",
     overlay: "OBS 오버레이",
     tasks: "AI 프로세싱",
@@ -257,6 +264,7 @@ function getTabSubtitle(tabId) {
     library: "라이브러리의 모든 곡을 관리하고 재생합니다. 사이드바의 「노래 추가」로 URL·파일을 등록하세요.",
     youtube: "제목·아티스트로 유튜브를 검색해 라이브러리에 추가합니다. URL이 있으면 「노래 추가」를 사용하세요.",
     requests: "시청자 신청 대기열을 운영합니다.",
+    bgm: "방송용 유튜브 BGM 목록을 관리합니다. 곡 재생 중에는 BGM이 멈추고, 곡이 끝나거나 정지되면 이어서 재생됩니다.",
     settings: "애플리케이션 설정을 관리합니다.",
     overlay: "방송에 송출될 오버레이의 실시간 미리보기입니다.",
     tasks: "AI 작업 진행 상태를 확인합니다.",

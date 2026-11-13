@@ -137,6 +137,9 @@ export async function stopPlayback() {
       thumbnail: "",
       isPlaying: false
     });
+    import('./bgm.js').then(({ onMainPlaybackEndedOrStopped }) => {
+      onMainPlaybackEndedOrStopped({ queueAdvanced: false });
+    }).catch(() => {});
   } catch (error) {
     console.error("Stop playback failed:", error);
     throw error;
@@ -173,6 +176,7 @@ export async function handlePlaybackToggle() {
         state.lastRafTime = performance.now();
         state.rafId = requestAnimationFrame(updateProgressBar);
       }
+      import('./bgm.js').then(({ onMainPlaybackPlaying }) => onMainPlaybackPlaying()).catch(() => {});
     } else {
       emit('playback-stop', {});
       invoke('update_overlay_state', {
@@ -181,6 +185,7 @@ export async function handlePlaybackToggle() {
         thumbnail: state.currentTrack?.thumbnail || "",
         isPlaying: false
       });
+      import('./bgm.js').then(({ onMainPlaybackPaused }) => onMainPlaybackPaused()).catch(() => {});
     }
   } catch (error) {
     console.error("Playback toggle failed:", error);

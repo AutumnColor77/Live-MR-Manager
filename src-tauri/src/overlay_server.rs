@@ -23,6 +23,9 @@ pub struct OverlayStyle {
     pub bg_opacity: f32,
     pub rounding: f32,
     pub animation_direction: String,
+    /// 카드 fill·blur·border·shadow를 끄고 글자·썸네일만 표시.
+    #[serde(default)]
+    pub hide_bg: bool,
     /// 가사 오버레이 전용 글씨 크기(px). 0이면 기본값 22px.
     #[serde(default)]
     pub font_size: f32,
@@ -46,6 +49,7 @@ impl Default for OverlayStyle {
             bg_opacity: 0.6,
             rounding: 20.0,
             animation_direction: "left".to_string(),
+            hide_bg: false,
             font_size: 0.0,
             queue_expand_direction: default_queue_expand_direction(),
         }
@@ -146,6 +150,11 @@ static OVERLAY_QUEUE_HTML: &str = include_str!("../../src/overlay-queue.html");
 static LYRICS_VIEW_HTML: &str = include_str!("../../src/lyrics-view.html");
 static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
+
+/// OBS CEF는 Cache-Control만으로는 옛 문서를 붙잡는 경우가 있어 Pragma/Expires도 붙인다.
+const OVERLAY_NO_CACHE_HEADERS: &str = "Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Pragma: no-cache\r\n\
+                            Expires: 0\r\n";
 
 fn resolve_overlay_info_html() -> String {
     #[cfg(debug_assertions)]
@@ -280,10 +289,11 @@ pub async fn start_overlay_server(allow_lan: bool) {
                             Content-Type: application/javascript; charset=utf-8\r\n\
                             Content-Length: {}\r\n\
                             Access-Control-Allow-Origin: *\r\n\
-                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            {}\
                             Connection: close\r\n\r\n\
                             {}",
                             js.len(),
+                            OVERLAY_NO_CACHE_HEADERS,
                             js
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
@@ -300,10 +310,11 @@ pub async fn start_overlay_server(allow_lan: bool) {
                             Content-Type: text/html; charset=utf-8\r\n\
                             Content-Length: {}\r\n\
                             Access-Control-Allow-Origin: *\r\n\
-                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            {}\
                             Connection: close\r\n\r\n\
                             {}",
                             html.len(),
+                            OVERLAY_NO_CACHE_HEADERS,
                             html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
@@ -319,10 +330,11 @@ pub async fn start_overlay_server(allow_lan: bool) {
                             Content-Type: text/html; charset=utf-8\r\n\
                             Content-Length: {}\r\n\
                             Access-Control-Allow-Origin: *\r\n\
-                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            {}\
                             Connection: close\r\n\r\n\
                             {}",
                             html.len(),
+                            OVERLAY_NO_CACHE_HEADERS,
                             html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
@@ -338,10 +350,11 @@ pub async fn start_overlay_server(allow_lan: bool) {
                             Content-Type: text/html; charset=utf-8\r\n\
                             Content-Length: {}\r\n\
                             Access-Control-Allow-Origin: *\r\n\
-                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            {}\
                             Connection: close\r\n\r\n\
                             {}",
                             html.len(),
+                            OVERLAY_NO_CACHE_HEADERS,
                             html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
@@ -357,10 +370,11 @@ pub async fn start_overlay_server(allow_lan: bool) {
                             Content-Type: text/html; charset=utf-8\r\n\
                             Content-Length: {}\r\n\
                             Access-Control-Allow-Origin: *\r\n\
-                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            {}\
                             Connection: close\r\n\r\n\
                             {}",
                             html.len(),
+                            OVERLAY_NO_CACHE_HEADERS,
                             html
                         );
                         let _ = stream.write_all(response.as_bytes()).await;
@@ -553,6 +567,7 @@ pub async fn update_overlay_style(
     theme_mode: String,
     font_size: Option<f32>,
     queue_expand_direction: Option<String>,
+    hide_bg: Option<bool>,
 ) {
     let mut state = CURRENT_STATE.lock().await.clone();
     let expand = queue_expand_direction
@@ -561,6 +576,7 @@ pub async fn update_overlay_style(
         "up" | "both" | "down" => expand,
         _ => "both".to_string(),
     };
+    let hide_bg = hide_bg.unwrap_or(false);
     let style = OverlayStyle {
         scale,
         font,
@@ -570,6 +586,7 @@ pub async fn update_overlay_style(
         bg_opacity,
         rounding,
         animation_direction,
+        hide_bg,
         font_size: font_size.unwrap_or(0.0),
         queue_expand_direction: expand,
     };
@@ -577,6 +594,7 @@ pub async fn update_overlay_style(
     let shared_text_color = style.text_color.clone();
     let shared_bg_color = style.bg_color.clone();
     let shared_bg_opacity = style.bg_opacity;
+    let shared_hide_bg = style.hide_bg;
 
     if target == "lyrics" {
         state.lyrics_style = style;
@@ -584,6 +602,7 @@ pub async fn update_overlay_style(
         state.info_style.text_color = shared_text_color;
         state.info_style.bg_color = shared_bg_color;
         state.info_style.bg_opacity = shared_bg_opacity;
+        state.info_style.hide_bg = shared_hide_bg;
     } else if target == "queue" {
         // 대기열 오버레이는 독립 스타일(곡 정보/가사와 색상 공유하지 않음)
         state.queue_style = style;
@@ -595,6 +614,7 @@ pub async fn update_overlay_style(
         state.lyrics_style.text_color = shared_text_color;
         state.lyrics_style.bg_color = shared_bg_color;
         state.lyrics_style.bg_opacity = shared_bg_opacity;
+        state.lyrics_style.hide_bg = shared_hide_bg;
         state.lyrics_style.font_size = preserved_font_size;
     }
     state.is_force_visible = is_force_visible;

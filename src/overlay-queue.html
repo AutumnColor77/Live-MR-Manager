@@ -109,6 +109,21 @@
       min-width: 0;
     }
 
+    html.overlay-no-bg .overlay-container {
+      box-shadow: none;
+    }
+
+    html.overlay-no-bg .overlay-glass {
+      background: transparent;
+      border-color: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    html.overlay-no-bg .queue-divider {
+      display: none;
+    }
+
     /* 스테이지(1500×1000) 정중앙 기준 등장 — 늘어남 방향과 무관하게 위치는 동일 */
     .overlay-container.dir-right {
       transform-origin: center center;
@@ -394,6 +409,7 @@
       document.documentElement.style.setProperty('--text-main', `#${textColor}`);
       document.documentElement.style.setProperty('--text-muted', `rgba(${hexToRgb(textColor)}, 0.6)`);
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
+      document.documentElement.classList.toggle('overlay-no-bg', !!(style.hide_bg ?? style.hideBg));
       document.body.style.fontFamily = `"${font}", 'Noto Sans KR', sans-serif`;
 
       container.classList.remove('dir-left', 'dir-right', 'dir-top', 'dir-bottom');

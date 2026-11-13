@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::path::PathBuf;
 
 use rodio::source::{SeekError, UniformSourceIterator};
@@ -59,16 +59,32 @@ pub fn sys_log(message: &str) {
 
 // --- Streaming Support ---
 
+/// Max time to wait at EOF while a YouTube download is active but the on-disk
+/// size is not growing. Prevents Decoder::new from blocking for hours on long
+/// progressive caches (e.g. 4h mixes).
+const YOUTUBE_EOF_STALL_TIMEOUT: Duration = Duration::from_millis(2500);
+
 pub struct StreamingReader {
     pub file: File,
     pub is_youtube: bool,
     pub path: PathBuf,
+    /// Last observed file length while waiting at EOF during download.
+    last_len_at_eof: u64,
+    /// When `last_len_at_eof` was last observed to grow (or first EOF wait).
+    last_growth_at: Instant,
 }
 
 impl StreamingReader {
     pub fn new(path: PathBuf, is_youtube: bool) -> std::io::Result<Self> {
         let file = File::open(&path)?;
-        Ok(Self { file, is_youtube, path })
+        let last_len_at_eof = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        Ok(Self {
+            file,
+            is_youtube,
+            path,
+            last_len_at_eof,
+            last_growth_at: Instant::now(),
+        })
     }
 }
 
@@ -77,22 +93,30 @@ impl Read for StreamingReader {
         loop {
             let n = self.file.read(buf)?;
             if n > 0 {
-                // println!("[AUDIO_DEBUG] StreamingReader read {} bytes", n);
                 return Ok(n);
             } else if self.is_youtube {
-                // Check if still downloading
                 let still_downloading = {
                     let downloads = ACTIVE_DOWNLOADS.lock();
                     downloads.contains(&self.path)
                 };
-                
-                if still_downloading {
-                    std::thread::sleep(std::time::Duration::from_millis(150));
-                    continue;
-                } else {
-                    // Download finished and no more data
+
+                if !still_downloading {
                     return Ok(0);
                 }
+
+                let len = std::fs::metadata(&self.path)
+                    .map(|m| m.len())
+                    .unwrap_or(self.last_len_at_eof);
+                if len > self.last_len_at_eof {
+                    self.last_len_at_eof = len;
+                    self.last_growth_at = Instant::now();
+                } else if self.last_growth_at.elapsed() >= YOUTUBE_EOF_STALL_TIMEOUT {
+                    // Stalled incomplete file — fail the read so callers can
+                    // retry later instead of blocking forever.
+                    return Ok(0);
+                }
+
+                std::thread::sleep(Duration::from_millis(150));
             } else {
                 return Ok(0);
             }
@@ -605,6 +629,8 @@ pub struct SeekToArgs {
 pub struct AudioHandler {
     pub _stream: MixerDeviceSink, // Keep alive
     pub controller: Mutex<Player>,
+    /// Broadcast BGM — same mixer, independent of main `controller.clear()`.
+    pub bgm_controller: Mutex<Player>,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
@@ -615,6 +641,7 @@ pub struct AudioHandler {
     pub track_sample_rate: Arc<AtomicU32>,
     pub vocal_volume: Arc<AtomicU32>, // f32 bits
     pub instrumental_volume: Arc<AtomicU32>, // f32 bits
+    pub bgm_volume: Arc<AtomicU32>, // 0..=100
     pub playback_cv: parking_lot::Condvar,
 }
 
@@ -645,10 +672,12 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
     sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
     
     let player = Player::connect_new(&stream.mixer());
+    let bgm_player = Player::connect_new(&stream.mixer());
 
     Ok(Arc::new(AudioHandler {
         _stream: stream,
         controller: Mutex::new(player),
+        bgm_controller: Mutex::new(bgm_player),
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
         active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
@@ -659,6 +688,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
         vocal_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
+        bgm_volume: Arc::new(AtomicU32::new(40)),
         playback_cv: parking_lot::Condvar::new(),
     }))
 });

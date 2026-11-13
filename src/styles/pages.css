@@ -1368,3 +1368,178 @@ html[data-theme="dark"] .overlay-preview-wrapper::before {
     grid-row: 4;
   }
 }
+
+/* --- Broadcast BGM page --- */
+.bgm-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 0 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bgm-settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+}
+
+.bgm-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bgm-setting-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.bgm-setting-desc {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.bgm-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bgm-volume-val {
+  min-width: 28px;
+  text-align: right;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.bgm-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.bgm-url-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2);
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.bgm-empty {
+  margin: 8px 0 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.bgm-playlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bgm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid transparent;
+}
+
+.bgm-row.is-current {
+  border-color: rgb(var(--accent-rgb) / 0.45);
+  background: rgb(var(--accent-rgb) / 0.08);
+}
+
+.bgm-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  letter-spacing: -2px;
+  user-select: none;
+  padding: 4px 2px;
+}
+
+.bgm-drag-handle:active {
+  cursor: grabbing;
+}
+
+.bgm-row-ghost {
+  opacity: 0.45;
+}
+
+.bgm-row-chosen {
+  border-color: rgb(var(--accent-rgb) / 0.35);
+}
+
+.bgm-row-drag {
+  opacity: 0.95;
+}
+
+.bgm-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--surface-2);
+}
+
+.bgm-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bgm-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  background: var(--surface-3);
+}
+
+.bgm-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bgm-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bgm-meta {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bgm-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}

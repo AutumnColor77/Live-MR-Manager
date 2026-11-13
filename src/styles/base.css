@@ -91,7 +91,7 @@ html[data-theme="dark"] {
   --ok-soft-bg: rgba(34, 197, 94, 0.22);
 
   --safe-area: 40px;
-  --dock-height: 100px;
+  --dock-height: 118px;
   --titlebar-height: 38px;
 
   /* Button Sizing System (Adjusted to be more compact) */

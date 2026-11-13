@@ -6,6 +6,9 @@ import { getLineVisibility, setLineVisibility } from '../../lrc-parser.js';
 
 let cachedLanAddress = null;
 
+/** OBS 브라우저 소스가 옛 HTML을 붙잡고 있을 때 URL만 바꿔도 다시 받게 한다. */
+const OVERLAY_PAGE_REV = 'hidebg1';
+
 /** 3줄 가사(원문/차음/번역) 표시 항목 체크박스 - 인앱 드로어/OBS 오버레이 각각
  *  독립적으로 설정(lrc-parser.js의 getLineVisibility/setLineVisibility, scope
  *  단위로 localStorage에 저장). 체크박스 자체는 어떤 백엔드 호출도 필요 없다 -
@@ -40,12 +43,15 @@ export function initOverlayListeners() {
   const overlayTextColor = document.getElementById('overlay-text-color');
   const overlayBgOpacity = document.getElementById('overlay-bg-opacity');
   const overlayBgOpacityVal = document.getElementById('overlay-bg-opacity-val');
+  const overlayBgOpacityRow = document.getElementById('overlay-bg-opacity-row');
+  const overlayBgColorRow = document.getElementById('overlay-bg-color-row');
   const overlayRounding = document.getElementById('overlay-rounding');
   const overlayRoundingVal = document.getElementById('overlay-rounding-val');
   const overlayBgColor = document.getElementById('overlay-bg-color');
   const overlayColorHex = document.getElementById('overlay-color-hex');
   const overlayTextColorHex = document.getElementById('overlay-text-color-hex');
   const overlayBgColorHex = document.getElementById('overlay-bg-color-hex');
+  const toggleOverlayHideBg = document.getElementById('toggle-overlay-hide-bg');
   const overlayUrlDisplay = document.getElementById('overlay-url-display');
   const lyricsOverlayUrlDisplay = document.getElementById('lyrics-overlay-url-display');
   const lyricsViewUrlDisplay = document.getElementById('lyrics-view-url-display');
@@ -113,11 +119,21 @@ export function initOverlayListeners() {
     bgOpacity: target === 'queue' ? 0.85 : 0.6,
     rounding: 20,
     bgColor: '0f0f14',
+    hideBg: false,
     font: 'Inter',
     animationDirection: 'left',
     fontSize: target === 'queue' ? 16 : 22,
     queueExpandDirection: 'both',
   });
+
+  const syncHideBgControls = (hideBg) => {
+    if (toggleOverlayHideBg) toggleOverlayHideBg.checked = !!hideBg;
+    if (overlayBgOpacity) overlayBgOpacity.disabled = !!hideBg;
+    if (overlayBgColor) overlayBgColor.disabled = !!hideBg;
+    if (overlayBgColorHex) overlayBgColorHex.disabled = !!hideBg;
+    overlayBgOpacityRow?.classList.toggle('is-disabled', !!hideBg);
+    overlayBgColorRow?.classList.toggle('is-disabled', !!hideBg);
+  };
 
   // 미리보기 iframe = OBS 스테이지 + 그림자 여유(preview HTML과 동일)
   const OBS_PREVIEW_SIZE = {
@@ -235,6 +251,8 @@ export function initOverlayListeners() {
     if (overlayRoundingVal) overlayRoundingVal.textContent = `${rounding}px`;
 
     const bgColor = overlayBgColor.value.replace('#', '');
+    const hideBg = !!(toggleOverlayHideBg && toggleOverlayHideBg.checked);
+    syncHideBgControls(hideBg);
     const isForceVisible = !!(
       (toggleOverlayForceVisible && toggleOverlayForceVisible.checked) ||
       (toggleOverlayQueueForceVisible && toggleOverlayQueueForceVisible.checked)
@@ -249,7 +267,7 @@ export function initOverlayListeners() {
       try { config = JSON.parse(saved) || {}; } catch(e) {}
 
       config[currentTarget] = {
-        scale, font, color, textColor, bgOpacity, rounding, bgColor, animationDirection, fontSize,
+        scale, font, color, textColor, bgOpacity, rounding, bgColor, hideBg, animationDirection, fontSize,
         ...(currentTarget === 'queue' ? { queueExpandDirection } : {}),
       };
       config.isForceVisible = isForceVisible;
@@ -262,10 +280,10 @@ export function initOverlayListeners() {
     // 네트워크에 노출된다는 점을 사용자가 명확히 인지한 상태에서만).
     const useLan = !!(toggleOverlayLan && toggleOverlayLan.checked);
     const host = (useLan && cachedLanAddress) ? cachedLanAddress : 'localhost';
-    const infoUrl = `http://${host}:14202/overlay-info`;
-    const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
-    const lyricsViewUrl = `http://${host}:14202/lyrics-view`;
-    const queueUrl = `http://${host}:14202/queue`;
+    const infoUrl = `http://${host}:14202/overlay-info?v=${OVERLAY_PAGE_REV}`;
+    const lyricsUrl = `http://${host}:14202/overlay-lyrics?v=${OVERLAY_PAGE_REV}`;
+    const lyricsViewUrl = `http://${host}:14202/lyrics-view?v=${OVERLAY_PAGE_REV}`;
+    const queueUrl = `http://${host}:14202/queue?v=${OVERLAY_PAGE_REV}`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
     if (lyricsViewUrlDisplay) lyricsViewUrlDisplay.textContent = lyricsViewUrl;
@@ -320,6 +338,7 @@ export function initOverlayListeners() {
         bgColor,
         bgOpacity,
         rounding,
+        hideBg,
         isForceVisible,
         animationDirection,
         themeMode,
@@ -405,6 +424,7 @@ export function initOverlayListeners() {
       if (bgHexInput) bgHexInput.value = final.bgColor.replace('#', '');
       if (updateBgPalette) updateBgPalette(`#${final.bgColor}`);
     }
+    syncHideBgControls(!!final.hideBg);
 
     if (config.isForceVisible !== undefined) {
       if (toggleOverlayForceVisible) toggleOverlayForceVisible.checked = config.isForceVisible;
@@ -469,6 +489,7 @@ export function initOverlayListeners() {
           bgColor: String(final.bgColor || defaults.bgColor).replace('#', ''),
           bgOpacity: Number.isFinite(final.bgOpacity) ? final.bgOpacity : defaults.bgOpacity,
           rounding: Number.isFinite(final.rounding) ? final.rounding : defaults.rounding,
+          hideBg: !!final.hideBg,
           isForceVisible,
           animationDirection: final.animationDirection || 'left',
           themeMode,
@@ -537,6 +558,9 @@ export function initOverlayListeners() {
     }, { passive: false });
   }
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
+  if (toggleOverlayHideBg) {
+    toggleOverlayHideBg.addEventListener('change', () => updateOverlaySettings());
+  }
   if (toggleOverlayForceVisible) {
     toggleOverlayForceVisible.addEventListener('change', () => {
       if (toggleOverlayQueueForceVisible) {

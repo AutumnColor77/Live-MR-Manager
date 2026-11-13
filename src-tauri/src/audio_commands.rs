@@ -52,10 +52,19 @@ fn youtube_cache_playable(path: &std::path::Path) -> bool {
     true
 }
 
-async fn ensure_youtube_audio_file(
+pub(crate) async fn ensure_youtube_audio_file(
     window: &WebviewWindow,
     url: &str,
     dest: &std::path::PathBuf,
+) -> Result<(), String> {
+    ensure_youtube_audio_file_ex(window, url, dest, false).await
+}
+
+pub(crate) async fn ensure_youtube_audio_file_ex(
+    window: &WebviewWindow,
+    url: &str,
+    dest: &std::path::PathBuf,
+    wait_for_full: bool,
 ) -> Result<(), String> {
     if youtube_cache_playable(dest) {
         return Ok(());
@@ -90,7 +99,7 @@ async fn ensure_youtube_audio_file(
     }
     crate::audio_player::DOWNLOAD_ERRORS.lock().remove(dest);
 
-    YoutubeManager::download_audio(window, url, dest.clone(), false).await?;
+    YoutubeManager::download_audio(window, url, dest.clone(), wait_for_full).await?;
     if youtube_cache_playable(dest) {
         crate::audio_player::DOWNLOAD_ERRORS.lock().remove(dest);
         return Ok(());
@@ -287,6 +296,13 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         
         let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
         if final_v != target_version { return Ok(0); }
+
+        if play_now && start_pos_ms.is_none() {
+            crate::bgm_commands::duck_before_main_track().await;
+            if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version {
+                return Ok(0);
+            }
+        }
         
         {
             let controller = handler.controller.lock();
@@ -477,6 +493,13 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     
     let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
     if final_v != target_version { return Ok(0); }
+
+    if play_now && start_pos_ms.is_none() {
+        crate::bgm_commands::duck_before_main_track().await;
+        if PLAYBACK_VERSION.load(Ordering::SeqCst) != target_version {
+            return Ok(0);
+        }
+    }
     
     {
         let controller = handler.controller.lock();

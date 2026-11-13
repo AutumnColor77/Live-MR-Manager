@@ -97,7 +97,7 @@ export async function setupBackendListeners() {
     const { status, message } = event.payload;
     const s = (status || "").toLowerCase();
 
-    // 1. Loading state
+    // 1. Loading state (keep BGM audible while preparing; Rust ducks right before play)
     if (["loading", "downloading", "decoding", "pending"].includes(s)) {
       state.isLoading = true;
     } else {
@@ -122,6 +122,7 @@ export async function setupBackendListeners() {
         state.lastRafTime = performance.now();
         state.rafId = requestAnimationFrame(updateProgressBar);
       }
+      import('../bgm.js').then(({ onMainPlaybackPlaying }) => onMainPlaybackPlaying()).catch(() => {});
     } else if (["finished", "error", "paused", "stopped"].includes(s)) {
       // Ignore finished/paused during seek to prevent snapback
       if (state.isSeeking && (s === "finished" || s === "paused")) return;
@@ -129,12 +130,20 @@ export async function setupBackendListeners() {
       state.isPlaying = false;
       state.rafId = null;
 
+      if (s === "paused") {
+        import('../bgm.js').then(({ onMainPlaybackPaused }) => onMainPlaybackPaused()).catch(() => {});
+      }
+
       if (s === "finished") {
         state.currentProgressMs = 0;
         state.targetProgressMs = 0;
 
         const { advanceQueueAfterFinished } = await import('../playback-queue.js');
         const advanced = await advanceQueueAfterFinished();
+
+        import('../bgm.js').then(({ onMainPlaybackEndedOrStopped }) => {
+          onMainPlaybackEndedOrStopped({ queueAdvanced: !!advanced });
+        }).catch(() => {});
 
         if (!advanced) {
           // Reload track in paused state at 0:00 so it can be replayed
@@ -185,6 +194,19 @@ export async function setupBackendListeners() {
   await listen('separation-progress', (event) => {
     const { path, percentage, status, provider, model } = event.payload;
     const s = (status || "").toLowerCase();
+    // YouTube full-file download used to emit NETWORK "Downloading..." here for
+    // MR separation. BGM must not appear on the AI tasks page — ignore leftovers.
+    if (
+      String(provider || "").toUpperCase() === "NETWORK" &&
+      s.startsWith("downloading")
+    ) {
+      if (path && state.activeTasks?.[path]) {
+        delete state.activeTasks[path];
+        persistActiveTasksSnapshot();
+        scheduleTaskUiUpdate();
+      }
+      return;
+    }
     const isFinished = s === "finished";
     const isCancelled = s === "cancelled" || s.includes("cancel");
     const isError = s === "error" || s.startsWith("error:");

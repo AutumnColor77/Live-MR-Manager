@@ -131,6 +131,17 @@
       transition: background 0.3s ease;
     }
 
+    html.overlay-no-bg .overlay-container {
+      box-shadow: none;
+    }
+
+    html.overlay-no-bg .overlay-glass {
+      background: transparent;
+      border-color: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
     /* 권장 스테이지 정중앙 기준 등장 — 현재 곡 정보와 동일 */
     .overlay-container.dir-right {
       transform-origin: center center;
@@ -416,6 +427,7 @@
       const fontSize = Number(style.font_size ?? style.fontSize) || 0;
       document.documentElement.style.setProperty('--lyric-font-size', `${fontSize > 0 ? fontSize : 22}px`);
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
+      document.documentElement.classList.toggle('overlay-no-bg', !!(style.hide_bg ?? style.hideBg));
       document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);
       document.documentElement.style.setProperty('--accent-color', `#${color}`);
       document.documentElement.style.setProperty('--text-main', `#${textColorHex}`);

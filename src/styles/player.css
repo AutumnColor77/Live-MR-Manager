@@ -4,7 +4,7 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 100px; /* var(--dock-height) */
+  height: 118px; /* var(--dock-height) */
   background: var(--dock-bg);
   backdrop-filter: blur(25px) saturate(180%);
   -webkit-backdrop-filter: blur(25px) saturate(180%);

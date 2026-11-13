@@ -17,6 +17,7 @@ pub mod onnx_engine;
 mod library;
 mod key_bpm;
 mod audio_commands;
+mod bgm_commands;
 mod mr_cache;
 mod mr_encode;
 mod ffmpeg_tools;
@@ -110,6 +111,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             audio_commands::get_model_settings, audio_commands::update_model_settings,
             audio_commands::play_track, audio_commands::toggle_playback, audio_commands::stop_playback, audio_commands::seek_to, audio_commands::set_pitch, audio_commands::set_tempo, audio_commands::set_volume, audio_commands::set_master_volume,
+            bgm_commands::bgm_play, bgm_commands::bgm_pause, bgm_commands::bgm_resume, bgm_commands::bgm_fade_resume, bgm_commands::bgm_fade_pause, bgm_commands::bgm_stop, bgm_commands::bgm_set_volume, bgm_commands::bgm_set_loop, bgm_commands::bgm_set_auto_enabled, bgm_commands::bgm_get_state, bgm_commands::bgm_prepare,
             audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature,
             model_commands::check_mr_separated,
             model_commands::get_separation_info,

@@ -107,6 +107,7 @@ export const elements = {
   requestsPage: null,
   requestsControls: null,
   requestsBadge: null,
+  bgmPage: null,
 };
 
 export function initDomReferences() {
@@ -213,4 +214,5 @@ export function initDomReferences() {
   elements.requestsPage = document.getElementById("requests-page");
   elements.requestsControls = document.getElementById("requests-controls");
   elements.requestsBadge = document.getElementById("requests-badge");
+  elements.bgmPage = document.getElementById("bgm-page");
 }
